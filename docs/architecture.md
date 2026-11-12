@@ -34,7 +34,7 @@
 | `drivers/` | 驱动 | panel（屏幕初始化、总线和总线锁）、framebuffer（帧缓冲 → 屏幕，只送变化的部分）、uart、spi0、flash（25Q128，7 MB 窗口）、adc、rtc（I2C2）、keys（键盘、侧键、PTT）、rotary、leds、backlight |
 | `graphics/`、`graphics/fonts/` | 图形 | font（西文字体）、font_cjk（中文字库，第 5 步）、draw（图元）、icons、theme（调色板）、字体数据 |
 | `ui/` | 界面框架 | ui（事件、UI 任务、界面栈，见 [ui-design.md](ui-design.md) 第 6 节）、list（表描述的列表界面，各菜单记住位置）、codeplug_text（GB2312 名字 → UTF-8） |
-| `ui/text/` | 文字 | text.h / text_en.c / text_zh.c 由 `tools/gen_text.py` 生成，text.c 按设置选语言 |
+| `ui/text/` | 文字 | text.h / text_en.c / text_es.c 由 `tools/text/gen_text.py` 生成（源文件 `tools/text/languages/`），text.c 按设置选语言 |
 | `ui/widgets/` | 界面 | 控件：status_bar、channel_panel、bottom_bar（含软键条）、s_meter、list_view；其余控件随界面搬入 |
 | `services/` | 服务 | input（输入任务：按键、旋钮 → UI 事件）、systime（1 ms 计时、监视器）、power（电源开关关机）、cable_link（写频线链路）、debug（调试命令）、settings（设置）、codeplug（信道数据）、battery、datetime、radio（收发：FM、DMR 引擎的外层、VOX、APRS 发射）、sound（提示音）、vox（VOX 判定）、aprs（APRS 信标）、hotspot（DMR 热点，MMDVM 协议）、gps、display（背光）、idle（自动关机 / 锁键）、last_heard、tones、custom_data、satellite、dmr_ids（CPS 写入的 DMR ID 数据库，主叫名字） |
 | `dmr/` | DMR | 原工程的 HR_C7000 引擎（hr_c7000.c 基本原样）、dmr_compat（引擎要的接口）、dmr（中断、模式切换、主叫 → 界面）、dmr_sound、AMBE 编解码器 |

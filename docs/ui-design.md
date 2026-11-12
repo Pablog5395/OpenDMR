@@ -267,9 +267,11 @@ typedef struct {
 
 ### 6.6 文字
 
-- `src/ui/text/text_zh.c`、`text_en.c`：同一个字符串 ID 枚举（`text.h`），各自一张表；设置里的语言决定用哪张。
-- 文字最初由 `tools/text/gen_text.py` 从原工程的 `languages/chinese.h`、`english.h`（存在 `tools/text/languages/`）生成，
-  之后加的字符串直接写进这三个文件（同时记进 `gen_text.py` 的 EXTRA）。
+- `src/ui/text/text_es.c`、`text_en.c`：同一个字符串 ID 枚举（`text.h`），各自一张表；设置里的语言决定用哪张。
+  次要语言里没有的字符串是 NULL，`text()` 就用英文的。
+- 文字由 `tools/text/gen_text.py` 从原工程的 `languages/spanish.h`、`english.h`（存在 `tools/text/languages/`）生成，
+  之后加的字符串记进 `gen_text.py` 的 EXTRA（西班牙语也一样，改 `spanish.h` 或 EXTRA）。
+- 西文字体只有 ASCII：西语不带重音（`Espanol`）。
 - 最长 25 字节（8 个汉字），超出由控件截断。
 
 ### 6.7 任务
