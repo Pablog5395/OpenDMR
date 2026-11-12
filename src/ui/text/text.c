@@ -31,6 +31,8 @@
  * settings.bitfield_options bit 19 (BIT_SECONDARY_LANGUAGE) set = Spanish, clear = English.
  */
 
+#include <stddef.h>
+
 #include "settings.h"
 #include "text.h"
 
@@ -44,5 +46,12 @@ const char *text(text_id_t id)
     if (id >= TEXT_COUNT) {
         return "?";
     }
-    return text_is_spanish() ? text_es[id] : text_en[id];
+    // A string the secondary language does not have yet (NULL) is shown in English: a new TEXT_x without its
+    // Spanish translation must not draw nothing (gen_text.py)
+    const char *secondary = text_es[id];
+
+    if (text_is_spanish() && (secondary != NULL)) {
+        return secondary;
+    }
+    return text_en[id];
 }

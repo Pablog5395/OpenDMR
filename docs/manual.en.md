@@ -433,7 +433,8 @@ See [12](#12-lock-quick-keys-key-settings).
 
 ### Language
 
-The menu key or ◀ ▶ on Options → Language switches English / 中文.
+The menu key or ◀ ▶ on Options → Language switches English / Español (`Espanol` on the screen: the fonts are ASCII
+only).
 
 ### Calibration
 

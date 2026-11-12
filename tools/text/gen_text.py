@@ -4,9 +4,13 @@
 
     python tools/text/gen_text.py
 
-ui/text/text.h      TEXT_x ids, one per string of english.h (same order), then the strings of EXTRA below
+ui/text/text.h      TEXT_x ids, one per string of english.h (same order), then the EXTRA names below
 ui/text/text_en.c   the English strings
 ui/text/text_es.c   the Spanish strings (from spanish.h, and EXTRA for the OpenDMR additions)
+
+The two language files are the ones of the ucos firmware, kept as the source of the tables: spanish.h is read
+from here (windows-1252), and Spanish entries changed for this firmware are changed there too. A Spanish string that
+is not written yet is NULL in text_es[], and text() then shows the English one (text.c).
 """
 import json
 import os
@@ -35,13 +39,13 @@ def write(path, text):
 EXTRA = [
     ('not_yet', 'Not yet', 'Aun no'),
     ('ui_ok', 'OK', 'OK'),
-    ('rx', 'Rx', 'Rx'),
-    ('tx', 'Tx', 'Tx'),
+    ('rx', 'Rx', 'RX'),
+    ('tx', 'Tx', 'TX'),
     ('vox', 'VOX', 'VOX'),
     ('factory_table', 'Factory table', 'Tabla fabrica'),
     ('osc_tune', 'Osc tune', 'Ajuste osc.'),
-    ('rx_level', 'Rx level', 'Nivel Rx'),
-    ('cw_rx', 'CW Rx', 'CW Rx'),
+    ('rx_level', 'Rx level', 'Nivel RX'),
+    ('cw_rx', 'CW Rx', 'CW RX'),
     ('cps_title', 'CPS', 'CPS'),
     ('cps_reading', 'Reading', 'Leyendo'),
     ('cps_writing', 'Writing', 'Escribiendo'),
@@ -54,7 +58,7 @@ EXTRA = [
     ('ui_hotspot_waiting', 'Waiting for Pi-Star', 'Esperando Pi-Star'),
     ('menu_places', 'Keep menu places', 'Mantener menu'),
     ('ui_rx_mode_hint', 'Switch to FM or DMR', 'Cambia a FM o DMR'),
-    ('talker_beep', 'Talker beep', 'Beep alias'),
+    ('talker_beep', 'Talker beep', 'Aviso alias'),
     ('fm_tx_tones', 'FM Tx tones', 'Tonos TX FM'),
     ('air_start', 'Air start', 'Inicio aire'),
     ('air_end', 'Air end', 'Fin aire'),
@@ -62,7 +66,7 @@ EXTRA = [
     ('local_start', 'Local start', 'Inicio local'),
     ('local_end', 'Local end', 'Fin local'),
     ('local_volume', 'Local vol', 'Vol. local'),
-    ('tone_beep', 'Beep', 'Beep'),
+    ('tone_beep', 'Beep', 'Aviso'),
     ('tone_double', 'Double', 'Doble'),
     ('tone_rising', 'Rising', 'Ascendente'),
     ('tone_falling', 'Falling', 'Descendente'),
@@ -126,7 +130,9 @@ write(os.path.join(OUT, 'text.h'), '\n'.join(lines))
 for file_name, table, values, source in [('text_en.c', 'text_en', dict(english), 'english.h'),
                                           ('text_es.c', 'text_es', spanish, 'spanish.h')]:
     lines = [HEADER % source, '#include "text.h"', '', 'const char *const %s[TEXT_COUNT] = {' % table]
-    lines += ['    [TEXT_%s] = %s,' % (name.upper(), json.dumps(values.get(name, dict(english)[name]), ensure_ascii=False))
+    # No string in a secondary language: NULL, so text() falls back to English instead of returning nothing
+    lines += ['    [TEXT_%s] = %s,' % (name.upper(), 'NULL' if values.get(name) is None
+                                      else json.dumps(values[name], ensure_ascii=False))
               for name in names]
     lines += ['};', '']
     write(os.path.join(OUT, file_name), '\n'.join(lines))
