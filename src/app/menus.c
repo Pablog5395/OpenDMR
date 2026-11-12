@@ -194,7 +194,7 @@ static const ui_list_t display_options = {
     .count = sizeof(display_options_items) / sizeof(display_options_items[0]),
 };
 
-/* Language: English / Chinese (bitfield_options bit 19), each named in its own language */
+/* Language: English / Spanish (bitfield_options bit 19), each named in its own language */
 
 static void language_format(char *buffer, size_t size)
 {

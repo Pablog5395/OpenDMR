@@ -5,16 +5,16 @@
     python tools/text/gen_text.py
 
 ui/text/text.h      TEXT_x ids, one per string of english.h (same order), then the strings of EXTRA below
-                    (ui/text/text.c, not generated, gives them in the current language)
 ui/text/text_en.c   the English strings
-ui/text/text_zh.c   the Chinese strings (UTF-8)
+ui/text/text_es.c   the Spanish strings (from spanish.h, and EXTRA for the OpenDMR additions)
 """
+import json
 import os
 import re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, '..', '..', 'src')
-LANGUAGES = os.path.join(HERE, 'languages')  # english.h, chinese.h of the ucos firmware (removed, in git history)
+LANGUAGES = os.path.join(HERE, 'languages')  # english.h, spanish.h of the ucos firmware
 OUT = os.path.join(ROOT, 'ui', 'text')
 FIELD = re.compile(r'^\.(\w+)\s*=\s*"((?:[^"\\]|\\.)*)"', re.M)
 
@@ -31,30 +31,86 @@ def write(path, text):
         f.write(text)
 
 
-# Strings of this firmware, after those of the main firmware: (name, English, Chinese)
+# Strings of this firmware, after those of the main firmware: (name, English, Spanish)
 EXTRA = [
-    ('not_yet', 'Not yet', '尚未实现'),
-    ('ui_ok', 'OK', '确定'),
-    ('rx', 'Rx', '接收'),
-    ('tx', 'Tx', '发射'),
-    ('vox', 'VOX', '声控'),
-    ('factory_table', 'Factory table', '出厂校准表'),
-    ('osc_tune', 'Osc tune', '晶振微调'),
-    ('rx_level', 'Rx level', '接收电平'),
-    ('cw_rx', 'CW Rx', 'CW 接收'),
-    ('cps_title', 'CPS', '写频'),
-    ('cps_reading', 'Reading', '正在读取'),
-    ('cps_writing', 'Writing', '正在写入'),
-    ('cps_channels', 'Channels', '信道'),
-    ('cps_rx_groups', 'RX groups', '接收组'),
-    ('cps_settings', 'General settings', '通用设置'),
-    ('cps_dmr_ids', 'DMR ID database', 'DMR ID 库'),
-    ('cps_codeplug', 'Codeplug', '码表'),
-    ('cps_keep_cable', 'Keep the cable in', '请勿拔下写频线'),
+    ('not_yet', 'Not yet', 'Aun no'),
+    ('ui_ok', 'OK', 'OK'),
+    ('rx', 'Rx', 'Rx'),
+    ('tx', 'Tx', 'Tx'),
+    ('vox', 'VOX', 'VOX'),
+    ('factory_table', 'Factory table', 'Tabla fabrica'),
+    ('osc_tune', 'Osc tune', 'Ajuste osc.'),
+    ('rx_level', 'Rx level', 'Nivel Rx'),
+    ('cw_rx', 'CW Rx', 'CW Rx'),
+    ('cps_title', 'CPS', 'CPS'),
+    ('cps_reading', 'Reading', 'Leyendo'),
+    ('cps_writing', 'Writing', 'Escribiendo'),
+    ('cps_channels', 'Channels', 'Canales'),
+    ('cps_rx_groups', 'RX groups', 'Grupos RX'),
+    ('cps_settings', 'General settings', 'Ajustes grales'),
+    ('cps_dmr_ids', 'DMR ID database', 'Base IDs DMR'),
+    ('cps_codeplug', 'Codeplug', 'Codeplug'),
+    ('cps_keep_cable', 'Keep the cable in', 'No quites el cable'),
+    ('ui_hotspot_waiting', 'Waiting for Pi-Star', 'Esperando Pi-Star'),
+    ('menu_places', 'Keep menu places', 'Mantener menu'),
+    ('ui_rx_mode_hint', 'Switch to FM or DMR', 'Cambia a FM o DMR'),
+    ('talker_beep', 'Talker beep', 'Beep alias'),
+    ('fm_tx_tones', 'FM Tx tones', 'Tonos TX FM'),
+    ('air_start', 'Air start', 'Inicio aire'),
+    ('air_end', 'Air end', 'Fin aire'),
+    ('air_level', 'Air level', 'Nivel aire'),
+    ('local_start', 'Local start', 'Inicio local'),
+    ('local_end', 'Local end', 'Fin local'),
+    ('local_volume', 'Local vol', 'Vol. local'),
+    ('tone_beep', 'Beep', 'Beep'),
+    ('tone_double', 'Double', 'Doble'),
+    ('tone_rising', 'Rising', 'Ascendente'),
+    ('tone_falling', 'Falling', 'Descendente'),
+    ('tone_morse_k', 'Morse K', 'Morse K'),
+    ('tail', 'Tail elim', 'Elim. cola'),
+    ('tail_phase', 'Phase 240°', 'Fase 240'),
+    ('tail_55hz', '55Hz', '55Hz'),
+    ('mdc1200', 'MDC1200', 'MDC1200'),
+    ('key_settings', 'Key settings', 'Opc. teclas'),
+    ('key_defaults', 'Restore defaults', 'Restaurar def.'),
+    ('key_press_new', 'Press keys...', 'Pulsa teclas...'),
+    ('key_taken_from', 'Unset', 'Sin usar'),
+    ('key_number_entry', 'TG / PC entry', 'TG / PC'),
+    ('key_contact_list', 'Contact list', 'Lista contactos'),
+    ('key_reverse', 'Reverse repeater', 'Invertir rep.'),
+    ('key_ts_bandwidth', 'TS / bandwidth', 'TS / ancho'),
+    ('key_ts_clear', 'Clear TS override', 'Borrar TS'),
+    ('key_mode', 'FM / DMR', 'FM / DMR'),
+    ('key_tg_squelch_up', 'TG / squelch +', 'TG / squelch +'),
+    ('key_tg_squelch_down', 'TG / squelch -', 'TG / squelch -'),
+    ('key_power_up', 'Power +', 'Potencia +'),
+    ('key_power_down', 'Power -', 'Potencia -'),
+    ('key_power_user', 'User power', 'Pot. usuario'),
+    ('key_zone_up', 'Zone +', 'Zona +'),
+    ('key_zone_down', 'Zone -', 'Zona -'),
+    ('key_tx_up', 'TX freq up', 'Freq TX +'),
+    ('key_tx_down', 'TX freq down', 'Freq TX -'),
+    ('key_scan_up', 'Scan up', 'Scan +'),
+    ('key_scan_down', 'Scan down', 'Scan -'),
+    ('key_aprs_toggle', 'APRS on/off', 'APRS on/off'),
+    ('key_aprs_send', 'APRS beacon', 'Beacon APRS'),
+    ('scan_low', 'Scan low = RX', 'Scan bajo = RX'),
+    ('scan_high', 'Scan high = RX', 'Scan alto = RX'),
+    ('key_tg_from_call', "Caller's TG", 'TG del que llama'),
+    ('key_name_up', 'Up', 'Arriba'),
+    ('key_name_down', 'Down', 'Abajo'),
+    ('key_name_left', 'Left', 'Izquierda'),
+    ('key_name_right', 'Right', 'Derecha'),
+    ('ui_reversed', 'REV', 'REV'),
+    ('default_power', 'Default Power', 'Pot. defecto'),
+    ('power_to_all', 'Power To All', 'Pot. a todos'),
+    ('power_to_all_ask', 'All channels + VFOs', 'Todos canales + VFO'),
+    ('power_to_all_done', 'Channels set', 'Canales ajustados'),
+    ('aprs_send_now', 'Send beacon now', 'Enviar baliza'),
 ]
 
 english = read('english.h', 'latin-1') + [(name, en) for name, en, _ in EXTRA]
-chinese = dict(read('chinese.h', 'utf-8') + [(name, zh) for name, _, zh in EXTRA])
+spanish = dict(read('spanish.h', 'cp1252') + [(name, es) for name, _, es in EXTRA])
 names = [name for name, _ in english]
 
 os.makedirs(OUT, exist_ok=True)
@@ -63,14 +119,15 @@ lines = [HEADER % 'english.h', '#ifndef DM32_TEXT_H', '#define DM32_TEXT_H', '',
          '// Text ids: text(TEXT_x) is the string in the current language (text.c)', 'typedef enum {']
 lines += ['    TEXT_%s,' % name.upper() for name in names]
 lines += ['    TEXT_COUNT', '} text_id_t;', '', 'const char *text(text_id_t id); // in the language of the settings (text.c)',
-          'bool text_is_chinese(void);', '', 'extern const char *const text_en[TEXT_COUNT];',
-          'extern const char *const text_zh[TEXT_COUNT];', '', '#endif', '']
+          'bool text_is_spanish(void);', '', 'extern const char *const text_en[TEXT_COUNT];',
+          'extern const char *const text_es[TEXT_COUNT];', '', '#endif', '']
 write(os.path.join(OUT, 'text.h'), '\n'.join(lines))
 
 for file_name, table, values, source in [('text_en.c', 'text_en', dict(english), 'english.h'),
-                                          ('text_zh.c', 'text_zh', chinese, 'chinese.h')]:
+                                          ('text_es.c', 'text_es', spanish, 'spanish.h')]:
     lines = [HEADER % source, '#include "text.h"', '', 'const char *const %s[TEXT_COUNT] = {' % table]
-    lines += ['    [TEXT_%s] = "%s",' % (name.upper(), values.get(name, dict(english)[name])) for name in names]
+    lines += ['    [TEXT_%s] = %s,' % (name.upper(), json.dumps(values.get(name, dict(english)[name]), ensure_ascii=False))
+              for name in names]
     lines += ['};', '']
     write(os.path.join(OUT, file_name), '\n'.join(lines))
 

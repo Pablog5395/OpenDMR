@@ -28,13 +28,13 @@
 
 /*
  * OpenDMR, UI: the strings in the language of the settings. The language is the one of the main firmware:
- * settings.bitfield_options bit 19 (BIT_SECONDARY_LANGUAGE) set = Chinese, clear = English.
+ * settings.bitfield_options bit 19 (BIT_SECONDARY_LANGUAGE) set = Spanish, clear = English.
  */
 
 #include "settings.h"
 #include "text.h"
 
-bool text_is_chinese(void)
+bool text_is_spanish(void)
 {
     return settings_valid() && ((settings.bitfield_options & SETTINGS_BIT_SECONDARY_LANGUAGE) != 0);
 }
@@ -44,5 +44,5 @@ const char *text(text_id_t id)
     if (id >= TEXT_COUNT) {
         return "?";
     }
-    return text_is_chinese() ? text_zh[id] : text_en[id];
+    return text_is_spanish() ? text_es[id] : text_en[id];
 }
