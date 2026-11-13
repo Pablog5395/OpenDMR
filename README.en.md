@@ -1,6 +1,6 @@
 # OpenDMR — open firmware for the Baofeng DM-32UV
 
-[中文](README.md) · **[Installation guide](docs/installation.en.md)** · **[User manual](docs/manual.en.md)**
+[中文](README.md) · **[Installation guide](docs/installation.en.md)** · **[User manual](docs/manual.en.md)** · **[Español](README.es.md)**
 
 Open firmware for the **Baofeng DM-32 / DM-32UV** (SoC **HR_C7000** = CK803S CPU + DMR modem + audio codec).
 The source is open: free to use, change and share for non-commercial purposes; commercial use needs the author's

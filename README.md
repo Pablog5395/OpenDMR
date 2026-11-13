@@ -1,6 +1,6 @@
 # OpenDMR — Baofeng DM-32UV 开源固件
 
-[English](README.en.md) · **[安装手册](docs/installation.md)** · **[使用说明书](docs/manual.md)**
+[English](README.en.md) · **[安装手册](docs/installation.md)** · **[使用说明书](docs/manual.md)** · **[Español](README.es.md)**
 
 **Baofeng DM-32 / DM-32UV**（SoC **HR_C7000** = CK803S CPU + DMR 调制解调 + 音频编解码）的开源固件。
 源码公开：非商业用途可以自由使用、修改、传播；商用须经作者同意（见「许可」）。
