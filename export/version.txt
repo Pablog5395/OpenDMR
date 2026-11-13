@@ -1,0 +1,3 @@
+7fd9c64
+OpenDMR GPS+ES+APRS build (test/all) — commit 7fd9c64
+Fecha: 2026-11-13
