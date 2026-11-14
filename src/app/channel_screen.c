@@ -273,9 +273,14 @@ static void tune(void)
     send_to_radio();
 }
 
+static scan_kind_t scan_kind(void)
+{
+    return (channel.mode == CODEPLUG_MODE_DMR) ? SCAN_DMR : (channel.mode == CODEPLUG_MODE_P25) ? SCAN_P25 : SCAN_ANALOG;
+}
+
 static uint32_t scan_dwell(void)
 {
-    return scan_dwell_ms(channel.mode == CODEPLUG_MODE_DMR, tuned.rx_freq == tuned.tx_freq);
+    return scan_dwell_ms(scan_kind());
 }
 
 static bool scan_skipped(int at)
@@ -340,7 +345,7 @@ static bool scan_step(void)
     bool was_active = scan.active;
     int at;
 
-    if (!scan_tick(&scan, channel.mode == CODEPLUG_MODE_DMR)) {
+    if (!scan_tick(&scan, scan_kind())) {
         return was_active && !scan.active; // stopped (stop mode)
     }
     at = scan_next();
