@@ -41,10 +41,8 @@
 #include "aprs.h"
 
 // Fields: part1[0]: mode 31..29, low speed 28..24, fast rate 23..16, turn slope 15..8, turn time 7..0
-//         part1[1]: secondary frequency 31..21, slow rate 20..14, high speed 13..7, turn angle 6..0
+//         part1[1]: slow rate 20..14, high speed 13..7, turn angle 6..0
 //         part2: state 11..4, initial interval 3..0
-// The bits 21..31 of part1[1] are not used by the CPS (js/codeplug/settings.js only maps up to slow rate 20..14),
-// so the secondary APRS frequency lives there.
 typedef struct {
     uint8_t word; // 0, 1: part1[]; 2: part2
     uint8_t shift;
@@ -63,12 +61,6 @@ static const field_t FIELD_HIGH_SPEED = {1, 7, 7};
 static const field_t FIELD_TURN_ANGLE = {1, 0, 7};
 static const field_t FIELD_STATE = {PART2, 4, 8};
 static const field_t FIELD_INITIAL_INTERVAL = {PART2, 0, 4};
-
-// Secondary APRS frequency: stored in bits 21-31 of part1[1] (11 bits: 0..2047 = 144.000..146.047 MHz)
-static const field_t FIELD_SECONDARY_FREQ = {1, 21, 11};
-
-#define SECONDARY_FREQ_BASE_KHZ 144000UL
-#define SECONDARY_FREQ_MAX_KHZ  2047
 
 // Modes (aprsBeaconingMode_t)
 #define MODES 5 // off, manual, PTT, auto, smart
@@ -353,24 +345,6 @@ static const ui_custom_t turn_angle = {
     .change = turn_angle_change,
 };
 
-// Secondary APRS frequency format and change
-static void secondary_freq_format(char *buffer, size_t size)
-{
-    unsigned freq_khz = field_get(&FIELD_SECONDARY_FREQ);
-    snprintf(buffer, size, "%u.%03u MHz", (unsigned)(SECONDARY_FREQ_BASE_KHZ + freq_khz) / 1000,
-             (unsigned)(SECONDARY_FREQ_BASE_KHZ + freq_khz) % 1000);
-}
-
-static void secondary_freq_change(int direction, uint8_t modifiers)
-{
-    field_change(&FIELD_SECONDARY_FREQ, direction, modifiers, BIG_STEP, 0, SECONDARY_FREQ_MAX_KHZ);
-}
-
-static const ui_custom_t secondary_freq = {
-    .format = secondary_freq_format,
-    .change = secondary_freq_change,
-};
-
 static void turn_slope_format(char *buffer, size_t size)
 {
     snprintf(buffer, size, "%u" DEGREE "/v", field_get(&FIELD_TURN_SLOPE) * TURN_SLOPE_UNIT);
@@ -431,7 +405,6 @@ static const ui_item_t aprs_options_items[] = {
     {TEXT_APRS_TURN_ANGLE, ICONS_COUNT, UI_ITEM_CUSTOM, &turn_angle, NULL},
     {TEXT_APRS_TURN_SLOPE, ICONS_COUNT, UI_ITEM_CUSTOM, &turn_slope, NULL},
     {TEXT_APRS_TURN_TIME, ICONS_COUNT, UI_ITEM_CUSTOM, &turn_time, NULL},
-    {TEXT_APRS_SECONDARY_FREQ, ICONS_COUNT, UI_ITEM_CUSTOM, &secondary_freq, NULL},
     {TEXT_APRS_SEND_NOW, ICONS_COUNT, UI_ITEM_CUSTOM, &send_now, NULL},
 };
 

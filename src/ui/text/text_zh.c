@@ -263,7 +263,6 @@ const char *const text_zh[TEXT_COUNT] = {
     [TEXT_APRS_OPTIONS] = "APRS设置",
     [TEXT_APRS_SMART] = "智能",
     [TEXT_APRS_CHANNEL] = "信道",
-    [TEXT_APRS_SECONDARY_FREQ] = "备用频率",
     [TEXT_APRS_DECAY] = "衰减",
     [TEXT_APRS_COMPRESS] = "压缩",
     [TEXT_APRS_INTERVAL] = "间隔",

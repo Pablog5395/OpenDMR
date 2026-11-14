@@ -225,6 +225,28 @@ static void put_header(const char *call)
     put_char(0xF0, true);
 }
 
+// The CPS's APRS frequency ("Frec TX"), 10 Hz units like a channel; 0: not set
+static uint32_t config_frequency(const codeplug_aprs_config_t *c)
+{
+    return (uint32_t)c->tx_freq[0] | ((uint32_t)c->tx_freq[1] << 8) |
+           ((uint32_t)c->tx_freq[2] << 16) | ((uint32_t)c->tx_freq[3] << 24);
+}
+
+// The QSY information of the CPS's "Transmit QSY" (flags bit 2): the frequency of the configuration after the comment,
+// as the stock firmware sends it ("144.390MHz", which aprs.fi reads as the frequency the station listens on)
+static void put_qsy(const codeplug_aprs_config_t *c)
+{
+    uint32_t frequency = config_frequency(c);
+
+    if ((c->flags & 0x04) && (frequency != 0)) {
+        char text[16];
+
+        snprintf(text, sizeof(text), " %u.%03uMHz", (unsigned)(frequency / 100000UL),
+                 (unsigned)((frequency / 100UL) % 1000UL));
+        put_string(text);
+    }
+}
+
 static void put_payload(const char *lat, const char *lon, const char *course_speed)
 {
     const codeplug_aprs_config_t *c = &aprs.config;
@@ -257,6 +279,7 @@ static void put_payload(const char *lat, const char *lon, const char *course_spe
         }
     }
     put_string(comment);
+    put_qsy(c);
 }
 
 static void put_crc(void)
@@ -509,9 +532,6 @@ static bool position_valid(void)
 
 // aprsBeaconingSendBeacon(): true when the frame went to the radio task. forced: SK2 + 2 (or the menu item): it sends
 // in any mode but OFF, not only in Manual / PTT, and the caller gives the error tone (once)
-// Secondary APRS frequency: stored in bits 21-31 of aprs_beaconing_settings_part1[1] (11 bits: 0..2047 = 144.000..146.047 MHz)
-#define SECONDARY_FREQ_BASE_KHZ 144000UL
-
 static bool send_beacon(bool forced)
 {
     bool manual = forced || (aprs.s.mode == MODE_PTT) || (aprs.s.mode == MODE_MANUAL);
@@ -533,22 +553,21 @@ static bool send_beacon(bool forced)
         return false;
     }
     if (!aprs.has_config) {
-        // Use secondary frequency (144.390 MHz fallback) when no APRS config on the channel
+        // The channel names no APRS configuration: use the first one, on its own frequency ("Frec TX" of the CPS, as
+        // the stock firmware does; the channel's when the configuration has none)
         if (channel.aprs_config_index == 0) {
             codeplug_aprs_config_t secondary_config;
             if (!codeplug_get_aprs_config(1, &secondary_config)) {
                 return false; // no fallback config available
             }
-            uint32_t secondary_freq_khz = (settings.aprs_beaconing_settings_part1[1] >> 21) & 0x7FF;
-            if (secondary_freq_khz == 0) {
-                secondary_freq_khz = 144390; // default: 144.390 MHz (144390 - 144000 = 390)
-            }
-            uint32_t secondary_freq = SECONDARY_FREQ_BASE_KHZ + secondary_freq_khz;
+            uint32_t frequency = config_frequency(&secondary_config);
             codeplug_channel_t secondary_channel;
 
             memcpy(&secondary_channel, &channel, sizeof(secondary_channel));
-            secondary_channel.rx_freq = secondary_freq;
-            secondary_channel.tx_freq = secondary_freq;
+            if (frequency != 0) {
+                secondary_channel.rx_freq = frequency;
+                secondary_channel.tx_freq = frequency;
+            }
             secondary_channel.aprs_config_index = 1;
 
             radio_set_channel(&secondary_channel);
