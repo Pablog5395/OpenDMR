@@ -465,7 +465,9 @@ Read only: the factory calibration table (oscillator tune, receive level, power 
 - Location: the fixed location of the channel's APRS configuration, or the GPS;
 - Interval, Decay, Compress; for Smart: Slow / Fast Rate, Low / Hi Speed, Turn Angle / Slope / Time.
 - SK1 + 1 switches APRS on / off at any time. Beacons are sent as AFSK (1200 baud) in FM.
-- Add option for editable secondary frequency in APRS menu (same APRS): allows changing backup frequency (144.xxx MHz) for when channel has no APRS configured.
+- The APRS configuration (in the CPS) carries the transmit frequency and Transmit QSY, as the stock CPS: a channel
+  without an APRS configuration of its own beacons on that frequency, and with QSY ticked the beacon ends with
+  "144.390MHz".
 
 ---
 

@@ -479,7 +479,8 @@ frecuencia). **Este firmware nunca cambia la calibración.**
 - Intervalo, Decaimiento, Compresión; para Smart: Velocidad lenta / rápida, Velocidad baja / alta, Ángulo de giro /
   Pendiente / Tiempo.
 - SK1 + 1 cambia APRS encendido / apagado en cualquier momento. Las balizas se mandan como AFSK (1200 baud) en FM.
-- Añadir opción de frecuencia secundaria editable en el menú APRS (mismo APRS): permite cambiar la frecuencia de respaldo (144.xxx MHz) para cuando el canal no tenga APRS configurado.
+- La configuración APRS (en el CPS) lleva la frecuencia de TX y el QSY, como el CPS original: un canal sin
+  configuración APRS propia emite en esa frecuencia, y con QSY tildado la baliza termina con «144.390MHz».
 
 ---
 
