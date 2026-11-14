@@ -1,6 +1,8 @@
-6554981
-OpenDMR GPS+ES+APRS build (test/all) — commit 6554981
+39ebf1b
+OpenDMR GPS+ES+APRS build (test/all) — commit 39ebf1b
 Fecha: 2026-11-14
 Incluye: GPS rx (posición del llamante en DMR), Español (idioma 2), P25,
 APRS beacon "Send beacon now" (SK2+2), frecuencia APRS secundaria editable,
 y arreglo del talker alias / ID en la pantalla DMR.
+Este build corrige además que la radio informara el commit anterior en la
+pantalla de información/CPS (cable_link.o no se recompilaba al cambiar HEAD).
