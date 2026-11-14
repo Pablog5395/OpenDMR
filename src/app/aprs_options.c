@@ -41,8 +41,10 @@
 #include "aprs.h"
 
 // Fields: part1[0]: mode 31..29, low speed 28..24, fast rate 23..16, turn slope 15..8, turn time 7..0
-//         part1[1]: message interval 25..21, slow rate 20..14, high speed 13..7, turn angle 6..0
+//         part1[1]: secondary frequency 31..21, slow rate 20..14, high speed 13..7, turn angle 6..0
 //         part2: state 11..4, initial interval 3..0
+// The bits 21..31 of part1[1] are not used by the CPS (js/codeplug/settings.js only maps up to slow rate 20..14),
+// so the secondary APRS frequency lives there.
 typedef struct {
     uint8_t word; // 0, 1: part1[]; 2: part2
     uint8_t shift;
