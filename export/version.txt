@@ -1,5 +1,5 @@
-001bf50
-OpenDMR GPS+ES+APRS build (test/all) — commit 001bf50
+4d71558
+OpenDMR GPS+ES+APRS build (test/all) — commit 4d71558
 Fecha: 2026-11-14
 Incluye: GPS rx (posición del llamante en DMR), Español (idioma 2), P25,
 APRS beacon "Send beacon now" (SK2+2), datos de estación APRS con la
@@ -10,3 +10,4 @@ igual que el firmware original. No hay campo de frecuencia en los ajustes.
 Corrige la baliza manual (SK2+2): usa siempre la frecuencia de la
 configuración APRS (Frec TX, 144.390), no la del canal, y vuelve al canal
 después de emitir.
+Base de DMR IDs en 0x50000/0xD8000 (donde las escribe el CPS): fix de upstream.
