@@ -1,5 +1,5 @@
-cd8e7c0
-OpenDMR GPS+ES+APRS build (test/all) — commit cd8e7c0
+001bf50
+OpenDMR GPS+ES+APRS build (test/all) — commit 001bf50
 Fecha: 2026-11-14
 Incluye: GPS rx (posición del llamante en DMR), Español (idioma 2), P25,
 APRS beacon "Send beacon now" (SK2+2), datos de estación APRS con la
@@ -7,5 +7,6 @@ frecuencia de TX y QSY del CPS original, y arreglo del talker alias / ID.
 La frecuencia APRS sale de la configuración (offset 55, unidades de 10 Hz)
 como en el CPS original; con QSY tildado el beacon lleva "144.390MHz",
 igual que el firmware original. No hay campo de frecuencia en los ajustes.
-Corrige la baliza manual (SK2+2) en un canal sin configuración APRS: usa
-la configuración 1 y su frecuencia, y vuelve al canal después de emitir.
+Corrige la baliza manual (SK2+2): usa siempre la frecuencia de la
+configuración APRS (Frec TX, 144.390), no la del canal, y vuelve al canal
+después de emitir.
