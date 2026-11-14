@@ -540,7 +540,9 @@ static bool send_beacon(bool forced)
     bool manual = forced || (aprs.s.mode == MODE_PTT) || (aprs.s.mode == MODE_MANUAL);
     codeplug_channel_t channel;
     codeplug_aprs_config_t original_config;
+    codeplug_aprs_config_t secondary_config;
     bool used_secondary = false;
+    bool retuned = false;
     bool ok = false;
 
     if (radio_is_scanning() || !radio_get_channel(&channel) || (channel.mode != CODEPLUG_MODE_FM) ||
@@ -548,28 +550,14 @@ static bool send_beacon(bool forced)
         return false;
     }
 
-    // The channel names no APRS configuration: use the first one and its own frequency ("Frec TX" of the CPS, as the
-    // stock firmware keeps it; the channel's when the configuration has none). A manual beacon uses it too.
-    if (!aprs.has_config && (channel.aprs_config_index == 0)) {
-        codeplug_aprs_config_t secondary_config;
-
-        if (codeplug_get_aprs_config(1, &secondary_config)) {
-            codeplug_channel_t secondary_channel;
-            uint32_t frequency = config_frequency(&secondary_config);
-
-            memcpy(&secondary_channel, &channel, sizeof(secondary_channel));
-            if (frequency != 0) {
-                secondary_channel.rx_freq = frequency;
-                secondary_channel.tx_freq = frequency;
-            }
-            secondary_channel.aprs_config_index = 1;
-            radio_set_channel(&secondary_channel);
-
-            original_config = aprs.config;
-            aprs.config = secondary_config;
-            aprs.has_config = true;
-            used_secondary = true;
-        }
+    // The channel names no APRS configuration: the first one builds the frame (the stock firmware keeps one per
+    // channel; here a channel without one still beacons). A manual beacon uses it too.
+    if (!aprs.has_config && (channel.aprs_config_index == 0) &&
+        codeplug_get_aprs_config(1, &secondary_config)) {
+        original_config = aprs.config;
+        aprs.config = secondary_config;
+        aprs.has_config = true;
+        used_secondary = true;
     }
 
     if (!forced && (aprs.s.mode == MODE_PTT) && aprs.next_beacon_running &&
@@ -585,7 +573,21 @@ static bool send_beacon(bool forced)
     if (!aprs.has_config) {
         goto done;
     }
+    // The beacon goes out on the configuration's own frequency ("Frec TX" of the CPS) when it has one, not on the
+    // channel's; the channel is put back when the radio task says it sent the frame
+    {
+        uint32_t frequency = config_frequency(&aprs.config);
 
+        if ((frequency != 0) && ((frequency != channel.rx_freq) || (frequency != channel.tx_freq))) {
+            codeplug_channel_t beacon_channel;
+
+            memcpy(&beacon_channel, &channel, sizeof(beacon_channel));
+            beacon_channel.rx_freq = frequency;
+            beacon_channel.tx_freq = frequency;
+            radio_set_channel(&beacon_channel);
+            retuned = true;
+        }
+    }
     {
         uint16_t bits = build_frame(&aprs.previous, &aprs.current);
 
@@ -608,8 +610,10 @@ done:
     if (used_secondary) {
         aprs.config = original_config;
         aprs.has_config = false;
+    }
+    if (retuned) {
         if (ok) {
-            aprs_saved_channel = channel; // back to it when the radio task says it sent the frame
+            aprs_saved_channel = channel;
             aprs_channel_saved = true;
         } else {
             radio_set_channel(&channel);
