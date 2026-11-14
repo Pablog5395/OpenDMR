@@ -263,6 +263,7 @@ const char *const text_es[TEXT_COUNT] = {
     [TEXT_APRS_OPTIONS] = "Opc. APRS",
     [TEXT_APRS_SMART] = "Inteligente",
     [TEXT_APRS_CHANNEL] = "Canal",
+    [TEXT_APRS_SECONDARY_FREQ] = "Frec. secundaria",
     [TEXT_APRS_DECAY] = "Decaim.",
     [TEXT_APRS_COMPRESS] = "Comprimir",
     [TEXT_APRS_INTERVAL] = "Intervalo",

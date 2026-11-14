@@ -101,6 +101,7 @@ static struct {
     bool has_fix;
     int config_index; // of the channel's configuration read
     codeplug_aprs_config_t config;
+    codeplug_aprs_config_t secondary_config; // fallback APRS config used when no channel has one
     location_t current;
     location_t previous;
     double bearing_lat; // APRS_USE_COURSETO_FOR_BEARING
@@ -508,10 +509,14 @@ static bool position_valid(void)
 
 // aprsBeaconingSendBeacon(): true when the frame went to the radio task. forced: SK2 + 2 (or the menu item): it sends
 // in any mode but OFF, not only in Manual / PTT, and the caller gives the error tone (once)
+// Secondary APRS frequency: stored in bits 21-31 of aprs_beaconing_settings_part1[1] (11 bits: 0..2047 = 144.000..146.047 MHz)
+#define SECONDARY_FREQ_BASE_KHZ 144000UL
+
 static bool send_beacon(bool forced)
 {
     bool manual = forced || (aprs.s.mode == MODE_PTT) || (aprs.s.mode == MODE_MANUAL);
     codeplug_channel_t channel;
+    bool used_secondary = false;
 
     if (radio_is_scanning() || !radio_get_channel(&channel) || (channel.mode != CODEPLUG_MODE_FM) ||
         (aprs.s.mode == MODE_OFF) || !aprs.enabled || aprs.waiting) {
@@ -528,6 +533,54 @@ static bool send_beacon(bool forced)
         return false;
     }
     if (!aprs.has_config) {
+        // Use secondary frequency (144.390 MHz fallback) when no APRS config on the channel
+        if (channel.aprs_config_index == 0) {
+            codeplug_aprs_config_t secondary_config;
+            if (!codeplug_get_aprs_config(1, &secondary_config)) {
+                return false; // no fallback config available
+            }
+            uint32_t secondary_freq_khz = (settings.aprs_beaconing_settings_part1[1] >> 21) & 0x7FF;
+            if (secondary_freq_khz == 0) {
+                secondary_freq_khz = 144390; // default: 144.390 MHz (144390 - 144000 = 390)
+            }
+            uint32_t secondary_freq = SECONDARY_FREQ_BASE_KHZ + secondary_freq_khz;
+            codeplug_channel_t secondary_channel;
+
+            memcpy(&secondary_channel, &channel, sizeof(secondary_channel));
+            secondary_channel.rx_freq = secondary_freq;
+            secondary_channel.tx_freq = secondary_freq;
+            secondary_channel.aprs_config_index = 1;
+
+            radio_set_channel(&secondary_channel);
+
+            // Temporarily use the secondary config for building the frame
+            codeplug_aprs_config_t original_config = aprs.config;
+            aprs.config = secondary_config;
+            used_secondary = true;
+
+            uint16_t bits = build_frame(&aprs.previous, &aprs.current);
+
+            // Restore original config
+            aprs.config = original_config;
+
+            if (!radio_aprs_send(ax25.buffer, bits, (aprs.config.flags & 0x01) != 0)) {
+                if (used_secondary) {
+                    radio_set_channel(&channel);
+                }
+                return false;
+            }
+            aprs.waiting = true;
+            aprs.waiting_auto = !manual;
+            aprs.sending = aprs.current;
+            if (aprs.s.mode == MODE_PTT) {
+                aprs.next_beacon_ms = systime_get_ms() + interval_ms();
+                aprs.next_beacon_running = true;
+            }
+            if (manual) {
+                aprs.previous = aprs.current;
+            }
+            return true;
+        }
         return false;
     }
 
