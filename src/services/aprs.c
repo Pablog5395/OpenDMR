@@ -563,7 +563,7 @@ static bool send_beacon(bool forced)
             // Restore original config
             aprs.config = original_config;
 
-            if (!radio_aprs_send(ax25.buffer, bits, (aprs.config.flags & 0x01) != 0)) {
+            if (!radio_aprs_send(ax25.buffer, bits, (secondary_config.flags & 0x01) != 0)) {
                 if (used_secondary) {
                     radio_set_channel(&channel);
                 }
