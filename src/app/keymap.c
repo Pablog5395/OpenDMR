@@ -40,7 +40,8 @@
 #include "keymap.h"
 
 #define KEYMAP_DATA_TYPE 0x44540002 // a custom data block of this firmware ("DT", 2)
-#define KEYMAP_VERSION   7 // 2: KEYMAP_FM_RADIO, 3: KEYMAP_SCAN, 4: KEYMAP_SCAN_DOWN, 5: the APRS keys, 7: SK1 + 3
+#define KEYMAP_VERSION   8 // 2: KEYMAP_FM_RADIO, 3: KEYMAP_SCAN, 4: KEYMAP_SCAN_DOWN, 5: the APRS keys, 7: SK1 + 3,
+                           // 8: KEYMAP_LOCK
 #define KEYMAP_SLOTS     32 // room for more actions: a block keeps its size
 #define SIDE_KEYS        (UI_MODIFIER_SK1 | UI_MODIFIER_SK2)
 #define NO_KEY           {UI_KEY_COUNT, 0, 0, 0}
@@ -79,6 +80,7 @@ static const action_t actions[KEYMAP_ACTIONS] = {
     [KEYMAP_SCAN_DOWN] = {TEXT_KEY_SCAN_DOWN, BOTH, false, {UI_KEY_DOWN, SK1, 0, 0}},
     [KEYMAP_APRS_TOGGLE] = {TEXT_KEY_APRS_TOGGLE, BOTH, false, {UI_KEY_1, SK1, 0, 0}},
     [KEYMAP_APRS_SEND] = {TEXT_KEY_APRS_SEND, BOTH, false, {UI_KEY_3, SK1, 0, 0}},
+    [KEYMAP_LOCK] = {TEXT_KEY_LOCK, BOTH, false, {UI_KEY_SK2, 0, 1, 0}},
 };
 
 static struct {
@@ -131,6 +133,9 @@ void keymap_load(void)
         // the beacon now is SK1 + 3
         (void)keymap_set(KEYMAP_APRS_SEND, actions[KEYMAP_APRS_SEND].binding);
     }
+    if (stored.version < 8) {
+        (void)keymap_set(KEYMAP_LOCK, actions[KEYMAP_LOCK].binding);
+    }
     stored.version = KEYMAP_VERSION;
 }
 
@@ -179,10 +184,13 @@ keymap_action_t keymap_action(const ui_event_t *ev, uint8_t screen)
         case UI_EVENT_KEY_REPEAT:
             return (!has_long && !is_side(key) && actions[short_action].repeats) ? short_action : KEYMAP_NONE;
         case UI_EVENT_KEY_LONG:
-            return find(key, modifiers, true, screen);
+            // a side key: on its release, if no other key came with it (held a moment before a combination it
+            // must not act)
+            return is_side(key) ? KEYMAP_NONE : find(key, modifiers, true, screen);
         case UI_EVENT_KEY_RELEASE:
             if (ev->long_press) {
-                return KEYMAP_NONE;
+                return (is_side(key) && !side_combined[key - UI_KEY_SK1]) ? find(key, modifiers, true, screen)
+                                                                         : KEYMAP_NONE;
             }
             if (is_side(key)) {
                 return side_combined[key - UI_KEY_SK1] ? KEYMAP_NONE : short_action;
@@ -240,7 +248,7 @@ void keymap_format(keymap_binding_t binding, char *out, size_t size)
     }
     snprintf(out, size, "%s%s%s%s%s", ((binding.modifiers & UI_MODIFIER_SK1) ? "SK1+" : ""),
              ((binding.modifiers & UI_MODIFIER_SK2) ? "SK2+" : ""), key_name(binding.key),
-             (binding.long_press ? " " : ""), (binding.long_press ? text(TEXT_KEY_LONG) : ""));
+             (binding.long_press ? " " : ""), (binding.long_press ? text(TEXT_KEY_HELD) : ""));
 }
 
 keymap_action_t keymap_set(keymap_action_t action, keymap_binding_t binding)

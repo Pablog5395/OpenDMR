@@ -59,7 +59,7 @@ All of these can be changed in Options → Key settings (see [12](#12-lock-quick
 | ▶ / ◀ | Talk group + / − (through the RX group list) | Squelch + / − |
 | SK2 + ▶ / ◀ | Power + / − | Same |
 | SK2 + ▶ long | User power | Same |
-| SK2 + ▲ / ▼ | Zone + / − (channel mode); transmit frequency + / − (VFO) | Same |
+| SK2 + ▲ / ▼ | Zone + / − (channel mode); which frequency ▲ ▼ and the knob change, RX or TX (VFO) | Same |
 | SK2 alone | Call back the talk group just heard | — |
 | SK1 alone | FM broadcast radio | Same |
 | SK1 + ▲ / ▼ | Scan up / down | Same |
@@ -74,16 +74,17 @@ Also: SK2 + menu key opens the channel details directly; SK2 + a digit is a quic
 
 <img src="manual/en/channel-idle.png" alt="Channel screen"> <img src="manual/en/main-menu.png" alt="Main menu">
 
-- **Status bar** (top): signal bars, timeslot `TS1`/`TS2`, colour code `CC1`, scan icon, time, battery. A green line
+- **Status bar** (top, on the theme's band): signal bars, timeslot `TS1`/`TS2`, colour code `CC1`, scan icon, time, battery. A green line
   under it while receiving; the whole bar turns red while transmitting.
 - **Main area**: on the channel screen the zone and position, the channel name (large), the frequency, the talk
   group, the S meter.
-- **Bottom bar**: on the main screens the mode (`DMR`/`FM`/`AM`/`USB`/`LSB`), power and bandwidth; on lists what the two keys do.
-- **Lists** (menus, settings): the title bar shows the name and the position (`1/10`), the selected row is orange,
-  7 rows a page, ▲ ▼ wrap around at the ends.
+- **Bottom bar** (on the band too): on the main screens the mode (`DMR`/`FM`/`AM`/`USB`/`LSB`), power and bandwidth; on lists what the two keys do.
+- **Lists** (menus, settings): the title bar shows the name and the position (`1/10`), the selected row is in the
+  theme's highlight colour (cyan in Deep sea), 7 rows a page, ▲ ▼ wrap around at the ends.
 
-Colours mean something: green = receive, red = transmit, orange = selected / current, amber = warning (low battery,
-scan, timeout near).
+Colours mean something: green = receive, red = transmit, the highlight colour = selected / current, amber = warning
+(low battery, scan, timeout near). The colours themselves come from the theme (Display options → Theme); the
+screenshots here are in Deep sea.
 
 ---
 
@@ -152,20 +153,25 @@ and B): **hold the back key** to switch, or choose in the VFO menu.
 
 | To | Keys |
 |---|---|
-| Change the receive frequency | ▲ ▼ or the knob (one step) |
-| Change the transmit frequency | SK2 + knob, or SK2 + ▲ ▼ |
+| Change the frequency chosen | ▲ ▼ or the knob (one step) |
+| Choose the receive / the transmit frequency | SK2 + ▲ / SK2 + ▼ |
 | Type a frequency | Digits (e.g. `43500000`: it is set after the 8th digit, or with the menu key; the back key deletes one) |
 | Swap Rx and Tx while held | SK1 + SK2 |
 | Mode: FM → AM → USB → LSB → DMR → P25 | SK1 + * |
 | Squelch (FM, AM, SSB) / talk group (DMR, P25) | ▶ ◀ |
 
-The top line shows which frequency is being changed (`RX` or `TX`) and the step.
+Both frequencies are shown large: the receive one with `RX` (green) on its right, the transmit one with `TX` (red).
+The one the keys change is white, and the digit its step changes is underlined (in its colour): a 12.5 or 25 kHz step
+underlines the second decimal, 2.5 – 6.25 kHz the third. The top line shows the VFO and the step itself.
 
 **AM, USB and LSB are receive only** (the RF chip can only transmit FM): the bottom bar shows `Rx Only`, and the PTT
 shows "Switch to FM or DMR". Their squelch is on the signal strength (0 %: always open); it closes after the signal
 stayed under it for 0.2 s (AM) or 0.5 s (USB, LSB), so the pauses in speech don't cut the audio. In USB and LSB the knob
 tunes 100 Hz a click; tune to the suppressed carrier (e.g. 144.300 MHz), then a little either way until the voice sounds
 right. The mode is kept with the channel and the VFO; the CPS sees such a channel as analog.
+
+**108 – 137 MHz (aviation) is receive only**, in any mode: set AM (SK1 + \*) to listen. The radio's front end is made for
+137 MHz and up, so it is less sensitive there; the PTT shows "OUT OF BAND".
 
 **P25** (APCO P25 Phase 1 conventional voice: simplex, group calls, clear): the bottom bar shows `P25`, the status bar
 the NAC (e.g. `NAC293`), and below the frequency come the talk group and the NAC.
@@ -198,17 +204,20 @@ the NAC (e.g. `NAC293`), and below the frequency come the talk group and the NAC
 
 ## 5. Receiving
 
-<img src="manual/zh/channel.png" alt="DMR receive (channel)"> <img src="manual/zh/vfo.png" alt="DMR receive (VFO)">
-
-(These two were taken with the Chinese interface: "接收中" is "Receiving".)
+<img src="manual/en/receive-vfo.png" alt="DMR receive (VFO)"> <img src="manual/en/receive-channel.png" alt="DMR receive (channel)">
 
 - A received signal: the green line under the status bar, green signal bars, the S meter value in green; above S9
   the excess is shown in small red figures (`+xxdB`).
-- DMR: "Receiving", the caller (callsign or DMR ID, large), the name, the ID, the talk group. The caller shows within
-  about 0.7 s. Names come from the contacts and from the DMR ID database written by the CPS.
-- If the call carries a position (ETSI GPS Info, as sent by other radios), the receive screen shows the distance and
-  the direction from your position on the ID line ("12.3 km NE"); without your position it shows the caller's
-  coordinates. Last heard keeps a short distance, or the coordinates.
+- DMR, the caller panel (its lines stay where they are, whatever is known):
+  - the channel or VFO name, and on the right the caller's DMR ID;
+  - the caller's callsign, large (its DMR ID when not known);
+  - the name, the city and state, the country (from the DMR ID database, see
+    [13](#13-cps-hotspot-firmware-update); the city and state can be hidden: Display options → Caller's place). The
+    country also shows without the database: it comes from the ID's first 3 digits;
+  - the position: the pin lights up when the call carries one (ETSI GPS Info, as sent by other radios), with the
+    distance and the direction from your position ("12.3 km NE"); without your position, the caller's coordinates;
+  - the talk group (or whom a private call is for), the S meter, the bottom bar as on the screen under it.
+  The caller shows within about 0.7 s. Names come from the contacts, the DMR ID database, or the caller's talker alias.
 - Calls go into Last heard. **SK2** calls back the talk group just heard (a private call: the caller).
 - FM: audio when the squelch opens; ▶ ◀ change the squelch, shown on the screen for a moment.
 
@@ -261,6 +270,10 @@ Two paths watched at once, each **any channel or VFO A / B** (both may be the sa
   a channel or VFO puts it in (into the path shown on the right; the next add replaces the other path).
 - The paths are watched in turn; a path with a signal is kept while the signal lasts and a moment after (for the
   answer).
+- Each path: channel number or VFO, mode and power, `PTT` on the right of the transmit path; the name large; the
+  receive and transmit frequencies; the timeslot and talk group, or the tone.
+- A path with a signal: a green bar on its left, its S meter on the last line. A DMR call: the caller's callsign
+  replaces the name (its ID when not known), the ID goes top right and the path's name to the left of the header.
 - Transmit: on the path heard last (it has the `PTT` badge); ▲ / ▼ fix the upper / lower path for transmit.
 - Menu key: the main menu; menu key held: the dual watch menu (off, the transmit path). Back key: back to the single
   watch. Kept over power off.
@@ -370,8 +383,9 @@ the GPS; APRS and the satellite screen can use the GPS location.
 
 ## 11. Options
 
-Main menu → Options. On every settings list: ▲ ▼ choose, **◀ ▶ change the value**, the menu key opens a sub list or
-toggles, the back key goes back. Settings work at once and are saved at power off. **The CPS doesn't read or write
+Main menu → Options. On every settings list: ▲ ▼ choose, **◀ ▶ (or the knob) change the value**, the menu key opens
+a sub list or does an action (it doesn't change a value; "Select" shows where it does something), the back key goes
+back. Settings work at once and are saved at power off. **The CPS doesn't read or write
 these settings.**
 
 <img src="manual/en/options.png" alt="Options">
@@ -384,6 +398,7 @@ these settings.**
 |---|---|
 | Key long / Key rpt | Long press time; repeat interval of a held key |
 | Auto lock | Locks the keypad and the PTT after this long without use (Off / minutes) |
+| Lock PIN / Power-on PIN / Change PIN | See [PINs](#pins) |
 | Hotspot | Off / MMDVM / BlueDV (see [13](#13-cps-hotspot-firmware-update)) |
 | Batt. Cal | Correction of the battery voltage shown (±0.5 V) |
 | Eco Level | How much the receiver saves power |
@@ -421,7 +436,24 @@ SK2 + ▶ ◀ changes the one in use, and it is kept.
 <img src="manual/en/display-options.png" alt="Display options"> <img src="manual/en/display-options-2.png" alt="Display options 2">
 
 Brightness (day), Nite bright, Min bright (the backlight when "off"); Mode (Auto / Squelch / Manual / Buttons),
-Timeout; Auto night; LEDs; Timezone (an hour a step, a quarter with SK2 held); Time shown in UTC or local time.
+Timeout; Auto night; LEDs; Timezone (an hour a step, a quarter with SK2 held); Time shown in UTC or local time;
+Caller's place (the city and state of a DMR caller on the receive screen; the country always shows); Theme (the
+whole look, colours and bands):
+
+| Theme | |
+|---|---|
+| Auto (the default) | Sunlight from 7:00 to 19:00 local time, Deep sea at night and without a clock |
+| Deep sea | Dark: navy, a sea blue band, cyan for what is selected |
+| Sunlight | Light, for outdoors: black text, every layer dark enough for bright light |
+| Clear sky | Light: white, a royal blue band, orange for what is selected |
+| Graphite | Dark: graphite and orange |
+| Night amber | Dark: amber on black, as night vision gear |
+| High contrast | Light: black on white, a black band, yellow for what is selected |
+
+<img src="manual/themes.png" alt="The six themes">
+
+Outdoors take a light theme and the brightness up: a dark background can't be seen in daylight. New themes are a file
+each in the source (`src/graphics/themes/`).
 
 ### Sound options
 
@@ -477,9 +509,32 @@ Read only: the factory calibration table (oscillator tune, receive level, power 
 ### Keypad lock
 
 - In the main menu, **\*** locks the keypad, **#** locks the PTT (again: unlocks the PTT); the radio goes home.
-- While locked, a key shows the lock page for a moment; **SK2 + \*** unlocks. With only the keypad locked the PTT
-  still transmits.
+- On a main screen, **SK2 held alone** (about half a second, then released) locks the keypad too; Key settings →
+  Lock moves it to other keys. Held with another key (SK2 + ▲ ...) it doesn't lock.
+- While locked, a key shows the lock page for a moment; **SK1 + \*** unlocks (SK2 + \* can't be pressed on the
+  DM-32: a held SK2 hides the keys 1, 4, 7, \*). With only the keypad locked the PTT still transmits.
 - General options → Auto lock: locks the keypad and the PTT after a time without use.
+- While the cable is in use (CPS, firmware update) the radio doesn't lock, and the auto lock time starts again after
+  it.
+
+### PINs
+
+Both are off by default; General options → **Lock PIN** and **Power-on PIN** turn them on (the first one asks for a
+new PIN, 4 - 6 digits, twice), **Change PIN** sets another one (for both).
+
+- **Lock PIN**: a lock (manual or auto) also locks the PTT and shows the lock screen (the time, nothing of the
+  channel); any key asks for the PIN (a digit counts as its first one). Reception goes on; the VOX does not
+  transmit. The radio also starts locked.
+- **Power-on PIN**: the radio asks for the PIN when it starts, with the receiver off; nothing else works until it is
+  entered.
+- While the radio waits for the PIN or is locked with the lock PIN, the cable answers nothing: no CPS, no firmware
+  update, no hotspot. The CPS can't change the PINs, and a firmware update keeps them.
+- Five wrong PINs in a row: wait 30 s before the next try.
+- **Don't forget the PIN.** A forgotten PIN can only be cleared through the chip's bootloader: switch the radio
+  off, run `tools/debug/pin_wipe.py COMx`, switch the radio on (no key) within 30 s. It clears the PIN only (the
+  codeplug and the settings stay); switch the radio off and on.
+- The PINs keep the radio from being used. They don't keep its flash from being read: the chip's bootloader reads
+  the whole flash for anyone with the cable and a tool.
 
 ### Quick keys (SK2 + digit)
 
@@ -491,7 +546,8 @@ Read only: the factory calibration table (oscillator tune, receive level, power 
 
 <img src="manual/en/key-settings.png" alt="Key settings"> <img src="manual/en/key-settings-2.png" alt="Key settings 2"> <img src="manual/en/key-settings-3.png" alt="Key settings 3">
 
-One row an action with its keys (the defaults: [1](#shortcuts-on-the-main-screens-defaults)).
+One row an action with its keys (the defaults: [1](#shortcuts-on-the-main-screens-defaults)); a long press shows as
+`long` after the keys (`SK2+Right long`).
 
 - The menu key on a row, then the new keys: SK1 / SK2 held with another key, a short or a long press, or SK1 or SK2
   alone. The back key keeps the old keys.
@@ -510,6 +566,21 @@ The OpenGD77 CPS (download it from <https://www.opengd77.com/>: see the [install
 
 It writes: channels, zones, contacts, TG lists, DTMF contacts, APRS configurations, satellite keps, the DMR ID
 database (for the callers' names).
+
+### DMR ID database with places
+
+OpenDMR also reads a database of its own, with each caller's callsign, name, city, state and country (from
+RadioID's list: about 317 000 IDs in 3.5 MB). It is written with the programming cable, from a computer with Python 3
+and pyserial:
+
+```
+py tools\ids\id_db.py build                  (downloads RadioID's list and packs it: ids.bin)
+py tools\ids\id_db.py write COM6             (the radio on, the cable in)
+```
+
+`build --countries "Canada,United States"` keeps only those countries (smaller, written faster). The first write takes
+about 3 minutes (the cable goes up to 750 000 baud); writing a newer list again only sends the parts that changed.
+While it is there it is used instead of the CPS's database; RadioID's list has no surnames.
 
 ### DMR hotspot (MMDVM)
 
@@ -533,7 +604,6 @@ firmware: see the README.
 
 - No voice prompts (the radio has no voice data).
 - The calibration is read only: power and oscillator can't be changed.
-- No themes: the interface has fixed colours.
 - Safe Pwr-On and Sat (Manual / Auto) have no effect yet.
 - P25: simplex group calls in clear only; known issues in [docs/p25.md](p25.md), section 6.
 - Not fully tested on the air yet: APRS beacons received by an APRS decoder (their frames are checked; the radio itself

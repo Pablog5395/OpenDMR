@@ -51,6 +51,7 @@ Users: download the package from [Releases](../../releases) and follow the
 | `tools/fonts/` | Font conversion (`mkfont.py`), the Chinese font (`mkcjk.py` → `build/cjk.bin`, `upload_cjk.py` writes it to the radio) |
 | `tools/text/` | The generator of the interface text tables and the original language files (from OpenGD77) |
 | `tools/satellite/` | Writes the satellite keps (`write_keps.py`) |
+| `tools/ids/` | The DMR ID database with places (`id_db.py`: build it from RadioID's list, write it over the cable; the countries built into the firmware) |
 | `tools/release/` | The release script `make_release.py` |
 
 ---
@@ -85,8 +86,12 @@ update mode). The vocoder is built straight from `vocoder/c/ambe/` by `src/Makef
 
 ## Flashing (development)
 
-- First install, or a radio that doesn't start: `dm32_dump.py --write` (radio off, run, switch on within 30 s); see
-  section 3 of the [installation guide](docs/installation.en.md):
+Replace `COM6` in the commands with your programming cable's port: plug the cable in and look under Device Manager →
+Ports (COM & LPT).
+
+- First install, or a radio that doesn't start: `dm32_dump.py --write`; see section 3 of the
+  [installation guide](docs/installation.en.md). **Each command** goes: radio off → run the command → switch the radio
+  on within 30 s (no keys) → when it is done, switch off again before the next command:
 
   ```powershell
   py -u tools\backup\dm32_dump.py COM6 program src\build\opendmr.bin --write --start 0xC000

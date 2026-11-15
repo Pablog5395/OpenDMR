@@ -34,6 +34,7 @@
  * time starts again while transmitting or scanning, and while a signal is heard with "APO with RF" on. One minute before,
  * the APO melody. Auto lock (settings.autolock_timer, 30 second units, 0 off): no key nor knob for that long locks the
  * keypad and the PTT, on the home screens only (they take UI_DATA_AUTOLOCK; another screen on top ignores it).
+ * The cable in use (the CPS, an update) counts as a key: no lock and no power off half way through a codeplug write.
  */
 
 #include "settings.h"
@@ -41,11 +42,13 @@
 #include "radio.h"
 #include "sound.h"
 #include "ui.h"
+#include "cable_link.h"
 #include "idle.h"
 
 #define APO_UNIT_MS      (30UL * 60UL * 1000UL)
 #define APO_WARNING_MS   60000UL
 #define AUTOLOCK_UNIT_MS 30000UL
+#define CABLE_ACTIVE_MS  2000UL // a request this recent: the cable in use
 
 static volatile uint32_t activity_ms; // the last key or knob
 static uint32_t apo_from_ms;          // the auto power off counts from here
@@ -62,6 +65,9 @@ bool idle_check_1s(void)
 {
     uint32_t now = systime_get_ms();
 
+    if (cable_link_used_within(CABLE_ACTIVE_MS)) {
+        idle_activity();
+    }
     if ((settings.autolock_timer != 0) && !autolock_asked &&
         ((now - activity_ms) >= (settings.autolock_timer * AUTOLOCK_UNIT_MS))) {
         ui_event_t ev = {.type = UI_EVENT_DATA, .what = UI_DATA_AUTOLOCK};

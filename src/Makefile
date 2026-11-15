@@ -37,7 +37,7 @@ LDFLAGS := $(CPU) -nostartfiles -Wl,--gc-sections -Wl,--undefined=vocoder_bench 
 LIBS    := -lm -lc -lgcc
 
 # Layers, see docs/architecture.md
-SRCDIRS := startup freertos freertos/portable/CK803 hal drivers dmr graphics graphics/fonts ui ui/text ui/widgets services app
+SRCDIRS := startup freertos freertos/portable/CK803 hal drivers dmr graphics graphics/fonts graphics/themes ui ui/text ui/widgets services app
 C_SRCS  := $(foreach d,$(SRCDIRS),$(wildcard $(d)/*.c))
 S_SRCS  := $(foreach d,$(SRCDIRS),$(wildcard $(d)/*.S))
 OBJS    := $(addprefix $(BUILD)/,$(C_SRCS:.c=.o) $(S_SRCS:.S=.o))            $(patsubst $(VOCODER)/%.c,$(BUILD)/vocoder/%.o,$(wildcard $(VOCODER)/*.c)) \
@@ -76,10 +76,12 @@ $(BUILD)/%.o: %.S
 	@mkdir -p $(dir $@)
 	$(CC) $(ASFLAGS) -c -o $@ $<
 
-# The firmware information shows the git version and the build time: built every time
+# The firmware information shows the git version and the build time: built every time. cable_link.c embeds the same
+# version for the radio info the CPS reads, so it is built every time too (the flag changes with git, which make does
+# not see)
 GITVERSION := $(shell git rev-parse --short HEAD 2>/dev/null)
 $(BUILD)/app/firmware_info.o $(BUILD)/services/cable_link.o: CFLAGS += $(if $(GITVERSION),-DGITVERSION=$(GITVERSION))
-$(BUILD)/app/firmware_info.o: FORCE
+$(BUILD)/app/firmware_info.o $(BUILD)/services/cable_link.o: FORCE
 
 clean:
 	rm -rf $(BUILD)

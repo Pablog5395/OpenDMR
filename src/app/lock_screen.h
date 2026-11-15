@@ -34,11 +34,15 @@
 
 // The keypad and PTT lock (uiLockScreen.c). The main menu locks: * the keypad, # toggles the PTT lock.
 void lock_screen_lock(bool keypad, bool ptt); // goes home and shows "Locked" a moment; false, false: unlocks
+void lock_screen_unlock(void);                // shows "Unlocked" (the PIN screen, after the lock PIN)
+// At start: locked when the lock PIN is on (not the power-on PIN); the lock screen to show over the home screen,
+// or NULL
+const ui_screen_t *lock_screen_start(void);
 bool lock_screen_is_keypad_locked(void);
 bool lock_screen_is_ptt_locked(void); // for the transmit code: no transmit while true
 
 // First thing in the handle() of the home screens (channel, VFO): true when the lock takes the event (return false
-// then). A key while locked shows "Locked / SK2 + * to unlock"; SK2 + * unlocks.
+// then). A key while locked shows "Locked / SK1 + * to unlock"; SK1 + * unlocks (with the lock PIN: any key asks for it).
 bool lock_screen_filter(const ui_event_t *ev);
 
 #endif

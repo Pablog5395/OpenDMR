@@ -67,13 +67,20 @@
 #include "hotspot.h"
 #include "hotspot_screen.h"
 #include "cps_screen.h"
+#include "security.h"
+#include "extra_options.h"
+#include "pin_screen.h"
+#include "lock_screen.h"
 
 volatile unsigned long freertos_assert_line = 0;
 
-// The screens that go over all others: the hotspot's, the CPS's
+// The screens that go over all others: the hotspot's (not while secured: security.h), the CPS's
 static bool screen_hooks(const ui_event_t *ev)
 {
-    return hotspot_screen_hook(ev) || cps_screen_hook(ev);
+    if ((ev->type == UI_EVENT_DATA) && (ev->what & UI_DATA_TIME)) {
+        display_theme_apply(); // the auto theme: light by day, dark at night
+    }
+    return (!security_secured() && hotspot_screen_hook(ev)) || cps_screen_hook(ev);
 }
 
 int main(void)
@@ -84,6 +91,8 @@ int main(void)
     leds_init();
 
     flash_init();
+    security_load();
+    extra_options_load();
     panel_init();
     theme_init();
     backlight_set_percent(100);
@@ -95,6 +104,7 @@ int main(void)
     display_light_start();
     codeplug_init();
     dmr_ids_init();
+    const ui_screen_t *lock = lock_screen_start();
     keymap_load();
     language_load();
     ui_list_places_load();
@@ -114,10 +124,13 @@ int main(void)
     rx_capture_start(); // debug: the received AMBE frames to the flash
     sound_start();
     sound_play_boot();
+    display_theme_apply(); // the settings and the clock read
     ui_set_event_hook(screen_hooks);
     ui_start(((settings_valid() && (settings.initial_menu_number == VFO_SCREEN_MENU_VFO)) ? &vfo_screen
                                                                                           : &channel_screen),
-             (fm_radio_was_playing() ? &fm_radio_screen : NULL)); // switched off on the FM radio: back on it
+             // the power-on PIN first, else the lock screen (the lock PIN), else the FM radio if it was on
+             (security_boot_locked() ? &pin_screen
+                                     : (lock ? lock : (fm_radio_was_playing() ? &fm_radio_screen : NULL))));
     systime_watchdog_start(); // a stall from here on resets the radio
 
     vTaskStartScheduler();

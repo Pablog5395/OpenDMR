@@ -36,6 +36,7 @@
 #include "settings.h"
 #include "language.h"
 #include "display.h"
+#include "extra_options.h"
 #include "text.h"
 #include "options.h"
 #include "contacts.h"
@@ -166,15 +167,47 @@ static void time_shown_change(int direction, uint8_t modifiers)
     settings.timezone = (direction > 0) ? (settings.timezone | TIMEZONE_LOCAL) : (settings.timezone & ~TIMEZONE_LOCAL);
 }
 
-static void time_shown_select(void)
-{
-    settings.timezone ^= TIMEZONE_LOCAL;
-}
-
 static const ui_custom_t time_shown = {
     .format = time_shown_format,
     .change = time_shown_change,
-    .select = time_shown_select,
+};
+
+// The themes (theme.h, their names in the language shown), then auto (light by day): display.c
+static void theme_format(char *buffer, size_t size)
+{
+    const theme_t *theme = theme_get(display_theme_choice());
+
+    snprintf(buffer, size, "%s", (theme ? theme->name[(language_get() < 3) ? language_get() : 0] : text(TEXT_AUTO)));
+}
+
+static void theme_change(int direction, uint8_t modifiers)
+{
+    uint8_t count = display_theme_choices();
+
+    (void)modifiers;
+    display_theme_choose((uint8_t)((display_theme_choice() + count + ((direction > 0) ? 1 : -1)) % count));
+}
+
+static const ui_custom_t theme_item = {
+    .format = theme_format,
+    .change = theme_change,
+};
+
+// The DMR caller's city and state on its panel (extra_options.h; the country is always there)
+static void caller_place_format(char *buffer, size_t size)
+{
+    snprintf(buffer, size, "%s", text(extra_option(EXTRA_OPTION_HIDE_CALLER_PLACE) ? TEXT_OFF : TEXT_ON));
+}
+
+static void caller_place_change(int direction, uint8_t modifiers)
+{
+    (void)modifiers;
+    extra_option_set(EXTRA_OPTION_HIDE_CALLER_PLACE, direction < 0);
+}
+
+static const ui_custom_t caller_place = {
+    .format = caller_place_format,
+    .change = caller_place_change,
 };
 
 static const ui_item_t display_options_items[] = {
@@ -187,6 +220,8 @@ static const ui_item_t display_options_items[] = {
     {TEXT_LEDS, ICONS_COUNT, UI_ITEM_BIT, &leds, NULL},
     {TEXT_TIMEZONE, ICONS_COUNT, UI_ITEM_CUSTOM, &timezone, NULL},
     {TEXT_TIME, ICONS_COUNT, UI_ITEM_CUSTOM, &time_shown, NULL},
+    {TEXT_CALLER_PLACE, ICONS_COUNT, UI_ITEM_CUSTOM, &caller_place, NULL},
+    {TEXT_THEME, ICONS_COUNT, UI_ITEM_CUSTOM, &theme_item, NULL},
 };
 
 static const ui_list_t display_options = {
@@ -215,15 +250,9 @@ static void language_change(int direction, uint8_t modifiers)
     language_set(language);
 }
 
-static void language_select(void)
-{
-    language_set((language_get() + 1) % LANGUAGE_COUNT);
-}
-
 static const ui_custom_t language = {
     .format = language_format,
     .change = language_change,
-    .select = language_select,
 };
 
 /* Options */

@@ -52,6 +52,7 @@
 #define CMD_SECTOR_ERASE 0x20
 #define CMD_JEDEC_ID     0x9F
 #define CMD_READ_DATA    0x03
+#define CMD_UNIQUE_ID    0x4B // 4 dummy bytes, then the ID (Winbond 64 bits; Puya 128, its first 64 here)
 #define STATUS1_BUSY     0x01
 
 #define PAGE_PROGRAM_MS 3   // worst case
@@ -189,6 +190,21 @@ bool flash_read_raw(uint32_t address, uint8_t *data, uint32_t length)
     command(cmd, sizeof(cmd), data, length);
     unlock();
     return true;
+}
+
+uint64_t flash_unique_id(void)
+{
+    static const uint8_t cmd[5] = {CMD_UNIQUE_ID, 0, 0, 0, 0};
+    uint8_t id[8];
+    uint64_t value = 0;
+
+    lock();
+    command(cmd, sizeof(cmd), id, sizeof(id));
+    unlock();
+    for (int i = 0; i < 8; i++) {
+        value = (value << 8) | id[i];
+    }
+    return value;
 }
 
 static bool write_sector_raw_locked(uint32_t address, const uint8_t *data)
