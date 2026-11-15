@@ -74,8 +74,10 @@ Also: SK2 + menu key opens the channel details directly; SK2 + a digit is a quic
 
 <img src="manual/en/channel-idle.png" alt="Channel screen"> <img src="manual/en/main-menu.png" alt="Main menu">
 
-- **Status bar** (top, on the theme's band): signal bars, timeslot `TS1`/`TS2`, colour code `CC1`, scan icon, time, battery. A green line
-  under it while receiving; the whole bar turns red while transmitting.
+- **Status bar** (top, on the theme's band): signal bars (all there as on the S meter, the ones with signal lit white), timeslot `TS1`/`TS2`, colour code `CC1`
+  (DMR), scan icon, GPS pin (when the GPS is on: dim while it searches, lit with a fix), time, battery. The whole bar
+  turns green while receiving and red while transmitting (the transmit icon in place of the signal bars, nothing
+  else moves).
 - **Main area**: on the channel screen the zone and position, the channel name (large), the frequency, the talk
   group, the S meter.
 - **Bottom bar** (on the band too): on the main screens the mode (`DMR`/`FM`/`AM`/`USB`/`LSB`), power and bandwidth; on lists what the two keys do.
@@ -173,8 +175,8 @@ right. The mode is kept with the channel and the VFO; the CPS sees such a channe
 **108 – 137 MHz (aviation) is receive only**, in any mode: set AM (SK1 + \*) to listen. The radio's front end is made for
 137 MHz and up, so it is less sensitive there; the PTT shows "OUT OF BAND".
 
-**P25** (APCO P25 Phase 1 conventional voice: simplex, group calls, clear): the bottom bar shows `P25`, the status bar
-the NAC (e.g. `NAC293`), and below the frequency come the talk group and the NAC.
+**P25** (APCO P25 Phase 1 conventional voice: simplex, group calls, clear): the bottom bar shows `P25`; below the frequency
+comes the talk group, with the NAC on the right of its line (e.g. `NAC 293`).
 
 - The **NAC** (network access code, 12 bits in hex, 293 by default) works like DMR's colour code: only calls with the
   same NAC are received; `F7E` receives them all. It is set in the channel details (on a P25 channel the colour code
@@ -206,7 +208,7 @@ the NAC (e.g. `NAC293`), and below the frequency come the talk group and the NAC
 
 <img src="manual/en/receive-vfo.png" alt="DMR receive (VFO)"> <img src="manual/en/receive-channel.png" alt="DMR receive (channel)">
 
-- A received signal: the green line under the status bar, green signal bars, the S meter value in green; above S9
+- A received signal: the whole status bar green, the signal bars lit, the S meter value in green; above S9
   the excess is shown in small red figures (`+xxdB`).
 - DMR, the caller panel (its lines stay where they are, whatever is known):
   - the channel or VFO name, and on the right the caller's DMR ID;
@@ -227,7 +229,8 @@ the NAC (e.g. `NAC293`), and below the frequency come the talk group and the NAC
 
 Hold the **PTT** to transmit, release it to stop. The transmit screen (no screenshot in this manual):
 
-- The status bar turns red, with `TX` (and the timeslot and colour code in DMR);
+- The status bar turns red, the transmit icon in place of the signal bars (the timeslot and colour code in DMR as
+  before);
 - Main area: who is called ("Group Call" and the talk group, or the zone and the channel / VFO), the channel and the
   frequency, a large timer (with a transmit timeout: the time left and a bar, amber near the end), an 8 segment mic
   level;

@@ -32,52 +32,59 @@
 #include "fonts.h"
 #include "battery.h"
 #include "datetime.h"
+#include "settings.h"
+#include "gps.h"
 
-// Signal bars on the left, then the items (time slot, colour code); scan icon and battery on the right.
-// Receiving: green line and bars. Transmitting: the whole bar red with "TX".
+#define ICONS_WIDTH 20 // icons.h: all icons are 20 x 18
+
+// What is drawn on the receive colour: white where it shows on it (3:1), else the darker of the theme's background
+// and text (a dark theme's green is light)
+static theme_colour_t on_receive(void)
+{
+    if (theme_contrast(THEME_COLOUR_WHITE, THEME_COLOUR_RX) >= 3.0f) {
+        return THEME_COLOUR_WHITE;
+    }
+    return (theme_contrast(THEME_COLOUR_BACKGROUND, THEME_COLOUR_RX) >= theme_contrast(THEME_COLOUR_TEXT, THEME_COLOUR_RX))
+               ? THEME_COLOUR_BACKGROUND
+               : THEME_COLOUR_TEXT;
+}
+
+// Signal bars on the left, then the items (time slot, colour code); GPS, scan icon, time and battery on the right.
+// Receiving: the whole bar green; transmitting: red with "TX" (a line under the band was lost next to a light
+// theme's dark band). On those fills one colour for everything on them.
 void status_bar_draw(const status_bar_data_t *data)
 {
     const font_t *font = &font_roboto17_bold;
     const int32_t text_y = (WIDGET_STATUS_BAR_HEIGHT - font->line_height) / 2;
     bool transmitting = (data->state == STATUS_BAR_TRANSMITTING);
-    theme_colour_t text = (transmitting ? THEME_COLOUR_WHITE : THEME_COLOUR_PANEL_TEXT);
-    theme_colour_t label = (transmitting ? THEME_COLOUR_WHITE : THEME_COLOUR_PANEL_LABEL);
+    bool receiving = (data->state == STATUS_BAR_RECEIVING);
+    theme_colour_t fill = (transmitting ? THEME_COLOUR_TX : (receiving ? THEME_COLOUR_RX : THEME_COLOUR_PANEL));
+    theme_colour_t on = (transmitting ? THEME_COLOUR_WHITE : on_receive());
+    theme_colour_t text = ((transmitting || receiving) ? on : THEME_COLOUR_PANEL_TEXT);
+    theme_colour_t label = ((transmitting || receiving) ? on : THEME_COLOUR_PANEL_LABEL);
     int32_t x = WIDGET_MARGIN - 4;
     char buffer[16];
 
-    // On the panel colour, no line under it: only the receive line (green) or the transmit bar (red)
-    draw_fill_rect(0, 0, FB_WIDTH, WIDGET_STATUS_BAR_HEIGHT, (transmitting ? THEME_COLOUR_TX : THEME_COLOUR_PANEL));
-    draw_fill_rect(0, WIDGET_STATUS_BAR_HEIGHT, FB_WIDTH, 2,
-                   ((data->state == STATUS_BAR_RECEIVING) ? THEME_COLOUR_RX
-                                                          : (transmitting ? THEME_COLOUR_TX : THEME_COLOUR_PANEL)));
+    draw_fill_rect(0, 0, FB_WIDTH, WIDGET_STATUS_BAR_HEIGHT, fill); // the bar only: the 2 rows under it the screen's
+    draw_fill_rect(0, WIDGET_STATUS_BAR_HEIGHT, FB_WIDTH, 2, THEME_COLOUR_BACKGROUND);
 
+    // the signal bars, or transmitting the TX icon in their place: nothing else moves
     if (transmitting) {
-        x += icons_draw(x, (WIDGET_STATUS_BAR_HEIGHT - ICONS_SIZE) / 2, ICONS_TX, THEME_COLOUR_WHITE) + 4;
-        x = font_draw_text(x, text_y, "TX", font, FONT_ALIGN_LEFT, theme_colour(THEME_COLOUR_WHITE)) + 12;
+        icons_draw(x, (WIDGET_STATUS_BAR_HEIGHT - ICONS_SIZE) / 2, ICONS_TX, THEME_COLOUR_WHITE);
     } else {
-        icons_draw_signal(x, (WIDGET_STATUS_BAR_HEIGHT - 16) / 2, data->signal_bars,
-                          ((data->state == STATUS_BAR_RECEIVING) ? THEME_COLOUR_RX : THEME_COLOUR_PANEL_TEXT));
-        x += ICONS_SIGNAL_WIDTH + 14;
+        // the lit bars white (the band's text colour), or the colour on the green
+        icons_draw_signal(x, (WIDGET_STATUS_BAR_HEIGHT - 16) / 2, data->signal_bars, text, receiving);
     }
+    x += ICONS_SIGNAL_WIDTH + 14;
 
-    if (data->item1) {
-        x = font_draw_text(x, text_y, data->item1, (data->item1_bold ? &font_roboto17_bold : &font_roboto17),
-                           FONT_ALIGN_LEFT, theme_colour(text)) +
-            10;
-    }
-
-    if (data->item2) {
-        font_draw_text(x, text_y, data->item2, &font_roboto17, FONT_ALIGN_LEFT, theme_colour(label));
-    }
-
-    // right side: battery, scanning
+    // right side first (battery, time, GPS, scanning): the items on the left only where they fit
     int32_t right = FB_WIDTH - WIDGET_MARGIN + 4;
     int percent = battery_percent();
     bool low = battery_is_low();
     bool has_time = datetime_format_local_time(buffer, sizeof(buffer));
 
-    icons_draw_battery(right - 30, (WIDGET_STATUS_BAR_HEIGHT - 14) / 2, percent,
-                       (low ? THEME_COLOUR_WARNING : (transmitting ? THEME_COLOUR_WHITE : THEME_COLOUR_PANEL_TEXT)));
+    icons_draw_battery(right - 30, (WIDGET_STATUS_BAR_HEIGHT - 14) / 2, percent, (low ? THEME_COLOUR_WARNING : text),
+                       text);
     right -= 30 + 6;
 
     if (!has_time) {
@@ -87,7 +94,25 @@ void status_bar_draw(const status_bar_data_t *data)
                            theme_colour((low && !has_time) ? THEME_COLOUR_WARNING : (has_time ? text : label)));
     right -= font_text_width(&font_roboto17, buffer) + 8;
 
+    // the GPS on: its pin, dim while it searches, lit with a fix
+    if (settings_valid() && (settings.gps >= GPS_MODE_ON)) {
+        icons_draw(right - ICONS_WIDTH, (WIDGET_STATUS_BAR_HEIGHT - ICONS_SIZE) / 2, ICONS_LOCATION,
+                   (gps_has_fix() ? text : label));
+        right -= ICONS_WIDTH + 4;
+    }
+
     if (data->scanning) {
         icons_draw(right - 18, (WIDGET_STATUS_BAR_HEIGHT - ICONS_SIZE) / 2, ICONS_SCAN, THEME_COLOUR_WARNING);
+        right -= ICONS_WIDTH + 4;
+    }
+
+    if (data->item1) {
+        x = font_draw_text(x, text_y, data->item1, (data->item1_bold ? &font_roboto17_bold : &font_roboto17),
+                           FONT_ALIGN_LEFT, theme_colour(text)) +
+            10;
+    }
+
+    if (data->item2 && ((x + font_text_width(&font_roboto17, data->item2)) <= right)) {
+        font_draw_text(x, text_y, data->item2, &font_roboto17, FONT_ALIGN_LEFT, theme_colour(label));
     }
 }
