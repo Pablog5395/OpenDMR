@@ -37,6 +37,7 @@
 #include "theme.h"
 #include "systime.h"
 #include "sound.h"
+#include "radio.h"
 #include "ui.h"
 
 #define STACK_DEPTH      8
@@ -155,6 +156,11 @@ void ui_home(void)
     enter_top(NULL);
 }
 
+const ui_screen_t *ui_top_screen(void)
+{
+    return (depth > 0) ? stack[depth - 1].screen : NULL;
+}
+
 void *ui_arg(void)
 {
     return (depth > 0) ? stack[depth - 1].arg : NULL;
@@ -170,6 +176,22 @@ int32_t *ui_state(void)
 void ui_key_beep(const int16_t *melody)
 {
     key_beep = melody;
+}
+
+void ui_tune(void)
+{
+    for (int i = depth - 1; i >= 0; i--) {
+        const codeplug_channel_t *channel =
+            stack[i].screen->channel ? stack[i].screen->channel() : UI_CHANNEL_UNDER;
+
+        if (channel == UI_CHANNEL_KEPT) {
+            return;
+        }
+        if (channel != UI_CHANNEL_UNDER) {
+            radio_set_channel(channel);
+            return;
+        }
+    }
 }
 
 void ui_redraw(void)
@@ -215,6 +237,7 @@ static void ui_task(void *arg)
     if (start_on_top) {
         ui_push(start_on_top, NULL);
     }
+    ui_tune();
 
     for (;;) {
         if (redraw) {
@@ -238,12 +261,16 @@ static void ui_task(void *arg)
             ev.type = UI_EVENT_TIMER;
         }
 
+        // The event changes the screens' data, or the screens: then the radio on the channel they make now (once,
+        // after the screen and anything it pushed, popped or replaced are done)
         if (event_hook && event_hook(&ev)) {
+            ui_tune();
             continue;
         }
         if (top() && top()->handle && top()->handle(&ev)) {
             redraw = true;
         }
+        ui_tune();
         // The key beep after the screen handled the key (keyBeepHandler()): on a release (a short press) or a long
         // press, not for the PTT. A screen may have set another one (ui_key_beep()), on the press or now; it plays
         // once, then the key beep is back. NULL: none for this key.

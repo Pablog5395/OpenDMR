@@ -29,14 +29,17 @@
 #ifndef DM32_THEME_H
 #define DM32_THEME_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
-// Colours of the design (docs/ui-design.md, 4.1). They are also the LCD palette, with greys between them for anti-aliasing.
+// The colours of the design by what they are for (docs/ui-design.md, 4.1): a theme gives each its value, and these 16
+// are the whole LCD palette (the screen holds palette entries: another theme recolours it at once). Anti-aliased text
+// takes the nearest of them (a theme's greys between its background and its text).
 typedef enum {
     THEME_COLOUR_BACKGROUND = 0,
-    THEME_COLOUR_LINE,        // separators, empty part of bars
+    THEME_COLOUR_LINE,        // the main area's separators, empty part of bars
     THEME_COLOUR_OFF,         // unlit (signal, digits not entered yet)
-    THEME_COLOUR_TEXT_DIM,    // the other channel when dual watching
+    THEME_COLOUR_TEXT_DIM,    // the other channel when dual watching; unlit signal bars
     THEME_COLOUR_TEXT_LABEL,  // zone, labels, units
     THEME_COLOUR_TEXT_SECOND, // frequency, talk group
     THEME_COLOUR_TEXT,        // channel name, important values
@@ -44,11 +47,30 @@ typedef enum {
     THEME_COLOUR_RX,          // receiving
     THEME_COLOUR_TX,          // transmitting
     THEME_COLOUR_WARNING,     // low battery, scanning
-    THEME_COLOUR_WHITE,       // text on the accent, receive and transmit colours
+    THEME_COLOUR_WHITE,       // text on the receive, transmit and warning colours
+    THEME_COLOUR_ON_ACCENT,   // text on the accent (the selected row, the mode chip, PTT)
+    THEME_COLOUR_PANEL,       // the band under the status bar, the list titles and the bottom bar (no lines on it)
+    THEME_COLOUR_PANEL_TEXT,  // text on the panel
+    THEME_COLOUR_PANEL_LABEL, // labels on the panel
     THEME_COLOUR_COUNT
 } theme_colour_t;
 
+// A theme (graphics/themes/: a file each, listed in themes.c): its name in each language (language.h numbers), dark or
+// light (the auto choice takes the first light one by day, the first dark one at night), its colours (RGB888)
+typedef struct {
+    const char *name[3];
+    bool dark;
+    uint32_t colours[THEME_COLOUR_COUNT];
+} theme_t;
+
 void theme_init(void);                        // sets the LCD palette; call once the LCD type is known
+uint8_t theme_count(void);
+const theme_t *theme_get(uint8_t index);      // NULL past the last
+uint8_t theme_first(bool dark);               // the first dark (or light) one
+void theme_set(uint8_t index);                // its palette: the whole screen changes at once
+uint8_t theme_current(void);
 uint16_t theme_colour(theme_colour_t colour); // native colour format
+// The WCAG contrast of two colours of the theme in use, 1 - 21 (an icon on a fill shows from about 2.5)
+float theme_contrast(theme_colour_t a, theme_colour_t b);
 
 #endif /* DM32_THEME_H */

@@ -1,6 +1,6 @@
 # OpenDMR — open firmware for the Baofeng DM-32UV
 
-[中文](README.md) · **[Installation guide](docs/installation.en.md)** · **[User manual](docs/manual.en.md)**
+[中文](README.md) · **[Installation guide](docs/installation.en.md)** · **[User manual](docs/manual.en.md)** · [Support OpenDMR](#support-opendmr)
 
 Open firmware for the **Baofeng DM-32 / DM-32UV** (SoC **HR_C7000** = CK803S CPU + DMR modem + audio codec).
 The source is open: free to use, change and share for non-commercial purposes; commercial use needs the author's
@@ -8,10 +8,11 @@ permission (see "Licences").
 
 - Rewritten on FreeRTOS. The features come from RA4FHE's (Alexey's) OpenDM32 (the DM-32 port of OpenGD77, on
   uC/OS-III);
-- A new user interface (native 240×320, English / Spanish);
-- DMR uses our own AMBE+2 compatible vocoder (the `vocoder/` submodule): **no stock firmware code at all**.
+- A new user interface (native 240×320, English / Chinese / Spanish);
+- DMR uses our own AMBE+2 compatible vocoder (the `vocoder/` submodule), P25 our own IMBE vocoder and air interface
+  (the `p25/` submodule): **no stock firmware code at all**.
 
-Features: DMR / FM receive and transmit, channels and VFO, scan, dual watch, contacts, last heard, FM broadcast
+Features: DMR / FM / **P25** (Phase 1 simplex group calls) receive and transmit, channels and VFO, scan, dual watch, contacts, last heard, FM broadcast
 radio, GPS, APRS beacons, amateur satellite passes, DMR hotspot (MMDVM), VOX, user-defined keys, ... See the
 [user manual](docs/manual.en.md).
 
@@ -43,19 +44,21 @@ Users: download the package from [Releases](../../releases) and follow the
 |---|---|
 | `src/` | The firmware source (`make`, see below) |
 | `vocoder/` | Submodule, repository [va3bpf/dmr-vocoder](https://github.com/va3bpf/dmr-vocoder): our DMR vocoder (AMBE+2 compatible): algorithm, Python verification, fixed-point C (`c/ambe/`, used by the firmware), tests, documents |
-| `docs/` | [Installation guide](docs/installation.en.md), [user manual](docs/manual.en.md) (screenshots in `docs/manual/`); developer documents: [architecture.md](docs/architecture.md) (architecture, Chinese), [ui-design.en.md](docs/ui-design.en.md) (user interface), [coding-style.md](docs/coding-style.md), [fd6818-registers.md](docs/fd6818-registers.md) (RF chip registers) |
+| `p25/` | Submodule, repository [va3bpf/p25-core](https://github.com/va3bpf/p25-core): the P25 Phase 1 IMBE vocoder and air interface (frames, error correction), C code and tests on the PC; the radio side is in [docs/p25.md](docs/p25.md) (Chinese) |
+| `docs/` | [Installation guide](docs/installation.en.md), [user manual](docs/manual.en.md) (screenshots in `docs/manual/`); developer documents: [architecture.md](docs/architecture.md) (architecture, Chinese), [ui-design.en.md](docs/ui-design.en.md) (user interface), [coding-style.md](docs/coding-style.md), [fd6818-registers.md](docs/fd6818-registers.md) (RF chip registers), [i18n.en.md](docs/i18n.en.md) (languages: the design, read it to add one) |
 | `tools/backup/` | `dm32_dump.py`: backup / write tool through the chip's bootloader (and `dumper/`, which it uploads to the radio) |
 | `tools/debug/` | Cable update `fw_update.py` (and `updater/`), debug commands `dm32dbg.py`, screenshots `fshot.py`, simulated keys `fkey.py`, mic level `miclevel.py`, ... |
 | `tools/fonts/` | Font conversion (`mkfont.py`), the Chinese font (`mkcjk.py` → `build/cjk.bin`, `upload_cjk.py` writes it to the radio) |
 | `tools/text/` | The generator of the interface text tables and the original language files (from OpenGD77) |
 | `tools/satellite/` | Writes the satellite keps (`write_keps.py`) |
+| `tools/ids/` | The DMR ID database with places (`id_db.py`: build it from RadioID's list, write it over the cable; the countries built into the firmware) |
 | `tools/release/` | The release script `make_release.py` |
 
 ---
 
 ## Building
 
-1. Get the source (the vocoder is a submodule):
+1. Get the source (the vocoder and P25 are submodules):
 
    ```powershell
    git clone --recursive https://github.com/va3bpf/OpenDMR.git
@@ -83,8 +86,12 @@ update mode). The vocoder is built straight from `vocoder/c/ambe/` by `src/Makef
 
 ## Flashing (development)
 
-- First install, or a radio that doesn't start: `dm32_dump.py --write` (radio off, run, switch on within 30 s); see
-  section 3 of the [installation guide](docs/installation.en.md):
+Replace `COM6` in the commands with your programming cable's port: plug the cable in and look under Device Manager →
+Ports (COM & LPT).
+
+- First install, or a radio that doesn't start: `dm32_dump.py --write`; see section 3 of the
+  [installation guide](docs/installation.en.md). **Each command** goes: radio off → run the command → switch the radio
+  on within 30 s (no keys) → when it is done, switch off again before the next command:
 
   ```powershell
   py -u tools\backup\dm32_dump.py COM6 program src\build\opendmr.bin --write --start 0xC000
@@ -136,10 +143,25 @@ Each file's header decides; the full text is in [LICENSE](LICENSE):
 | `src/graphics/fonts/roboto*.c`, `src/ui/text/text*` | Generated data (fonts below; the text tables come from OpenGD77's language files) |
 | `src/freertos/` | FreeRTOS, MIT |
 | `vocoder/` | Our own; the decoder is ported from mbelib (ISC). AMBE+2 is DVSI's patented technology: search the patents before any commercial use |
+| `p25/` | Our own; the IMBE parameter decoding and tables ported from mbelib, the positions in the frames from DSD (ISC). IMBE is DVSI's technology too: the same |
 | Fonts `tools/fonts/ttf/` | Roboto Condensed and Noto Sans SC, both SIL Open Font License 1.1 (licence texts in the same folder) |
 
 So the firmware as a whole **can't be used commercially** for now: that would at least need a new DMR engine and
 hotspot, and the AMBE+2 patents checked.
+
+## Support OpenDMR
+
+OpenDMR is free and made in spare time; developing and testing it takes a lot of time and AI tool fees. If it is useful
+to you, a donation helps keep it maintained and growing.
+
+<a href="https://ko-fi.com/opendmr"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support OpenDMR on Ko-fi"></a>
+
+- **Ko-fi** (cards and more): <https://ko-fi.com/opendmr>
+- **WeChat** (appreciation code below)
+
+<p align="center">
+  <img src="docs/donate/wechat.jpg" width="240" alt="WeChat appreciation code">
+</p>
 
 ## Thanks
 

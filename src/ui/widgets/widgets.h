@@ -36,6 +36,7 @@
 #include "icons.h"
 #include "theme.h"
 #include "framebuffer.h"
+#include "font.h"
 
 // Building blocks of the screens (docs/ui-design.md, 5 and 6.5). They only draw what they are given, in LCD pixels;
 // the screens collect the radio data. Areas of the screen:
@@ -71,6 +72,7 @@ typedef struct {
     icons_id_t line_icon;  // ICONS_COUNT: no line
     const char *line_text;
     const char *line_detail; // after line_text, in the label colour; NULL: none
+    const char *line_right;  // right aligned on the line, in the label colour (P25: the NAC); NULL: none
 } channel_panel_data_t;
 
 void channel_panel_draw(const channel_panel_data_t *data);
@@ -125,6 +127,7 @@ typedef struct {
     const char *sub; // two-line rows: the second line, in the label colour; NULL: none
     int16_t cursor;  // text entry in the value: 1 + byte index of the character above the underline (after the
                      // text when it is the length); 0: no cursor
+    bool small_value; // the value a size smaller (a list of long values: key combinations)
     bool swatch;     // a colour box on the right (after the value): a frame, filled by list_view_fill_swatch()
 } list_view_row_t;
 
@@ -162,6 +165,7 @@ uint32_t digit_entry_value(const digit_entry_t *entry);
 bool digit_entry_handle(digit_entry_t *entry, const ui_event_t *ev, digit_entry_set_t set);
 // The digits entered, then unlit zeros, the next one underlined; font_roboto44_bold from x, y
 void digit_entry_draw(const digit_entry_t *entry, int32_t x, int32_t y);
+int32_t digit_entry_draw_font(const digit_entry_t *entry, int32_t x, int32_t y, const font_t *font); // its end x
 // A frequency in 10 Hz as MHz with 5 decimals ("438.50000"), without the unit
 void digit_entry_format_frequency(uint32_t frequency, char *out, size_t size);
 

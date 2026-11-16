@@ -40,6 +40,9 @@
 #include "settings.h"
 #include "radio.h"
 #include "display.h"
+#include "datetime.h"
+#include "extra_options.h"
+#include "theme.h"
 
 #define DEFAULT_PERCENT 100
 
@@ -132,5 +135,54 @@ void display_light_tick(uint32_t elapsed_ms)
     light_left_ms = (light_left_ms > elapsed_ms) ? (light_left_ms - elapsed_ms) : 0;
     if (light_left_ms == 0) {
         light(false);
+    }
+}
+
+#define AUTO_LIGHT_FROM 7  // local hours of the light theme in auto
+#define AUTO_LIGHT_TO   19
+
+uint8_t display_theme_choices(void)
+{
+    return (uint8_t)(theme_count() + 1);
+}
+
+uint8_t display_theme_choice(void)
+{
+    uint8_t choice = extra_options_theme();
+
+    return (choice < display_theme_choices()) ? choice : (uint8_t)(display_theme_choices() - 1); // none yet: auto
+}
+
+void display_theme_choose(uint8_t choice)
+{
+    extra_options_set_theme((choice < display_theme_choices()) ? choice : 0);
+    display_theme_apply();
+}
+
+// The local hour (settings.timezone: quarters from UTC, 64 = UTC, in the lower 7 bits); -1: no clock
+static int local_hour(void)
+{
+    datetime_fields_t fields;
+    uint32_t utc = datetime_now();
+
+    if (!datetime_is_valid() || (utc == 0)) {
+        return -1;
+    }
+    datetime_to_fields(utc + (((int32_t)(settings.timezone & 0x7F) - 64) * 900), &fields);
+    return fields.hour;
+}
+
+void display_theme_apply(void)
+{
+    uint8_t choice = display_theme_choice();
+    uint8_t wanted = choice;
+
+    if (choice == (display_theme_choices() - 1)) { // auto
+        int hour = local_hour();
+
+        wanted = theme_first(!((hour >= AUTO_LIGHT_FROM) && (hour < AUTO_LIGHT_TO)));
+    }
+    if (wanted != theme_current()) {
+        theme_set(wanted);
     }
 }

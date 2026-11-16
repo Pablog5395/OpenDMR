@@ -27,31 +27,38 @@
  */
 
 /*
- * OpenDMR, UI: the strings in the language of the settings. The language is the one of the main firmware:
- * settings.bitfield_options bit 19 (BIT_SECONDARY_LANGUAGE) set = Spanish, clear = English.
+ * OpenDMR, UI: the strings in the language of the settings. The language number comes from language.c (0 English,
+ * 1 Chinese, 2 Spanish); a string a language does not have yet (NULL) is shown in English (gen_text.py).
  */
 
 #include <stddef.h>
 
-#include "settings.h"
+#include "language.h"
 #include "text.h"
 
-bool text_is_spanish(void)
+bool text_is_chinese(void)
 {
-    return settings_valid() && ((settings.bitfield_options & SETTINGS_BIT_SECONDARY_LANGUAGE) != 0);
+    return language_get() == LANGUAGE_CHINESE;
 }
 
 const char *text(text_id_t id)
 {
+    const char *const *table;
+
     if (id >= TEXT_COUNT) {
         return "?";
     }
-    // A string the secondary language does not have yet (NULL) is shown in English: a new TEXT_x without its
-    // Spanish translation must not draw nothing (gen_text.py)
-    const char *secondary = text_es[id];
-
-    if (text_is_spanish() && (secondary != NULL)) {
-        return secondary;
+    switch (language_get()) {
+    case LANGUAGE_CHINESE:
+        table = text_zh;
+        break;
+    case LANGUAGE_SPANISH:
+        table = text_es;
+        break;
+    default:
+        table = text_en;
+        break;
     }
-    return text_en[id];
+    // A new TEXT_x without its translation must not draw nothing: the English one is shown instead
+    return (table[id] != NULL) ? table[id] : text_en[id];
 }

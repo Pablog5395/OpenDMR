@@ -26,37 +26,85 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <stddef.h>
 #include "theme.h"
 #include "framebuffer.h"
 #include "panel.h"
+#include "themes/themes.h"
 
-// RGB888, in theme_colour_t order, then four greys for the anti-aliased edges of text on the background
-static const uint32_t PALETTE_RGB888[16] = {0x000000, // background
-                                            0x1C2026, // line
-                                            0x3A3F47, // off
-                                            0x6E7580, // dim text
-                                            0x9AA1AB, // labels
-                                            0xD5D9DF, // second text
-                                            0xF2F4F7, // text
-                                            0x1E5AA8, // accent
-                                            0x2BD47D, // receive
-                                            0xC9302C, // transmit
-                                            0xE9A23B, // warning
-                                            0xFFFFFF, // white
-                                            0x0E1013, 0x2A2E35, 0x50565F, 0xB7BDC5};
+// Text on these is drawn without anti-aliasing (its edges would take the greys made for the background)
+#define SOLID_BACKGROUNDS ((1U << THEME_COLOUR_ACCENT) | (1U << THEME_COLOUR_RX) | (1U << THEME_COLOUR_TX) |                            (1U << THEME_COLOUR_WARNING))
 
 static uint16_t palette[16];
+static uint8_t current = 0;
+
+uint8_t theme_count(void)
+{
+    return THEMES_COUNT;
+}
+
+const theme_t *theme_get(uint8_t index)
+{
+    return (index < THEMES_COUNT) ? THEMES[index] : NULL;
+}
+
+uint8_t theme_first(bool dark)
+{
+    for (uint8_t i = 0; i < THEMES_COUNT; i++) {
+        if (THEMES[i]->dark == dark) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+void theme_set(uint8_t index)
+{
+    const theme_t *theme = theme_get(index);
+
+    if (theme == NULL) {
+        index = 0;
+        theme = THEMES[0];
+    }
+    current = index;
+    for (int i = 0; i < THEME_COLOUR_COUNT; i++) {
+        palette[i] = panel_rgb888_to_native(theme->colours[i]);
+    }
+    fb_set_solid_backgrounds(SOLID_BACKGROUNDS);
+    fb_set_palette(palette); // the buffer holds palette entries: the whole screen takes the new colours
+}
+
+uint8_t theme_current(void)
+{
+    return current;
+}
 
 void theme_init(void)
 {
-    for (int i = 0; i < 16; i++) {
-        palette[i] = panel_rgb888_to_native(PALETTE_RGB888[i]);
-    }
-
-    fb_set_palette(palette);
+    theme_set(current);
 }
 
 uint16_t theme_colour(theme_colour_t colour)
 {
     return palette[(colour < THEME_COLOUR_COUNT) ? colour : THEME_COLOUR_TEXT];
+}
+
+
+// WCAG relative luminance of an RGB888 colour, 0 - 1 (the sRGB curve as a square: close enough to compare)
+static float luminance(uint32_t rgb)
+{
+    float r = (float)((rgb >> 16) & 0xFF) / 255.0f;
+    float g = (float)((rgb >> 8) & 0xFF) / 255.0f;
+    float b = (float)(rgb & 0xFF) / 255.0f;
+
+    return (0.2126f * r * r) + (0.7152f * g * g) + (0.0722f * b * b);
+}
+
+float theme_contrast(theme_colour_t a, theme_colour_t b)
+{
+    const theme_t *t = THEMES[current];
+    float la = luminance(t->colours[a]);
+    float lb = luminance(t->colours[b]);
+
+    return (la > lb) ? ((la + 0.05f) / (lb + 0.05f)) : ((lb + 0.05f) / (la + 0.05f));
 }

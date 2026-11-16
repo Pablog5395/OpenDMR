@@ -294,19 +294,20 @@ static uint32_t channel_address(int number)
 // The 56 stored bytes to numbers (frequencies in 10 Hz, tones as numbers)
 // The order of the mode key, and the analog modes as stored in opendmr_mode (codeplug.h)
 static const uint8_t mode_order[] = {CODEPLUG_MODE_FM, CODEPLUG_MODE_AM, CODEPLUG_MODE_USB, CODEPLUG_MODE_LSB,
-                                     CODEPLUG_MODE_DMR};
+                                     CODEPLUG_MODE_DMR, CODEPLUG_MODE_P25};
 // opendmr_mode: OPENDMR_MODE_TAG | 1 AM, 2 USB, 3 LSB; anything else FM (the byte was the GD-77's Tx signalling, 0 ..
 // 3 in an old codeplug: the tag keeps such a value from being taken for a mode)
 static const uint8_t analog_modes[] = {CODEPLUG_MODE_FM, CODEPLUG_MODE_AM, CODEPLUG_MODE_USB, CODEPLUG_MODE_LSB};
 #define ANALOG_MODES     ((uint8_t)(sizeof(analog_modes) / sizeof(analog_modes[0])))
 #define OPENDMR_MODE_TAG 0xA0
+#define OPENDMR_MODE_P25 (OPENDMR_MODE_TAG | 4) // with mode 1 (digital)
 #define MODE_ORDER   ((int)(sizeof(mode_order) / sizeof(mode_order[0])))
 
 const char *codeplug_mode_name(uint8_t mode)
 {
     static const char *const names[CODEPLUG_MODES] = {
         [CODEPLUG_MODE_FM] = "FM", [CODEPLUG_MODE_DMR] = "DMR", [CODEPLUG_MODE_AM] = "AM",
-        [CODEPLUG_MODE_USB] = "USB", [CODEPLUG_MODE_LSB] = "LSB",
+        [CODEPLUG_MODE_USB] = "USB", [CODEPLUG_MODE_LSB] = "LSB", [CODEPLUG_MODE_P25] = "P25",
     };
 
     return (mode < CODEPLUG_MODES) ? names[mode] : "FM";
@@ -326,7 +327,7 @@ uint8_t codeplug_mode_step(uint8_t mode, int direction)
 static void channel_from_codeplug(codeplug_channel_t *channel)
 {
     if (channel->mode != 0) {
-        channel->mode = CODEPLUG_MODE_DMR;
+        channel->mode = (channel->opendmr_mode == OPENDMR_MODE_P25) ? CODEPLUG_MODE_P25 : CODEPLUG_MODE_DMR;
     } else {
         uint8_t index = (uint8_t)(channel->opendmr_mode ^ OPENDMR_MODE_TAG);
 
@@ -346,8 +347,8 @@ static void channel_from_codeplug(codeplug_channel_t *channel)
 static void channel_to_codeplug(const codeplug_channel_t *channel, codeplug_channel_t *stored)
 {
     memcpy(stored, channel, CHANNEL_SIZE);
-    stored->mode = ((channel->mode == CODEPLUG_MODE_DMR) ? 1 : 0);
-    stored->opendmr_mode = 0; // FM, DMR: as the CPS writes it
+    stored->mode = (codeplug_mode_is_digital(channel->mode) ? 1 : 0);
+    stored->opendmr_mode = (channel->mode == CODEPLUG_MODE_P25) ? OPENDMR_MODE_P25 : 0; // FM, DMR: as the CPS writes it
     for (uint8_t i = 1; i < ANALOG_MODES; i++) {
         if (analog_modes[i] == channel->mode) {
             stored->opendmr_mode = (uint8_t)(OPENDMR_MODE_TAG | i);
@@ -375,24 +376,39 @@ bool codeplug_get_channel(int number, codeplug_channel_t *channel)
  * codeplugSetVFO_ChannelData(). flash_write() erases a sector only when its data change.
  */
 
-// RADIO_HARDWARE_FREQUENCY_BANDS (trx.c, not the datasheet ranges): VHF, 220 MHz, UHF, in 10 Hz
+// RADIO_HARDWARE_FREQUENCY_BANDS (trx.c, not the datasheet ranges): VHF, 220 MHz, UHF, in 10 Hz; and below VHF the
+// aviation band, receive only (the FD6818 tunes there, the front end is not made for it: less sensitive)
 static const struct {
     uint32_t min;
     uint32_t max;
+    bool tx;
 } bands[] = {
-    {13700000, 18000000},
-    {20000000, 27997500},
-    {28000000, 52000000},
+    {10800000, 13699750, false},
+    {13700000, 18000000, true},
+    {20000000, 27997500, true},
+    {28000000, 52000000, true},
 };
+
+static int band_index(uint32_t frequency)
+{
+    for (int i = 0; i < (int)(sizeof(bands) / sizeof(bands[0])); i++) {
+        if ((frequency >= bands[i].min) && (frequency <= bands[i].max)) {
+            return i;
+        }
+    }
+    return -1;
+}
 
 bool codeplug_frequency_is_valid(uint32_t frequency)
 {
-    for (unsigned i = 0; i < (sizeof(bands) / sizeof(bands[0])); i++) {
-        if ((frequency >= bands[i].min) && (frequency <= bands[i].max)) {
-            return true;
-        }
-    }
-    return false;
+    return band_index(frequency) >= 0;
+}
+
+bool codeplug_frequency_can_transmit(uint32_t frequency)
+{
+    int i = band_index(frequency);
+
+    return (i >= 0) && bands[i].tx;
 }
 
 bool codeplug_write_channel(int number, const codeplug_channel_t *channel)

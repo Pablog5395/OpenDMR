@@ -400,10 +400,12 @@ typedef enum {
     TEXT_KEY_ZONE_DOWN,
     TEXT_KEY_TX_UP,
     TEXT_KEY_TX_DOWN,
+    TEXT_KEY_HELD,
     TEXT_KEY_SCAN_UP,
     TEXT_KEY_SCAN_DOWN,
     TEXT_KEY_APRS_TOGGLE,
     TEXT_KEY_APRS_SEND,
+    TEXT_KEY_LOCK,
     TEXT_SCAN_LOW,
     TEXT_SCAN_HIGH,
     TEXT_KEY_TG_FROM_CALL,
@@ -417,13 +419,28 @@ typedef enum {
     TEXT_POWER_TO_ALL_ASK,
     TEXT_POWER_TO_ALL_DONE,
     TEXT_APRS_SEND_NOW,
+    TEXT_BOOT_PIN,
+    TEXT_LOCK_PIN,
+    TEXT_CHANGE_PIN,
+    TEXT_UI_ENTER_PIN,
+    TEXT_UI_NEW_PIN,
+    TEXT_UI_CONFIRM_PIN,
+    TEXT_UI_WRONG_PIN,
+    TEXT_UI_PIN_MISMATCH,
+    TEXT_UI_PIN_DIGITS,
+    TEXT_UI_PIN_WAIT,
+    TEXT_UI_ANY_KEY_UNLOCK,
+    TEXT_CALLER_PLACE,
+    TEXT_THEME,
+    TEXT_LANGUAGE_MENU,
     TEXT_COUNT
 } text_id_t;
 
 const char *text(text_id_t id); // in the language of the settings (text.c)
-bool text_is_spanish(void);
+bool text_is_chinese(void);
 
 extern const char *const text_en[TEXT_COUNT];
+extern const char *const text_zh[TEXT_COUNT];
 extern const char *const text_es[TEXT_COUNT];
 
 #endif

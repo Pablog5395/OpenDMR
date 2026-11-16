@@ -111,7 +111,14 @@ static bool capture(const ui_event_t *ev, int32_t selected)
             }
             return true;
         case UI_EVENT_KEY_RELEASE:
-            if ((ev->key != state.key) || ev->long_press) {
+            if (ev->key != state.key) {
+                return false;
+            }
+            if (ev->long_press) {
+                if (is_side(ev->key)) {
+                    take(selected, true); // a side key held alone: its long press (acts on the release, keymap.c)
+                    return true;
+                }
                 return false;
             }
             if (ev->key == UI_KEY_RED) {
@@ -181,7 +188,7 @@ static void draw(void)
             break;
         }
 
-        list_view_row_t data = {.icon = ICONS_COUNT, .selected = ((at + 1) == selected)};
+        list_view_row_t data = {.icon = ICONS_COUNT, .selected = ((at + 1) == selected), .small_value = true};
 
         if ((at + 1) == (ROWS - 1)) {
             data.name = text(TEXT_KEY_DEFAULTS);

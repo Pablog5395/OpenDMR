@@ -43,6 +43,7 @@
 
 bool flash_init(void);        // true for a 25Q128 (Winbond 0x4018, Puya PY25Q128HA 0x2018)
 uint32_t flash_part_id(void); // JEDEC memory type and capacity, e.g. 0x4018
+uint64_t flash_unique_id(void); // the chip's own ID, set at the factory: this radio
 
 bool flash_read_raw(uint32_t address, uint8_t *data, uint32_t length);
 bool flash_write_sector_raw(uint32_t address, const uint8_t *data); // a whole 4 KB sector

@@ -55,6 +55,8 @@
 #include "serial_update.h"
 #include "dmr_compat.h"
 #include "cps_screen.h"
+#include "security.h"
+#include "extra_options.h"
 
 #define CPS_REQUEST_IDLE_MS   5   // a request without a known length is complete after this silence
 #define CPS_REQUEST_LOST_MS   200 // a debug request with a known length that stopped short is handled anyway
@@ -70,10 +72,10 @@
 #define CPS_WRITE_SECTOR      3  // 'X': the buffer to the flash
 #define CPS_WRITE_EEPROM      4  // 'X': the EEPROM, in the flash sectors on the DM-32
 #define CPS_CALIBRATION       0x10000    // the OpenGD77 calibration: not this radio's (the factory one is read only)
-#define DMR_IDS_AREA_1        0x30000    // the DMR ID database (dmr_ids.c): its header and first records
-#define DMR_IDS_AREA_1_END    0x70000
-#define DMR_IDS_AREA_2        0x8F000    // the rest (from 0x8F400 or 0xB8000)
-#define DMR_IDS_AREA_2_END    0x100000
+#define DMR_IDS_AREA_1        0x50000    // the DMR ID database (dmr_ids.c): its header and first records (0x20000 +
+#define DMR_IDS_AREA_1_END    0x90000    // 0x30000: the CPS adds 0x20000 to its flash addresses on the DM-32)
+#define DMR_IDS_AREA_2        0xAF000    // the rest (from 0xAF400 or 0xD8000)
+#define DMR_IDS_AREA_2_END    FLASH_WINDOW_SIZE // as far as the CPS writes: init again after its last sector
 #define CPS_RESTART_DELAY_MS  500        // the reply goes out first
 #define UPDATE_RADIO_OFF_MS   300        // the radio task's time to turn the receiver off before an update
 
@@ -90,6 +92,16 @@ static volatile uint32_t used_ms = 0;        // when the last one was
 static volatile uint32_t quiet_until = 0;
 static volatile bool restart_asked = false;
 static volatile bool update_asked = false;
+
+// 'D' 'S': a faster speed (tools/ids/id_db.py), kept once the PC's 'D' 'Y' has come at it; back to 115200 when that
+// doesn't come, or when the link has been quiet a while (the CPS starts at 115200)
+#define SPEED_CONFIRM_MS 2000
+#define SPEED_IDLE_MS    5000
+#define SPEED_MIN_DIVISOR 4 // 1.3 Mbaud
+static uint32_t speed_asked = 0; // the divisor to go to after this reply
+static bool fast = false;
+static bool fast_confirmed = false;
+static uint32_t fast_since = 0;
 
 // The CPS write (OpenDM32 functions/cps.c cpsHandleWriteCommand()): the sector being written, SECTOR_NONE,
 // or SECTOR_IGNORED: the OpenGD77 calibration (accepted, not written)
@@ -281,6 +293,8 @@ static uint32_t handle_write(void)
             } else if ((write_sector >= 0) && (((uint32_t)write_sector * FLASH_SECTOR_SIZE) < FLASH_WINDOW_SIZE)) {
                 uint32_t address = (uint32_t)write_sector * FLASH_SECTOR_SIZE;
 
+                security_keep_block(address, sector_buffer); // the CPS can't change the lock PIN
+                extra_options_keep_block(address, sector_buffer);
                 ok = flash_write_sector_raw(FLASH_WINDOW_BASE + address, sector_buffer);
                 if (ok && (((address >= DMR_IDS_AREA_1) && (address < DMR_IDS_AREA_1_END)) ||
                            ((address >= DMR_IDS_AREA_2) && (address < DMR_IDS_AREA_2_END)))) {
@@ -362,6 +376,62 @@ static uint32_t handle_update(void)
     return 11;
 }
 
+// 'D' 'S' divisor(2): the speed after the reply 'D' 'S' (1 ok); 'D' 'Y' at it keeps it, reply 'D' 'Y'
+// 'D' 'K' address(4): the CRC-32 (zlib's) of the 4 KB sector of the window there, reply 'D' 'K' crc(4) (big endian)
+static uint32_t handle_speed(void)
+{
+    uint32_t divisor = ((uint32_t)request[2] << 8) | request[3];
+    bool ok = (divisor >= SPEED_MIN_DIVISOR) && (divisor <= uart0_divisor(115200));
+
+    if (ok) {
+        speed_asked = divisor;
+    }
+    reply[0] = 'D';
+    reply[1] = 'S';
+    reply[2] = ok ? 1 : 0;
+    return 3;
+}
+
+static uint32_t handle_sector_crc(void)
+{
+    uint32_t address = request_u32(2) & ~(FLASH_SECTOR_SIZE - 1);
+    uint32_t crc = 0xFFFFFFFF;
+    uint8_t buffer[256];
+    bool ok = (address < FLASH_WINDOW_SIZE);
+
+    for (uint32_t at = 0; ok && (at < FLASH_SECTOR_SIZE); at += sizeof(buffer)) {
+        ok = flash_read(address + at, buffer, sizeof(buffer));
+        for (uint32_t i = 0; ok && (i < sizeof(buffer)); i++) {
+            crc ^= buffer[i];
+            for (int bit = 0; bit < 8; bit++) {
+                crc = (crc >> 1) ^ (0xEDB88320 & (0 - (crc & 1)));
+            }
+        }
+    }
+    if (!ok) {
+        reply[0] = '-';
+        return 1;
+    }
+    crc = ~crc;
+    reply[0] = 'D';
+    reply[1] = 'K';
+    for (int i = 0; i < 4; i++) {
+        reply[2 + i] = (uint8_t)(crc >> (24 - (8 * i)));
+    }
+    return 6;
+}
+
+static void speed_check(void)
+{
+    uint32_t now = systime_get_ms();
+
+    if (fast && ((!fast_confirmed && ((now - fast_since) >= SPEED_CONFIRM_MS)) ||
+                 (fast_confirmed && ((now - used_ms) >= SPEED_IDLE_MS)))) {
+        fast = false;
+        uart0_set_divisor(uart0_divisor(115200));
+    }
+}
+
 // Everything stops for good: no receiving (the channel off, the speaker muted), the LCD bus kept from the keypad,
 // then the update with the interrupts off (no keys, knob, PTT or power switch any more) until it restarts the radio
 static void update(void)
@@ -397,7 +467,8 @@ void cable_link_handle_pending(bool from_monitor)
 
     uint32_t reply_length;
 
-    switch (request[0]) {
+    // secured: nothing at all (security.h), not even the update
+    switch (security_secured() ? 0 : request[0]) {
         case 'R':
             reply_length = handle_read();
             break;
@@ -415,6 +486,15 @@ void cable_link_handle_pending(bool from_monitor)
         case 'D':
             if (request[1] == 'U') {
                 reply_length = handle_update();
+            } else if (request[1] == 'S') {
+                reply_length = handle_speed();
+            } else if (request[1] == 'Y') {
+                fast_confirmed = fast;
+                reply[0] = 'D';
+                reply[1] = 'Y';
+                reply_length = 2;
+            } else if (request[1] == 'K') {
+                reply_length = handle_sector_crc();
             } else {
                 reply_length = debug_handle_command(request, reply, CABLE_LINK_BUFFER_SIZE);
             }
@@ -429,6 +509,13 @@ void cable_link_handle_pending(bool from_monitor)
     (void)from_monitor;
     used_ms = systime_get_ms();
     used = true;
+    if (speed_asked) {
+        uart0_set_divisor(speed_asked);
+        speed_asked = 0;
+        fast = true;
+        fast_confirmed = false;
+        fast_since = systime_get_ms();
+    }
 
     request_length = 0;
     handling = false;
@@ -450,8 +537,10 @@ static void cable_link_task(void *arg)
     (void)arg;
 
     for (;;) {
+        speed_check();
         if (request_length == 0) {
-            ulTaskNotifyTake(pdTRUE, portMAX_DELAY); // until a byte comes
+            // until a byte comes; at a faster speed, now and then too (back to 115200 when quiet)
+            ulTaskNotifyTake(pdTRUE, fast ? pdMS_TO_TICKS(250) : portMAX_DELAY);
         } else {
             cable_link_handle_pending(false);
             if (update_asked) {

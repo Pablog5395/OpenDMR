@@ -41,6 +41,8 @@
 #include "options.h"
 #include "list_screen.h"
 #include "gps.h"
+#include "security.h"
+#include "pin_screen.h"
 
 #define KEY_TIMER_MIN      1  // 100 ms units; never 0 (the main firmware: else the watchdog may kick in)
 #define KEY_TIMER_MAX      90 // 9 s
@@ -227,17 +229,9 @@ static void apo_with_rf_change(int direction, uint8_t modifiers)
     }
 }
 
-static void apo_with_rf_select(void)
-{
-    if (settings.apo != 0) {
-        settings.bitfield_options ^= SETTINGS_BIT_APO_WITH_RF;
-    }
-}
-
 static const ui_custom_t apo_with_rf = {
     .format = apo_with_rf_format,
     .change = apo_with_rf_change,
-    .select = apo_with_rf_select,
 };
 
 /* Satellite: manual / auto */
@@ -255,15 +249,9 @@ static void satellite_change(int direction, uint8_t modifiers)
                                                 : (settings.bitfield_options & ~SETTINGS_BIT_SATELLITE_AUTO);
 }
 
-static void satellite_select(void)
-{
-    settings.bitfield_options ^= SETTINGS_BIT_SATELLITE_AUTO;
-}
-
 static const ui_custom_t satellite = {
     .format = satellite_format,
     .change = satellite_change,
-    .select = satellite_select,
 };
 
 /* GPS: none (not detected, can't be changed), off, on, NMEA (sentences out of the cable) */
@@ -338,10 +326,76 @@ static const ui_custom_t menu_places = {
     .change = menu_places_change,
 };
 
+/* The power-on PIN, the lock PIN (security.h): turning one on without a PIN asks for one first */
+
+static void on_off_format(bool on, char *buffer, size_t size)
+{
+    snprintf(buffer, size, "%s", text(on ? TEXT_ON : TEXT_OFF));
+}
+
+static void pin_switch(bool on, void (*set)(bool on), void *set_screen)
+{
+    if (on && !security_has_pin()) {
+        ui_push(&pin_screen, set_screen);
+    } else {
+        set(on);
+    }
+}
+
+static void boot_pin_format(char *buffer, size_t size)
+{
+    on_off_format(security_boot_pin_on(), buffer, size);
+}
+
+static void boot_pin_change(int direction, uint8_t modifiers)
+{
+    (void)modifiers;
+    pin_switch(direction > 0, security_set_boot_pin, PIN_SCREEN_SET_BOOT);
+}
+
+static const ui_custom_t boot_pin = {
+    .format = boot_pin_format,
+    .change = boot_pin_change,
+};
+
+static void lock_pin_format(char *buffer, size_t size)
+{
+    on_off_format(security_lock_pin_on(), buffer, size);
+}
+
+static void lock_pin_change(int direction, uint8_t modifiers)
+{
+    (void)modifiers;
+    pin_switch(direction > 0, security_set_lock_pin, PIN_SCREEN_SET_LOCK);
+}
+
+static const ui_custom_t lock_pin = {
+    .format = lock_pin_format,
+    .change = lock_pin_change,
+};
+
+static void change_pin_format(char *buffer, size_t size)
+{
+    snprintf(buffer, size, "%s", security_has_pin() ? "****" : text(TEXT_NONE));
+}
+
+static void change_pin_select(void)
+{
+    ui_push(&pin_screen, PIN_SCREEN_SET);
+}
+
+static const ui_custom_t change_pin = {
+    .format = change_pin_format,
+    .select = change_pin_select,
+};
+
 static const ui_item_t general_options_items[] = {
     {TEXT_KEY_LONG, ICONS_COUNT, UI_ITEM_CUSTOM, &key_long, NULL},
     {TEXT_KEY_REPEAT, ICONS_COUNT, UI_ITEM_CUSTOM, &key_repeat, NULL},
     {TEXT_AUTO_LOCK, ICONS_COUNT, UI_ITEM_CUSTOM, &autolock, NULL},
+    {TEXT_LOCK_PIN, ICONS_COUNT, UI_ITEM_CUSTOM, &lock_pin, NULL},
+    {TEXT_BOOT_PIN, ICONS_COUNT, UI_ITEM_CUSTOM, &boot_pin, NULL},
+    {TEXT_CHANGE_PIN, ICONS_COUNT, UI_ITEM_CUSTOM, &change_pin, NULL},
     {TEXT_HOTSPOT_MODE, ICONS_COUNT, UI_ITEM_CUSTOM, &hotspot, NULL},
     {TEXT_BATTERY_CALIBRATION, ICONS_COUNT, UI_ITEM_CUSTOM, &battery_cal, NULL},
     {TEXT_ECO_LEVEL, ICONS_COUNT, UI_ITEM_NUMBER, &eco_level, NULL},
