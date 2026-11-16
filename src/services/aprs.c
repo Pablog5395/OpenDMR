@@ -246,24 +246,14 @@ static uint32_t config_frequency(const codeplug_aprs_config_t *c)
            ((uint32_t)c->tx_freq[2] << 16) | ((uint32_t)c->tx_freq[3] << 24);
 }
 
-// The QSY information of the CPS's "Transmit QSY" (flags bit 2): the frequency of the configuration after the comment,
-// as the stock firmware sends it ("144.390MHz", which aprs.fi reads as the frequency the station listens on)
-static void put_qsy(const codeplug_aprs_config_t *c)
-{
-    uint32_t frequency = config_frequency(c);
-
-    if ((c->flags & 0x04) && (frequency != 0)) {
-        char text[16];
-
-        snprintf(text, sizeof(text), " %u.%03uMHz", (unsigned)(frequency / 100000UL),
-                 (unsigned)((frequency / 100UL) % 1000UL));
-        put_string(text);
-    }
-}
-
+// The QSY frequency (APRS spec, aprs.org/info/freqspec.txt): "FFF.FFFMHz" in the first 10 characters of the comment,
+// followed by the comment text; aprs.fi reads it as the frequency the station listens on. Set when "Transmit QSY"
+// (flags bit 2) is ticked and the CPS's frequency ("Frec TX", 10 Hz units) is not zero.
 static void put_payload(const char *lat, const char *lon, const char *course_speed)
 {
     const codeplug_aprs_config_t *c = &aprs.config;
+    uint32_t qsy = config_frequency(c);
+    bool has_qsy = (c->flags & 0x04) && (qsy != 0);
     uint8_t symbol = (uint8_t)(c->icon_index + '!');
     uint8_t table = (c->icon_table == 0) ? '/' : '\\';
     char comment[sizeof(c->comment) + 1];
@@ -292,8 +282,20 @@ static void put_payload(const char *lat, const char *lon, const char *course_spe
             comment[i] = 0;
         }
     }
-    put_string(comment);
-    put_qsy(c);
+    if (has_qsy) {
+        char qsy_text[11];
+        const char *text = comment;
+
+        snprintf(qsy_text, sizeof(qsy_text), "%3u.%03uMHz", (unsigned)(qsy / 100000UL),
+                 (unsigned)((qsy / 100UL) % 1000UL));
+        put_string(qsy_text);
+        if (*text != 0) {
+            put_char(' ', true);
+        }
+        put_string(text);
+    } else {
+        put_string(comment);
+    }
 }
 
 static void put_crc(void)
