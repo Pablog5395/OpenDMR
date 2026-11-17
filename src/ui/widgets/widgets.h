@@ -65,6 +65,8 @@ typedef struct {
 void status_bar_draw(const status_bar_data_t *data);
 
 // ---- Channel panel: zone, channel name, frequency, and a line with an icon (talk group, tone) ----
+#define CHANNEL_PANEL_RECENT 2 // the last heard callers shown under the line
+
 typedef struct {
     const char *zone; // e.g. "All Channels  12"
     const char *name;
@@ -73,6 +75,9 @@ typedef struct {
     const char *line_text;
     const char *line_detail; // after line_text, in the label colour; NULL: none
     const char *line_right;  // right aligned on the line, in the label colour (P25: the NAC); NULL: none
+    const char *recent[CHANNEL_PANEL_RECENT];      // the last heard callers ("EA1ABC John"); NULL: no row
+    const char *recent_when[CHANNEL_PANEL_RECENT]; // right aligned on the row, e.g. "3 min"
+    uint8_t recent_count;                          // rows drawn, 0 .. CHANNEL_PANEL_RECENT
 } channel_panel_data_t;
 
 void channel_panel_draw(const channel_panel_data_t *data);

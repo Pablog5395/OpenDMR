@@ -59,6 +59,8 @@
 #include "tx_screen.h"
 #include "sound.h"
 #include "dmr.h"
+#include "last_heard.h"
+#include "last_heard_format.h"
 #include "systime.h"
 #include "scan.h"
 #include "dual_watch.h"
@@ -102,6 +104,8 @@ static bool reversed = false;      // RX and TX frequencies swapped (reverse rep
 static bool squelch_shown = false; // a squelch change is shown for a moment
 static int direct_channel = 0;     // a channel number being typed
 static uint32_t squelch_shown_until;
+static char recent_name[CHANNEL_PANEL_RECENT][LAST_HEARD_TEXT_SIZE]; // not on the UI task stack
+static char recent_when[CHANNEL_PANEL_RECENT][16];
 
 /* The scan (scan.c; uiChannelMode.c scanSearchForNextChannel()): the zone's channels in turn, skipping the ones
    marked (zone skip, or all-channels skip in the all channels zone) and the ones skipped this time (*) */
@@ -760,6 +764,7 @@ static void draw(void)
     char cc_text[16];
     char detail[24];
     char squelch[24];
+    uint32_t now = systime_get_ms();
     dmr_call_t call;
     p25_call_t p25;
 
@@ -848,6 +853,20 @@ static void draw(void)
     }
     if (reversed && (bottom.right == NULL)) {
         bottom.right = text(TEXT_UI_REVERSED);
+    }
+
+    // The last heard callers: the TG and the timeslot are already on the screen, so only who and how long ago
+    for (int i = 0; i < CHANNEL_PANEL_RECENT; i++) {
+        last_heard_entry_t recent;
+
+        if (!last_heard_get(i, &recent)) {
+            break;
+        }
+        last_heard_format_caller(&recent, recent_name[i], sizeof(recent_name[i]));
+        last_heard_format_elapsed(&recent, now, recent_when[i], sizeof(recent_when[i]));
+        panel.recent[i] = recent_name[i];
+        panel.recent_when[i] = recent_when[i];
+        panel.recent_count++;
     }
 
     bottom.item1 = power_text();
