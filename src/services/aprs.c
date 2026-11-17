@@ -60,11 +60,6 @@
 #define DECAY_RESET_M      15.0
 #define BEARING_INVALID    UINT16_MAX
 #define LOCATION_UNSET     0x7F000000UL // settings.location_lat never set
-// The channel's flags a beacon transmission needs (codeplug.h flag4): the beacon is FM, so no VOX, and it has to
-// transmit even from a channel set receive only
-#define BEACON_FLAG4_VOX     0x40
-#define BEACON_FLAG4_RX_ONLY 0x04
-
 #define DEG_TO_RAD   0.017453292519943295
 #define RAD_TO_DEG   57.29577951308232
 #define MPS_PER_KNOT 0.51444444
@@ -486,7 +481,7 @@ static uint16_t build_frame(const location_t *previous, const location_t *curren
         }
     }
 
-    put_flags(16);
+    put_flags(32);
     ax25.crc = 0xFFFF; // the CRC over the data only
     put_header(call);
     put_payload(lat_text, lon_text, has_course ? course_speed : NULL);
@@ -554,9 +549,6 @@ static bool position_valid(void)
 
 // aprsBeaconingSendBeacon(): true when the frame went to the radio task. forced: SK1 + 3 (or the menu item): it sends
 // in any mode but OFF, not only in Manual / PTT, and the caller gives the error tone (once)
-static codeplug_channel_t aprs_saved_channel; // the channel before a beacon on the configuration's frequency
-static bool aprs_channel_saved;
-
 // A call being received on a DMR or P25 channel: the beacon waits (going to FM for it would cut the call)
 static bool digital_call_active(void)
 {
@@ -584,8 +576,6 @@ static bool send_beacon(bool forced)
     bool manual = forced || (aprs.s.mode == MODE_PTT) || (aprs.s.mode == MODE_MANUAL);
     codeplug_channel_t channel;
     uint32_t frequency;
-    bool retuned = false;
-    bool ok = false;
 
     if (radio_is_scanning() || !radio_get_channel(&channel) || radio_is_transmitting() ||
         (aprs.s.mode == MODE_OFF) || !aprs.enabled || aprs.waiting) {
@@ -611,57 +601,33 @@ static bool send_beacon(bool forced)
     if (digital_call_active()) {
         return false;
     }
-    // The beacon goes out in FM on the configuration's own frequency ("Frec TX" of the CPS) when it has one, whatever
-    // the channel is: on DMR, P25, AM or USB the radio goes to FM for it and back to the channel once it is sent (the
-    // channel, with its mode, is put back when the radio task says it sent the frame). A channel that isn't FM has no
-    // frequency of its own for the beacon: it needs the configuration's
+    // The beacon goes out in FM on the configuration's own frequency ("Frec TX" of the CPS) when it has one. The
+    // radio task tunes for the frame and comes back: this task never touches the channel (the UI's), so no event can
+    // send the beacon on the channel's frequency instead (or undo a channel change while it is out). A channel that
+    // isn't FM has no frequency of its own for the beacon: it needs the configuration's.
     frequency = config_frequency(&aprs.config);
     if ((channel.mode != CODEPLUG_MODE_FM) && (frequency == 0)) {
         return false;
     }
-    if (frequency == 0) {
-        frequency = channel.tx_freq;
-    }
-    if ((channel.mode != CODEPLUG_MODE_FM) || (frequency != channel.rx_freq) || (frequency != channel.tx_freq)) {
-        codeplug_channel_t beacon_channel;
-
-        memcpy(&beacon_channel, &channel, sizeof(beacon_channel));
-        beacon_channel.rx_freq = frequency;
-        beacon_channel.tx_freq = frequency;
-        beacon_channel.mode = CODEPLUG_MODE_FM; // the beacon is AFSK in FM
-        beacon_channel.flag4 &= (uint8_t)~(BEACON_FLAG4_RX_ONLY | BEACON_FLAG4_VOX);
-        beacon_channel.rx_tone = CODEPLUG_CSS_NONE;
-        beacon_channel.tx_tone = CODEPLUG_CSS_NONE;
-        radio_set_channel(&beacon_channel);
-        retuned = true;
-    }
     {
         uint16_t bits = build_frame(&aprs.previous, &aprs.current);
 
-        if (radio_aprs_send(ax25.buffer, bits, (aprs.config.flags & 0x01) != 0)) {
-            aprs.waiting = true;
-            aprs.waiting_auto = !manual;
-            aprs.sending = aprs.current;
-            if (aprs.s.mode == MODE_PTT) {
-                aprs.next_beacon_ms = systime_get_ms() + interval_ms();
-                aprs.next_beacon_running = true;
-            }
-            if (manual) {
-                aprs.previous = aprs.current;
-            }
-            ok = true;
+        if (!radio_aprs_send(ax25.buffer, bits, (aprs.config.flags & 0x01) != 0, frequency)) {
+            return false;
+        }
+        aprs.waiting = true;
+        aprs.waiting_auto = !manual;
+        aprs.sending = aprs.current;
+        if (aprs.s.mode == MODE_PTT) {
+            aprs.next_beacon_ms = systime_get_ms() + interval_ms();
+            aprs.next_beacon_running = true;
+        }
+        if (manual) {
+            aprs.previous = aprs.current;
         }
     }
 
-    if (retuned) {
-        if (ok) {
-            aprs_saved_channel = channel;
-            aprs_channel_saved = true;
-        } else {
-            radio_set_channel(&channel);
-        }
-    }
-    return ok;
+    return true;
 }
 
 static bool corner_pegging(double *speed_mps, uint32_t *time_diff)
@@ -731,10 +697,6 @@ static void decay(bool reset_it)
 // The frame that was with the radio task: done
 static void sent(bool ok)
 {
-    if (aprs_channel_saved) {
-        radio_set_channel(&aprs_saved_channel); // the beacon went out: back to the channel it was on
-        aprs_channel_saved = false;
-    }
     aprs.waiting = false;
     if (!aprs.waiting_auto) {
         if (!ok) {
@@ -838,10 +800,9 @@ void aprs_tick(void)
         aprs.enabled = (aprs.s.mode != MODE_OFF); // aprsBeaconingStart() / Stop()
         reset(aprs.config_index);
     }
-    // The configuration is the channel's on an FM channel; another mode (DMR, P25, AM, USB) keeps the one of the last
-    // FM channel, so the beacon can go out from any channel on that configuration's frequency
-    if (radio_get_channel(&channel) && (channel.mode == CODEPLUG_MODE_FM) &&
-        (channel.aprs_config_index != aprs.config_index)) {
+    // The configuration is the channel's own, in every mode: a channel beacons only if it names an APRS
+    // configuration (0: none), and that configuration's frequency is where the beacon goes
+    if (radio_get_channel(&channel) && (channel.aprs_config_index != aprs.config_index)) {
         reset(channel.aprs_config_index);
     }
     if (aprs.waiting && !radio_aprs_busy()) {

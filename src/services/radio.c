@@ -335,7 +335,9 @@ static void receive_on(void)
 
 static void eco_reset(void);
 
-static void apply_channel(void)
+// Set the radio up on a channel (the channel the task uses, and the hardware). The radio task calls it with the
+// requested channel, or with a temporary one for a beacon (radio_aprs_send()) while the requested channel stays.
+static void tune_channel(const codeplug_channel_t *next, bool valid)
 {
     const factory_cal_t *cal = factory_cal_get();
     bool was_analog = is_analog();
@@ -349,9 +351,10 @@ static void apply_channel(void)
     }
 
     taskENTER_CRITICAL();
-    memcpy(&channel, &requested, sizeof(channel));
-    has_channel = requested_valid;
-    channel_pending = false;
+    if (valid) {
+        memcpy(&channel, next, sizeof(channel));
+    }
+    has_channel = valid;
     taskEXIT_CRITICAL();
 
     // The FM squelch of the channel left; in DMR the engine has the speaker and the LED, and the FD6818 audio register
@@ -421,6 +424,24 @@ static void apply_channel(void)
     }
     vox_setup();
     post_signal();
+}
+
+// trxCheckFrequencyInAmateurBand(): off, the legacy default bands (also 220 MHz), the CPS bands (VHF, UHF)
+static bool in_band_limits(uint32_t frequency);
+
+// The channel the UI asked for (radio_set_channel())
+static void apply_channel(void)
+{
+    codeplug_channel_t next;
+    bool valid;
+
+    taskENTER_CRITICAL();
+    memcpy(&next, &requested, sizeof(next));
+    valid = requested_valid;
+    channel_pending = false;
+    taskEXIT_CRITICAL();
+
+    tune_channel(valid ? &next : NULL, valid);
 }
 
 // The shown signal: the average of the last readings, moved only by SIGNAL_MOVE or more (the stock firmware averages
@@ -912,13 +933,61 @@ static void dmr_transmit_check(void)
    50 ms of carrier before the frame */
 
 #define APRS_COLLISION_MS 2000
-#define APRS_TX_DELAY_MS  50
+#define APRS_TX_DELAY_MS  300
 #define APRS_TONE_GAIN    66 // the UV-K5 firmware's tone level
 
 static const uint8_t *volatile aprs_bits = NULL; // asked, the radio task sends it
 static volatile uint16_t aprs_bit_count;
 static volatile bool aprs_baud300;
 static volatile bool aprs_sent;
+static volatile uint32_t aprs_frequency; // 0: on the channel; else the beacon's own frequency
+static volatile bool aprs_tx_ok;
+static codeplug_channel_t aprs_saved; // the channel the user had, while tuned for a beacon
+static bool aprs_tuned;
+
+// The beacon's own frequency, when it has one: FM, wide, without the channel's tones or VOX, for that frame only. The
+// channel the user selected stays in requested (and stays the one the UI shows); this task tunes away and back.
+static bool aprs_tune(void)
+{
+    codeplug_channel_t beacon;
+
+    if (aprs_frequency == 0) {
+        return true;
+    }
+    if (!has_channel) {
+        return false;
+    }
+    memcpy(&aprs_saved, &channel, sizeof(aprs_saved));
+    memcpy(&beacon, &channel, sizeof(beacon));
+    beacon.rx_freq = aprs_frequency;
+    beacon.tx_freq = aprs_frequency;
+    beacon.mode = CODEPLUG_MODE_FM;
+    beacon.flag4 &= (uint8_t)~(FLAG4_VOX | FLAG4_RX_ONLY);
+    // the beacon keeps the channel's width, as the fork did before the frequency handoff (a change to test on its own)
+    beacon.rx_tone = CODEPLUG_CSS_NONE;
+    beacon.tx_tone = CODEPLUG_CSS_NONE;
+    aprs_tuned = true;
+    tune_channel(&beacon, true);
+    return true;
+}
+
+// Back to the channel the user had. A channel change asked for during the beacon (channel_pending) is left for the
+// radio task, which applies it next: the user's channel is never put back over a newer one.
+static void aprs_restore(void)
+{
+    bool pending;
+
+    if (!aprs_tuned) {
+        return;
+    }
+    aprs_tuned = false;
+    taskENTER_CRITICAL();
+    pending = channel_pending;
+    taskEXIT_CRITICAL();
+    if (!pending) {
+        tune_channel(&aprs_saved, true);
+    }
+}
 
 static void aprs_transmit(void)
 {
@@ -929,10 +998,13 @@ static void aprs_transmit(void)
     uint32_t start;
 
     for (uint32_t waited = 0; (carrier || speaker) && (waited < APRS_COLLISION_MS); waited += SAMPLE_MS) {
+        if (channel_pending) {
+            break; // the user moved: no beacon here
+        }
         vTaskDelay(pdMS_TO_TICKS(SAMPLE_MS));
         squelch_check();
     }
-    if (carrier || speaker || tx_wanted || (radio_tx_check() != RADIO_TX_OK)) {
+    if (carrier || speaker || tx_wanted || !aprs_tx_ok || channel_pending) {
         aprs_sent = false;
         aprs_bits = NULL;
         return;
@@ -958,14 +1030,29 @@ static void aprs_transmit(void)
     aprs_bits = NULL;
 }
 
-bool radio_aprs_send(const uint8_t *bits, uint16_t bit_count, bool baud300)
+// frequency: 0 sends on the channel (FM); else the task tunes FM to it for the frame and comes back. The channel must
+// not be receive only, and it has to name an APRS configuration (aprs.c), which decides in every mode.
+bool radio_aprs_send(const uint8_t *bits, uint16_t bit_count, bool baud300, uint32_t frequency)
 {
-    if (aprs_bits || !requested_valid || (requested.mode != CODEPLUG_MODE_FM) || transmitting || tx_wanted ||
-        (radio_tx_check() != RADIO_TX_OK)) {
+    codeplug_channel_t c;
+
+    if (aprs_bits || transmitting || tx_wanted || channel_pending || scanning || !radio_get_channel(&c) ||
+        (c.flag4 & FLAG4_RX_ONLY)) {
+        return false;
+    }
+    if (frequency != 0) {
+        // The beacon's own frequency: the radio must be able to transmit there
+        if (!codeplug_frequency_can_transmit(frequency) || !in_band_limits(frequency)) {
+            return false;
+        }
+    } else if ((c.mode != CODEPLUG_MODE_FM) || !codeplug_frequency_can_transmit(c.tx_freq) ||
+               !in_band_limits(c.tx_freq)) {
         return false;
     }
     aprs_bit_count = bit_count;
     aprs_baud300 = baud300;
+    aprs_frequency = frequency;
+    aprs_tx_ok = true;
     aprs_bits = bits;
     if (task) {
         xTaskNotifyGive(task);
@@ -1239,8 +1326,17 @@ static void RAM_CODE radio_task(void *arg)
             }
         }
         full_pass = xTaskGetTickCount();
-        if (aprs_bits && !dmr_on && !transmitting) {
-            aprs_transmit();
+        // A frame was asked for: tune for it first (on DMR or P25 this leaves the digital engine), send it, and go
+        // back to the channel the user had
+        if (aprs_bits && !transmitting && !scanning) {
+            if (aprs_tune()) {
+                aprs_transmit();
+            } else {
+                aprs_sent = false;
+                aprs_bits = NULL;
+            }
+            aprs_restore();
+            aprs_frequency = 0;
         }
         if (p25_on) {
             p25_transmit_check();
