@@ -240,6 +240,8 @@ frequency comes the target transmitted to (a group or an individual call), with 
   - the talk group (or whom a private call is for), the S meter, the bottom bar as on the screen under it.
   The caller shows within about 0.7 s. Names come from the contacts, the DMR ID database, or the caller's talker alias.
 - Calls go into Last heard. **SK2** calls back the talk group just heard (a private call: the caller).
+- Under the talk group line, the channel screen shows the last two callers of Last heard (callsign and name, how long
+  ago); the talk group and timeslot are already on the screen, so they are not repeated.
 - FM: audio when the squelch opens; ▶ ◀ change the squelch, shown on the screen for a moment. 0 % is always open
   (the noise is heard); a receive tone still applies.
 

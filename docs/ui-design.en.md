@@ -133,8 +133,9 @@ segments.
 ![Channel](manual/en/channel-idle.png)
 
 - Status bar: signal bars, `TS1`, `CC1`, time, battery;
-- Main area: zone and position (`Zone1 1/1`) → channel name (large) → frequency → line → talk group →
-  compact S meter (always shown in receive, the value turns green when the squelch opens);
+- Main area: zone and position (`Zone1 1/1`) → channel name (large) → frequency → line → talk group → the last two
+  callers of Last heard (callsign and name, how long ago) → compact S meter (always shown in receive, the value turns
+  green when the squelch opens);
 - Bottom bar: `DMR` chip (accent), power, bandwidth.
 
 ### 5.2 VFO

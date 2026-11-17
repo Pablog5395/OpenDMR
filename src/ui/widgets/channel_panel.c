@@ -26,9 +26,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <stdio.h>
+#include <string.h>
 #include "widgets.h"
 #include "draw.h"
 #include "fonts.h"
+#include "text.h"
 
 // Layout of docs/ui-design.md 5.1, in LCD pixels. The zone line starts at y 44: the OpenGD77 header redraw clears and sends
 // the LCD rows above 40.
@@ -37,6 +40,37 @@
 #define FREQUENCY_Y 110
 #define SEPARATOR_Y 146
 #define LINE_Y      160
+// The last heard callers under the talk group line, in the free area before the S meter (250). The title is the last
+// heard screen's ("Last heard"), so no new words to translate.
+#define RECENT_TITLE_Y    186
+#define RECENT_Y          206
+#define RECENT_ROW_HEIGHT 22
+
+// The text cut to the width, "..." at its end then (whole UTF-8 characters off)
+static void draw_fitted(int32_t x, int32_t y, const char *text, const font_t *font, int32_t width,
+                        theme_colour_t colour)
+{
+    char shown[96];
+    size_t length;
+
+    snprintf(shown, sizeof(shown), "%s", text);
+    if (font_text_width(font, shown) > width) {
+        length = strlen(shown);
+        while (length > 0) {
+            do {
+                length--;
+            } while ((length > 0) && ((shown[length] & 0xC0) == 0x80));
+            while ((length > 0) && (shown[length - 1] == ' ')) {
+                length--;
+            }
+            snprintf(&shown[length], sizeof(shown) - length, "...");
+            if (font_text_width(font, shown) <= width) {
+                break;
+            }
+        }
+    }
+    draw_text(x, y, shown, font, FONT_ALIGN_LEFT, colour);
+}
 
 void channel_panel_draw(const channel_panel_data_t *data)
 {
@@ -76,6 +110,35 @@ void channel_panel_draw(const channel_panel_data_t *data)
         if (data->line_right) {
             draw_text(FB_WIDTH - WIDGET_MARGIN, LINE_Y + 2, data->line_right, &font_roboto17, FONT_ALIGN_RIGHT,
                       THEME_COLOUR_TEXT_LABEL);
+        }
+    }
+
+    // The last heard callers: the talk group and the timeslot are already on the screen, so only who and how long ago
+    if (data->recent_count > 0) {
+        draw_text(x, RECENT_TITLE_Y, text(TEXT_LAST_HEARD), &font_roboto14, FONT_ALIGN_LEFT,
+                  THEME_COLOUR_TEXT_LABEL);
+    }
+    for (uint8_t row = 0; (row < data->recent_count) && (row < CHANNEL_PANEL_RECENT); row++) {
+        const char *name = data->recent[row];
+        const char *when = data->recent_when[row];
+        int32_t y = RECENT_Y + (row * RECENT_ROW_HEIGHT);
+        int32_t lx = x;
+        int32_t right_width;
+        int32_t name_width;
+
+        if (!name) {
+            continue;
+        }
+        lx += icons_draw(lx, y + ((font_roboto17.line_height - ICONS_SIZE) / 2) + 1, ICONS_HISTORY,
+                         THEME_COLOUR_TEXT_LABEL) +
+              8;
+        right_width = when ? font_text_width(&font_roboto17, when) : 0;
+        name_width = (FB_WIDTH - WIDGET_MARGIN) - lx - ((right_width > 0) ? (right_width + 8) : 0);
+        if (name_width > 0) {
+            draw_fitted(lx, y, name, &font_roboto17, name_width, THEME_COLOUR_TEXT);
+        }
+        if (when) {
+            draw_text(FB_WIDTH - WIDGET_MARGIN, y, when, &font_roboto17, FONT_ALIGN_RIGHT, THEME_COLOUR_TEXT_LABEL);
         }
     }
 }
