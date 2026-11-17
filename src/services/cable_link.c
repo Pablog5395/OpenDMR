@@ -95,7 +95,7 @@ static volatile bool update_asked = false;
 
 // 'D' 'S': a faster speed (tools/ids/id_db.py), kept once the PC's 'D' 'Y' has come at it; back to 115200 when that
 // doesn't come, or when the link has been quiet a while (the CPS starts at 115200)
-#define SPEED_CONFIRM_MS 2000
+#define SPEED_CONFIRM_MS 400 // a speed not confirmed: back to 115200 soon, a PC trying the next one waits little
 #define SPEED_IDLE_MS    5000
 #define SPEED_MIN_DIVISOR 4 // 1.3 Mbaud
 static uint32_t speed_asked = 0; // the divisor to go to after this reply
@@ -158,6 +158,12 @@ static uint32_t expected_length(uint32_t received)
     }
     if ((request[0] == 'D') && (received >= 2) && (request[1] == 'F')) {
         return 9 + 1024; // font upload: a gap in the UART must not end it early
+    }
+    if ((request[0] == 'D') && (received >= 2) && ((request[1] == 'k') || (request[1] == 'q'))) {
+        return (request[1] == 'k') ? 5 : 2; // the test interface (app/test_link.c): no wait for the line to go quiet
+    }
+    if ((request[0] == 'D') && (received >= 2) && (request[1] == 'Z')) {
+        return 8; // a packed read (debug.c)
     }
     return 0;
 }

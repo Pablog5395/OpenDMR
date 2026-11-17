@@ -104,15 +104,13 @@ static int direct_channel = 0;     // a channel number being typed
 static uint32_t squelch_shown_until;
 
 /* The scan (scan.c; uiChannelMode.c scanSearchForNextChannel()): the zone's channels in turn, skipping the ones
-   marked (zone skip, or all-channels skip in the all channels zone) and the ones skipped this time (*) */
+   marked (zone skip, or all-channels skip in the all channels zone) and the ones skipped with * (scan_skipped_channels,
+   until cleared in the quick menu or power off) */
 
-#define SCAN_NUISANCE_MAX   16
 #define FLAG4_ZONE_SKIP     0x20
 #define FLAG4_ALL_SKIP      0x10
 
 static scan_t scan = {.swallow_key = UI_KEY_COUNT};
-static int scan_nuisance[SCAN_NUISANCE_MAX];
-static int scan_nuisance_count;
 
 static int zone_size(void)
 {
@@ -280,6 +278,10 @@ static void load(void)
     int number = zone_channel(position);
 
     channel_screen_channel = number;
+    // where the zone is: the channel shown again after power on (written at power off; not the scan's steps)
+    if ((number != 0) && !scan.active) {
+        codeplug_set_last_used_channel(zone.index, (zone.index >= 0) ? position : number);
+    }
     has_channel = (number != 0) && codeplug_get_channel(number, &channel);
     if (!has_channel) {
         memset(&channel, 0, sizeof(channel));
@@ -289,7 +291,8 @@ static void load(void)
 
 static scan_kind_t scan_kind(void)
 {
-    return (channel.mode == CODEPLUG_MODE_DMR) ? SCAN_DMR : (channel.mode == CODEPLUG_MODE_P25) ? SCAN_P25 : SCAN_ANALOG;
+    return (channel.mode == CODEPLUG_MODE_DMR) ? SCAN_DMR : (channel.mode == CODEPLUG_MODE_P25) ? SCAN_P25
+         : (channel.mode == CODEPLUG_MODE_NXDN) ? SCAN_NXDN : SCAN_ANALOG;
 }
 
 static uint32_t scan_dwell(void)
@@ -306,12 +309,7 @@ static bool scan_skipped(int at)
         (c.flag4 & ((zone.index >= 0) ? FLAG4_ZONE_SKIP : FLAG4_ALL_SKIP))) {
         return true;
     }
-    for (int i = 0; i < scan_nuisance_count; i++) {
-        if (scan_nuisance[i] == number) {
-            return true;
-        }
-    }
-    return false;
+    return scan_skipped_has(&scan_skipped_channels, (uint32_t)number);
 }
 
 // The next channel to scan, -1: none left (all skipped)
@@ -338,7 +336,6 @@ static void scan_begin(int direction)
         return;
     }
     scan.direction = (int8_t)direction;
-    scan_nuisance_count = 0;
     at = scan_next();
     if (at < 0) {
         ui_key_beep(SOUND_ERROR);
@@ -611,15 +608,40 @@ static bool direct_channel_key(const ui_event_t *ev)
     return false;
 }
 
+// * held on a scan's channel: its skip flag set in the codeplug (Zone Skip, or All Skip in all channels)
+static bool skip_for_good(int number)
+{
+    codeplug_channel_t c;
+
+    if ((number == 0) || !codeplug_get_channel(number, &c)) {
+        return false;
+    }
+    c.flag4 |= ((zone.index >= 0) ? FLAG4_ZONE_SKIP : FLAG4_ALL_SKIP);
+    return codeplug_write_channel(number, &c);
+}
+
+int channel_screen_scanning(void)
+{
+    return scan_on_signal(&scan) ? 2 : (scan.active ? 1 : 0);
+}
+
+bool channel_screen_lock_out(int number)
+{
+    return skip_for_good(number);
+}
+
 static bool handle_key(const ui_event_t *ev)
 {
     keymap_action_t action;
 
     switch (scan_key(&scan, ev)) {
         case SCAN_KEY_SKIP:
-            if (scan_nuisance_count < SCAN_NUISANCE_MAX) {
-                scan_nuisance[scan_nuisance_count++] = zone_channel(position);
-            }
+            ui_key_beep(scan_skipped_add(&scan_skipped_channels, (uint32_t)zone_channel(position)) ? SOUND_KEY
+                                                                                                  : SOUND_ERROR);
+            (void)keymap_action(ev, KEYMAP_SCREEN_CHANNEL);
+            return true;
+        case SCAN_KEY_SKIP_SAVED:
+            ui_key_beep(skip_for_good(zone_channel(position)) ? SOUND_ACK : SOUND_ERROR);
             // fall through
         case SCAN_KEY_USED:
         case SCAN_KEY_STOPPED:
@@ -762,6 +784,7 @@ static void draw(void)
     char squelch[24];
     dmr_call_t call;
     p25_call_t p25;
+    nxdn_call_t nxdn;
 
     if ((channel.mode == CODEPLUG_MODE_DMR) && dmr_call(&call)) {
         format_names(zone_text, sizeof(zone_text), name, sizeof(name));
@@ -773,6 +796,11 @@ static void draw(void)
         qso_panel_draw_p25(&p25, name, power_text());
         return;
     }
+    if ((channel.mode == CODEPLUG_MODE_NXDN) && nxdn_radio_call(&nxdn) && (nxdn.src != 0)) {
+        format_names(zone_text, sizeof(zone_text), name, sizeof(name));
+        qso_panel_draw_nxdn(&nxdn, name, power_text());
+        return;
+    }
     meter.active = true;
     meter.open = radio_is_receiving();
     s_meter_set_signal(&meter, radio_signal_dbm());
@@ -781,6 +809,12 @@ static void draw(void)
     status.signal_bars = s_meter_bars(&meter);
 
     format_names(zone_text, sizeof(zone_text), name, sizeof(name));
+    if (scan.active && scan_skipped_channels.count) { // nuisance delete: how many are left out
+        size_t n = strlen(zone_text);
+
+        snprintf(&zone_text[n], sizeof(zone_text) - n, "  %s %u", text(TEXT_SCAN_SKIPPED),
+                 (unsigned)scan_skipped_channels.count);
+    }
     if (direct_channel > 0) {
         snprintf(name, sizeof(name), "-> %d", direct_channel);
     }
@@ -825,6 +859,22 @@ static void draw(void)
         }
         bottom.mode = "P25";
         bottom.item2 = "12.5K";
+    } else if (channel.mode == CODEPLUG_MODE_NXDN) {
+        // NXDN48: as P25, the group or unit transmitted to (tx_target_apply()), the RAN on its line
+        bool pc = ((target.id >> 24) == TX_TARGET_PC_FLAG);
+
+        snprintf(cc_text, sizeof(cc_text), "RAN %u", (unsigned)codeplug_nxdn_ran(&channel));
+        panel.line_icon = pc ? ICONS_CONTACT : ICONS_TALKGROUP;
+        panel.line_right = cc_text;
+        if (target.id != 0) {
+            panel.line_text = target.name;
+            snprintf(detail, sizeof(detail), "%s %lu", text(pc ? TEXT_PC : TEXT_TG), (unsigned long)(target.id & 0xFFFF));
+            if (strcmp(detail, target.name) != 0) {
+                panel.line_detail = detail;
+            }
+        }
+        bottom.mode = "NXDN";
+        bottom.item2 = "6.25K";
     } else {
         uint16_t tone = (channel.rx_tone != CODEPLUG_CSS_NONE) ? channel.rx_tone : channel.tx_tone;
 

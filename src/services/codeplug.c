@@ -40,6 +40,7 @@
 #include "task.h"
 #include "flash.h"
 #include "codeplug.h"
+#include "power.h"
 
 #define FLASH_PART_OFFSET (128 * 1024)
 
@@ -79,6 +80,8 @@ static uint8_t channels_in_use[(CHANNEL_BANKS * CHANNELS_PER_BANK) / 8];
 static int channels_per_zone = 16;
 static int channel_total;
 static uint8_t last_used[LAST_USED_SIZE];
+static bool last_used_changed;
+static void last_used_save(void);
 
 uint32_t codeplug_bcd_to_int(uint32_t bcd)
 {
@@ -142,6 +145,8 @@ void codeplug_init(void)
     if (flash_read(ADDR_LAST_USED, tag, sizeof(tag)) && (memcmp(tag, "LUCZ", 4) == 0)) {
         flash_read(ADDR_LAST_USED + 4, last_used, sizeof(last_used));
     }
+    last_used_changed = false;
+    power_off_save_register(last_used_save);
 
     channel_total = 0;
     for (unsigned i = 0; i < sizeof(channels_in_use); i++) {
@@ -229,6 +234,43 @@ int codeplug_get_last_used_channel(int zone_index)
     return codeplug_channel_in_use(number) ? number : CODEPLUG_CHANNELS_MIN;
 }
 
+void codeplug_set_last_used_channel(int zone_index, int value)
+{
+    taskENTER_CRITICAL();
+    if (zone_index >= 0) {
+        int i = (zone_index < ZONES_MAX) ? zone_index : (ZONES_MAX - 1);
+
+        if ((value >= 0) && (value <= 0xFF) && (last_used[i] != (uint8_t)value)) {
+            last_used[i] = (uint8_t)value;
+            last_used_changed = true;
+        }
+    } else if (value >= CODEPLUG_CHANNELS_MIN) {
+        uint16_t stored = (uint16_t)(value - 1);
+
+        if ((last_used[ZONES_MAX] != (uint8_t)stored) || (last_used[ZONES_MAX + 1] != (uint8_t)(stored >> 8))) {
+            last_used[ZONES_MAX] = (uint8_t)stored;
+            last_used[ZONES_MAX + 1] = (uint8_t)(stored >> 8);
+            last_used_changed = true;
+        }
+    }
+    taskEXIT_CRITICAL();
+}
+
+// At power off (power_off_save_register()): the table with its tag, only when something changed
+static void last_used_save(void)
+{
+    uint8_t data[4 + LAST_USED_SIZE];
+
+    if (!last_used_changed) {
+        return;
+    }
+    memcpy(data, "LUCZ", 4);
+    memcpy(&data[4], last_used, sizeof(last_used));
+    if (flash_write(ADDR_LAST_USED, data, sizeof(data))) {
+        last_used_changed = false;
+    }
+}
+
 int codeplug_channel_count(void)
 {
     return channel_total;
@@ -294,13 +336,14 @@ static uint32_t channel_address(int number)
 // The 56 stored bytes to numbers (frequencies in 10 Hz, tones as numbers)
 // The order of the mode key, and the analog modes as stored in opendmr_mode (codeplug.h)
 static const uint8_t mode_order[] = {CODEPLUG_MODE_FM, CODEPLUG_MODE_AM, CODEPLUG_MODE_USB, CODEPLUG_MODE_LSB,
-                                     CODEPLUG_MODE_DMR, CODEPLUG_MODE_P25};
+                                     CODEPLUG_MODE_DMR, CODEPLUG_MODE_P25, CODEPLUG_MODE_NXDN};
 // opendmr_mode: OPENDMR_MODE_TAG | 1 AM, 2 USB, 3 LSB; anything else FM (the byte was the GD-77's Tx signalling, 0 ..
 // 3 in an old codeplug: the tag keeps such a value from being taken for a mode)
 static const uint8_t analog_modes[] = {CODEPLUG_MODE_FM, CODEPLUG_MODE_AM, CODEPLUG_MODE_USB, CODEPLUG_MODE_LSB};
 #define ANALOG_MODES     ((uint8_t)(sizeof(analog_modes) / sizeof(analog_modes[0])))
 #define OPENDMR_MODE_TAG 0xA0
 #define OPENDMR_MODE_P25 (OPENDMR_MODE_TAG | 4) // with mode 1 (digital)
+#define OPENDMR_MODE_NXDN (OPENDMR_MODE_TAG | 5) // with mode 1 (digital)
 #define MODE_ORDER   ((int)(sizeof(mode_order) / sizeof(mode_order[0])))
 
 const char *codeplug_mode_name(uint8_t mode)
@@ -308,6 +351,7 @@ const char *codeplug_mode_name(uint8_t mode)
     static const char *const names[CODEPLUG_MODES] = {
         [CODEPLUG_MODE_FM] = "FM", [CODEPLUG_MODE_DMR] = "DMR", [CODEPLUG_MODE_AM] = "AM",
         [CODEPLUG_MODE_USB] = "USB", [CODEPLUG_MODE_LSB] = "LSB", [CODEPLUG_MODE_P25] = "P25",
+        [CODEPLUG_MODE_NXDN] = "NXDN",
     };
 
     return (mode < CODEPLUG_MODES) ? names[mode] : "FM";
@@ -327,7 +371,9 @@ uint8_t codeplug_mode_step(uint8_t mode, int direction)
 static void channel_from_codeplug(codeplug_channel_t *channel)
 {
     if (channel->mode != 0) {
-        channel->mode = (channel->opendmr_mode == OPENDMR_MODE_P25) ? CODEPLUG_MODE_P25 : CODEPLUG_MODE_DMR;
+        channel->mode = (channel->opendmr_mode == OPENDMR_MODE_P25)    ? CODEPLUG_MODE_P25
+                        : (channel->opendmr_mode == OPENDMR_MODE_NXDN) ? CODEPLUG_MODE_NXDN
+                                                                       : CODEPLUG_MODE_DMR;
     } else {
         uint8_t index = (uint8_t)(channel->opendmr_mode ^ OPENDMR_MODE_TAG);
 
@@ -348,7 +394,9 @@ static void channel_to_codeplug(const codeplug_channel_t *channel, codeplug_chan
 {
     memcpy(stored, channel, CHANNEL_SIZE);
     stored->mode = (codeplug_mode_is_digital(channel->mode) ? 1 : 0);
-    stored->opendmr_mode = (channel->mode == CODEPLUG_MODE_P25) ? OPENDMR_MODE_P25 : 0; // FM, DMR: as the CPS writes it
+    stored->opendmr_mode = (channel->mode == CODEPLUG_MODE_P25)    ? OPENDMR_MODE_P25
+                           : (channel->mode == CODEPLUG_MODE_NXDN) ? OPENDMR_MODE_NXDN
+                                                                   : 0; // FM, DMR: as the CPS writes it
     for (uint8_t i = 1; i < ANALOG_MODES; i++) {
         if (analog_modes[i] == channel->mode) {
             stored->opendmr_mode = (uint8_t)(OPENDMR_MODE_TAG | i);

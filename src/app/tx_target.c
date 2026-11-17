@@ -40,6 +40,8 @@
 #include "dmr.h"
 #include "tx_target.h"
 #include "p25_radio.h"
+#include "nxdn_radio.h"
+#include "nxdn_id.h"
 
 #define TS_MASK           0x03
 #define TS_CONTACT_SHIFT  6    // tsSetContactHasBeenOverriden(): a bit for each source after the 3 x 2 bits
@@ -132,6 +134,23 @@ void tx_target_apply(codeplug_channel_t *channel, tx_target_t *target)
             snprintf(target->name, sizeof(target->name), "%s 1", text(TEXT_TG));
         }
         p25_radio_set_target(codeplug_p25_nac(channel), (uint16_t)target->id);
+        return;
+    }
+    if (channel->mode == CODEPLUG_MODE_NXDN) {
+        // NXDN: the same target, group or individual calls of 16 bits (none or over 16 bits: TG 1); the channel's
+        // RAN, our NXDN ID (nxdn_id.h)
+        tx_target_get(channel, target);
+        bool pc = ((target->id >> 24) == TX_TARGET_PC_FLAG);
+        uint32_t id = target->id & CODEPLUG_CONTACT_ID_MAX;
+        if ((id == 0) || (id > 0xFFFF)) {
+            memset(target, 0, sizeof(*target));
+            target->id = 1;
+            target->timeslot = 1;
+            snprintf(target->name, sizeof(target->name), "%s 1", text(TEXT_TG));
+            pc = false;
+            id = 1;
+        }
+        nxdn_radio_set_target(codeplug_nxdn_ran(channel), nxdn_id_get(), (uint16_t)id, pc);
         return;
     }
     if (channel->mode != CODEPLUG_MODE_DMR) {

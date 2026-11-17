@@ -45,6 +45,7 @@
 #include "gps.h"
 #include "sound.h"
 #include "ui.h"
+#include "tones.h"
 #include "aprs.h"
 
 #define DESTINATION        "APOG77"
@@ -239,9 +240,47 @@ static void put_header(const char *call)
     put_char(0xF0, true);
 }
 
+// The QSY information ("Transmit QSY", flags bit 2; APRS spec aprs.org/info/freqspec.txt, as OpenGD77 sends it):
+// the voice frequency of the channel the station is on, so that others can call it there: "FFF.FFFMHz Tnnn +ooo"
+// first in the comment. Tnnn: the channel's Tx tone (CTCSS in whole Hz, Dnnn: DCS, Toff: none), lower case on a
+// narrow channel; +ooo: the Tx offset in 10 kHz units (left out beyond 9.99 MHz, a cross band split). False: no
+// QSY (not ticked, or no channel)
+static bool qsy_text(char *out, size_t size)
+{
+    codeplug_channel_t channel;
+    char tone[8];
+    int32_t offset;
+    int n;
+
+    if (!(aprs.config.flags & 0x04) || !radio_get_channel(&channel) || (channel.rx_freq == 0) ||
+        (channel.rx_freq >= 100000000UL)) {
+        return false;
+    }
+    if (channel.tx_tone == CODEPLUG_CSS_NONE) {
+        snprintf(tone, sizeof(tone), "Toff");
+    } else if (channel.tx_tone & TONES_DCS) {
+        snprintf(tone, sizeof(tone), "D%03X", (unsigned)(channel.tx_tone & TONES_DCS_CODE));
+    } else {
+        snprintf(tone, sizeof(tone), "T%03u", (unsigned)(channel.tx_tone / 10U));
+    }
+    if (!(channel.flag4 & 0x02)) {
+        tone[0] = (char)(tone[0] - 'A' + 'a'); // narrow
+    }
+    n = snprintf(out, size, "%3u.%03uMHz %s", (unsigned)(channel.rx_freq / 100000UL),
+                 (unsigned)((channel.rx_freq / 100UL) % 1000UL), tone);
+    offset = ((int32_t)channel.tx_freq - (int32_t)channel.rx_freq) / 1000; // 10 Hz to 10 kHz
+    if ((n > 0) && ((size_t)n < size) && (offset >= -999) && (offset <= 999)) {
+        snprintf(out + n, size - (size_t)n, " %c%03ld", (offset < 0) ? '-' : '+',
+                 (long)((offset < 0) ? -offset : offset));
+    }
+    return true;
+}
+
 static void put_payload(const char *lat, const char *lon, const char *course_speed)
 {
     const codeplug_aprs_config_t *c = &aprs.config;
+    char qsy[24];
+    bool has_qsy = qsy_text(qsy, sizeof(qsy));
     uint8_t symbol = (uint8_t)(c->icon_index + '!');
     uint8_t table = (c->icon_table == 0) ? '/' : '\\';
     char comment[sizeof(c->comment) + 1];
@@ -268,6 +307,12 @@ static void put_payload(const char *lat, const char *lon, const char *course_spe
     for (size_t i = 0; i < sizeof(c->comment); i++) {
         if ((uint8_t)comment[i] == 0xFF) {
             comment[i] = 0;
+        }
+    }
+    if (has_qsy) {
+        put_string(qsy);
+        if (comment[0] != 0) {
+            put_char(' ', true);
         }
     }
     put_string(comment);
