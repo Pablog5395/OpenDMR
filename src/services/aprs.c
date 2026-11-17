@@ -504,7 +504,7 @@ static uint16_t build_frame(const location_t *previous, const location_t *curren
         }
     }
 
-    put_flags(16);
+    put_flags(32); // ~213 ms of flags: 16 flags (107 ms) cut the beginning at some receivers (tested on the air)
     ax25.crc = 0xFFFF; // the CRC over the data only
     put_header(call);
     put_payload(lat_text, lon_text, has_course ? course_speed : NULL);

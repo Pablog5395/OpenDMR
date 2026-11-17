@@ -960,7 +960,7 @@ static void dmr_transmit_check(void)
    50 ms of carrier before the frame */
 
 #define APRS_COLLISION_MS 2000
-#define APRS_TX_DELAY_MS  50
+#define APRS_TX_DELAY_MS  300 // the first beacon after a start or a channel change was cut before the tones settled
 #define APRS_TONE_GAIN    66 // the UV-K5 firmware's tone level
 
 static const uint8_t *volatile aprs_bits = NULL; // asked, the radio task sends it
@@ -990,7 +990,7 @@ static bool aprs_tune(void)
     beacon.tx_freq = aprs_frequency;
     beacon.mode = CODEPLUG_MODE_FM;
     beacon.flag4 &= (uint8_t)~(FLAG4_VOX | FLAG4_RX_ONLY);
-    beacon.flag4 |= FLAG4_WIDE;
+    // the channel's own width: forcing 25 kHz cut the frame at a 12.5 kHz receiver (tested on the air)
     beacon.rx_tone = CODEPLUG_CSS_NONE;
     beacon.tx_tone = CODEPLUG_CSS_NONE;
     aprs_tuned = true;
