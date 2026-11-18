@@ -242,7 +242,7 @@ frequency comes the target transmitted to (a group or an individual call), with 
 - Calls go into Last heard. **SK2** calls back the talk group just heard (a private call: the caller).
 - On DMR and P25 channels, the channel screen shows the last two callers of Last heard of that same protocol (callsign
   and name, how long ago, and the talk group or `PC` of each call). The caller shows there within about 0.7 s.
-  Display options → **Recent callers** turns the block off (it is on by default); FM, AM and USB channels never show it.
+  Display options → **Recent callers** turns the block off (it is on by default); FM, AM, USB, LSB and NXDN channels never show it.
 - FM: audio when the squelch opens; ▶ ◀ change the squelch, shown on the screen for a moment. 0 % is always open
   (the noise is heard); a receive tone still applies.
 

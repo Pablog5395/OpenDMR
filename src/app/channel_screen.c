@@ -918,8 +918,8 @@ static void draw(void)
             if (!last_heard_get(i, &recent_entry)) {
                 break;
             }
-            if ((recent_entry.timeslot == LAST_HEARD_TS_UNKNOWN) != p25) {
-                continue; // only the callers of the channel's protocol
+            if (p25 ? (recent_entry.timeslot != LAST_HEARD_TS_UNKNOWN) : (recent_entry.timeslot > 1)) {
+                continue; // only the callers of the channel's protocol (DMR: a timeslot; not NXDN's)
             }
             last_heard_format_caller(&recent_entry, recent_name[panel.recent_count],
                                      sizeof(recent_name[panel.recent_count]));
