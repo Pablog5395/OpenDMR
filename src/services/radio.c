@@ -62,6 +62,7 @@
 #include "radio.h"
 #include "security.h"
 #include "p25_radio.h"
+#include "nxdn_radio.h"
 
 #define RADIO_TASK_PRIORITY 4
 #define SAMPLE_MS           25
@@ -129,6 +130,7 @@ static volatile bool transmitting = false;
 // Receive
 static volatile bool carrier = false; // the noise under the squelch level
 static bool p25_on = false;          // the P25 receiver runs (p25_radio.c)
+static bool nxdn_on = false;         // the NXDN receiver runs (nxdn_radio.c)
 static volatile bool speaker = false; // the audio on (the carrier, and the tone if one is set)
 static volatile bool scanning = false; // radio_set_scanning(): no receive beeps
 // Scanning a digital channel: the strongest reading since the retune (SCAN_SETTLE_MS on), and how many were taken
@@ -349,6 +351,10 @@ static void tune_channel(const codeplug_channel_t *next, bool valid)
         p25_radio_stop();
         p25_on = false;
     }
+    if (nxdn_on) {
+        nxdn_radio_stop();
+        nxdn_on = false;
+    }
 
     taskENTER_CRITICAL();
     if (valid) {
@@ -420,6 +426,11 @@ static void tune_channel(const codeplug_channel_t *next, bool valid)
         if (channel.mode == CODEPLUG_MODE_P25) {
             p25_radio_start();
             p25_on = true;
+        }
+        // NXDN: the DMR engine stands aside too; the modem records the discriminator (FM) for the NXDN receiver
+        if (channel.mode == CODEPLUG_MODE_NXDN) {
+            nxdn_radio_start();
+            nxdn_on = true;
         }
     }
     vox_setup();
@@ -898,6 +909,22 @@ static void p25_transmit_check(void)
     }
 }
 
+// NXDN (nxdn_radio.c): the same as P25
+static void nxdn_transmit_check(void)
+{
+    if (tx_wanted && !transmitting) {
+        transmitting = true;
+        nxdn_radio_transmit(true);
+        post_signal();
+    } else if (!tx_wanted && transmitting) {
+        nxdn_radio_transmit(false);
+        if (!nxdn_radio_transmitting()) {
+            transmitting = false;
+            post_signal();
+        }
+    }
+}
+
 // The PTT: the engine asked to transmit; released: it ends its transmission, then the radio is free again
 static void dmr_transmit_check(void)
 {
@@ -1080,7 +1107,8 @@ static bool vox_wanted(void)
 
 static void vox_post(bool press)
 {
-    ui_event_t ev = {.type = press ? UI_EVENT_KEY_PRESS : UI_EVENT_KEY_RELEASE, .key = UI_KEY_PTT};
+    ui_event_t ev = {.type = press ? UI_EVENT_KEY_PRESS : UI_EVENT_KEY_RELEASE, .key = UI_KEY_PTT,
+                     .what = UI_KEY_FROM_VOX};
 
     ui_post(&ev);
 }
@@ -1242,7 +1270,7 @@ static void eco_tick(void)
     if (!has_channel || (level == 0) || (channel.libre_dmr_flag1 & ECO_FLAG1_NO_ECO) || transmitting || tx_wanted ||
         carrier || speaker || amp_for_audio || amp_for_beep || amp_for_broadcast || scanning || vox_on || aprs_bits ||
         hotspot_active() ||
-        (dmr_on && dmr_has_sync()) || active) {
+        (dmr_on && dmr_has_sync()) || nxdn_on || active) { // NXDN: the recording needs the receiver on (for now)
         eco_stop();
         return;
     }
@@ -1338,7 +1366,9 @@ static void RAM_CODE radio_task(void *arg)
             aprs_restore();
             aprs_frequency = 0;
         }
-        if (p25_on) {
+        if (nxdn_on) {
+            nxdn_transmit_check(); // not the DMR engine underneath
+        } else if (p25_on) {
             p25_transmit_check();
         } else if (dmr_on) {
             dmr_transmit_check();

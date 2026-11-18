@@ -156,7 +156,8 @@ static void draw(const dmr_call_t *call, const char *mode, const char *status_it
     const font_t *call_font = &font_roboto44_bold;
     status_bar_data_t status = {.state = STATUS_BAR_RECEIVING};
     s_meter_data_t meter = {.active = true, .open = true, .compact = true};
-    bottom_bar_data_t bottom = {.mode = mode, .item1 = power, .item2 = "12.5K"}; // as the screen's
+    bottom_bar_data_t bottom = {.mode = mode, .item1 = power, // as the screen's (NXDN48: 6.25 kHz)
+                                .item2 = (mode && (strcmp(mode, "NXDN") == 0)) ? "6.25K" : "12.5K"};
     char caller[LAST_HEARD_TEXT_SIZE];
     char callsign[LAST_HEARD_TEXT_SIZE];
     char rest[LAST_HEARD_TEXT_SIZE];
@@ -278,4 +279,13 @@ void qso_panel_draw_p25(const p25_call_t *call, const char *channel_name, const 
 
     snprintf(nac_text, sizeof(nac_text), "NAC %03X", call->nac);
     draw(&shown, "P25", NULL, NULL, channel_name, power, nac_text);
+}
+
+void qso_panel_draw_nxdn(const nxdn_call_t *call, const char *channel_name, const char *power)
+{
+    dmr_call_t shown = {.source = call->src, .tg_or_pc = nxdn_call_tg_or_pc(call)};
+    char ran_text[12];
+
+    snprintf(ran_text, sizeof(ran_text), "RAN %u", (unsigned)call->ran);
+    draw(&shown, "NXDN", NULL, NULL, channel_name, power, ran_text);
 }

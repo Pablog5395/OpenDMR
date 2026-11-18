@@ -98,6 +98,13 @@ EXTRA = [
     ("key_tx_up", "Change RX freq", "改接收频率", "Cambiar freq RX"),
     ("key_tx_down", "Change TX freq", "改发射频率", "Cambiar freq TX"),
     ("key_held", "long", "长按", "larga"),  # after a key combination held: "SK2+Right long"
+    ("scan_skipped", "Locked out", "已屏蔽", "Bloqueados"),  # nuisance delete (scan.c): on the scan screens
+    ("scan_lockouts", "Scan lockouts", "扫描屏蔽", "Bloqueos scan"),  # lockouts.c: the list (main menu)
+    ("scan_lockout", "Scan lockout", "扫描屏蔽", "Bloqueo scan"),  # the quick menu: this channel / frequency
+    ("lockout_temp", "Temp", "临时", "Temporal"),  # until power off (nuisance delete)
+    ("lockout_saved", "Permanent", "永久", "Fijo"),  # for good (a VFO frequency in the list)
+    ("unlock", "Unlock", "解除", "Desbloq."),  # lockouts.c: the left key
+    ("unlock_all", "Unlock all", "全部解除", "Desbloquear todo"),  # the VFO frequencies (OK: cleared)
     ("key_scan_up", "Scan up", "向上扫描", "Scan +"),
     ("key_scan_down", "Scan down", "向下扫描", "Scan -"),
     ("key_aprs_toggle", "APRS on/off", "APRS 开/关", "APRS on/off"),
