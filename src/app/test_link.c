@@ -30,6 +30,8 @@
  *                                        4 a press and release, 5 a long press (press, long, release); key: ui.h
  *                                        UI_KEY_x (PTT too), modifiers UI_MODIFIER_x   -> 'D' 'k' ok(1)
  *   'D' 'q'                              the state, "name=value" lines             -> 'D' 'q' length(2) text
+ *   'D' 'g' id(3)                         the APRS-over-DMR gateway, 24 bit big endian -> 'D' 'g' ok(1)
+ *   'D' 'w' via(1)                        0 AFSK, 1 DMR, 2 both                     -> 'D' 'w' ok(1)
  *
  * The state: screen (and for a list: title, sel, count, row, value), home (vfo / channel), vfo, rx, tx, mode,
  * channel, name, zone, scan (off / on / paused: standing on a signal), receiving, transmitting, dbm, lockouts (temp channels, temp frequencies,
@@ -50,6 +52,8 @@
 #include "vfo_screen.h"
 #include "quick_menu.h"
 #include "menus.h"
+#include "extra_options.h"
+#include "aprs.h"
 #include "test_link.h"
 
 // The screens with a name in the state (the others: "other")
@@ -194,6 +198,18 @@ static uint32_t state(char *text, uint32_t size)
     put(&o, "noise", "%u", (unsigned)radio_noise());       // FD6818 0x65, the last reading
     put(&o, "lockouts", "%u,%u,%d", (unsigned)scan_skipped_channels.count, (unsigned)scan_skipped_frequencies.count,
         scan_saved_count());
+    put(&o, "aprs_via", "%u", (unsigned)extra_options_aprs_via());
+    put(&o, "aprs_gateway", "%u", (unsigned)extra_options_aprs_dmr_gateway());
+    uint32_t flags;
+    int32_t lat;
+    int32_t lon;
+
+    aprs_debug_status(&flags, &lat, &lon);
+    put(&o, "aprs_flags", "%lu", (unsigned long)flags);
+    put(&o, "aprs_lat", "%ld", (long)lat);
+    put(&o, "aprs_lon", "%ld", (long)lon);
+    put(&o, "aprs_dmr_busy", "%d", radio_aprs_dmr_busy() ? 1 : 0);
+    put(&o, "rf_on_air", "%d", radio_rf_on_air() ? 1 : 0);
     return (uint32_t)(o.at - text);
 }
 
@@ -210,6 +226,17 @@ uint32_t test_link_command(volatile uint8_t *request, volatile uint8_t *reply, u
             reply[3] = (uint8_t)n;
             return 4 + n;
         }
+        case 'g': {
+            uint32_t id = ((uint32_t)request[2] << 16) | ((uint32_t)request[3] << 8) | (uint32_t)request[4];
+
+            extra_options_set_aprs_dmr_gateway(id);
+            reply[2] = 1;
+            return 3;
+        }
+        case 'w': // 'v' is the debug memory read (debug.c)
+            extra_options_set_aprs_via((uint8_t)request[2]);
+            reply[2] = 1;
+            return 3;
         default:
             return 0; // not one of these
     }

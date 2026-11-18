@@ -43,4 +43,9 @@ void aprs_toggle(void); // SK1 + 1: beaconing on / off (aprsBeaconingToggles())
 void aprs_send(void);   // SK1 + 3 or the menu's "send now": a beacon now, in any mode but OFF
 void aprs_after_ptt(void); // a transmission of the PTT ended (the PTT mode)
 
+// The cable test interface (test_link.c) reports why a manual beacon was or was not sent. Bits of flags: 0 enabled,
+// 1 the channel has an APRS configuration, 2 a usable position, 3 an LRRP is with the DMR engine, 4 it was queued,
+// 5..7 the beaconing mode. The position is in 1E-7 degrees, 0 when unknown.
+void aprs_debug_status(uint32_t *flags, int32_t *lat_e7, int32_t *lon_e7);
+
 #endif

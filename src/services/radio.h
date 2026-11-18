@@ -32,6 +32,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "codeplug.h"
+#include "aprs_dmr.h"
 
 // The radio (FM for now): the channel of the home screen received with its squelch and tones, transmitted with the
 // PTT. A task of its own owns the FD6818 and the baseband; the UI tells it what to do and gets UI_DATA_SIGNAL events
@@ -61,6 +62,7 @@ radio_tx_check_t radio_tx_check(void);
 void radio_transmit(bool on); // only after RADIO_TX_OK; the task switches over
 void radio_transmit_plain(void); // FM on without the start / end tones and MDC1200 (DTMF); radio_transmit(false) ends
 bool radio_is_transmitting(void);
+bool radio_rf_on_air(void); // the PA is on (the RF task), including a DMR data burst without a PTT
 // APRS (aprs.c): the AX.25 frame as NRZI bits (bit 0 of byte 0 first), sent as AFSK in FM by the radio task after
 // waiting up to 2 s for a busy channel. frequency 0: on the selected FM channel; else the task tunes FM to it for the
 // frame and goes back to the channel, which stays the one the UI requested and shows. false: not now (busy, receive
@@ -69,6 +71,11 @@ bool radio_is_transmitting(void);
 bool radio_aprs_send(const uint8_t *bits, uint16_t bit_count, bool baud300, uint32_t frequency);
 bool radio_aprs_busy(void);
 bool radio_aprs_sent(void);
+// APRS over DMR (aprs.c): one LRRP position report, sent by the DMR engine on the current channel. Coordinates are
+// 1e-7 degrees; use APRS_DMR_SPEED_UNKNOWN / APRS_DMR_COURSE_UNKNOWN when speed/course aren't available.
+bool radio_aprs_dmr_send(int32_t latitude_e7, int32_t longitude_e7, uint16_t speed_knots, uint16_t course,
+                         uint32_t gateway, uint32_t own_id);
+bool radio_aprs_dmr_busy(void);
 // The VOX (an FM channel with VOX, settings.vox_threshold set) posts PTT presses and releases; a key (from the input
 // task) stops it and starts it again later
 void radio_vox_key(bool ptt_held);

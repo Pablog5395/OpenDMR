@@ -215,6 +215,13 @@ static struct
 	int hotspotPostponedFrameHandling;
 	char talkAliasText[33];
 	uint8_t talkAliasLocation[7];
+	volatile bool dataTxActive;
+	volatile bool dataTxDone;
+	volatile uint8_t dataTxCount;
+	volatile uint8_t dataTxIndex;
+	volatile uint8_t dataTxType[DMR_DATA_BURSTS_MAX];
+	volatile uint8_t dataTxLength[DMR_DATA_BURSTS_MAX];
+	volatile uint8_t dataTxPayload[DMR_DATA_BURSTS_MAX][12];
 } hrc = {
 		.hasEncodedAudio = false,
 		.hasAudioData = false,
@@ -261,7 +268,11 @@ static struct
 		.wakeTriesCount = 0,
 		.hotspotPostponedFrameHandling = 0,
 		.talkAliasText = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-		.talkAliasLocation = { 0, 0, 0, 0, 0, 0, 0}
+		.talkAliasLocation = { 0, 0, 0, 0, 0, 0, 0},
+		.dataTxActive = false,
+		.dataTxDone = true,
+		.dataTxCount = 0,
+		.dataTxIndex = 0
 };
 
 volatile int slotState = DMR_STATE_IDLE;
@@ -1348,6 +1359,24 @@ static void hrc7000TransitionToTx(void)
 	hrc.txSequence = 0;
 }
 
+// APRS over DMR: the next queued data burst goes into the HR_C7000's TX RAM. CSBK and data header payloads are 10
+// octets (the chip appends the CRC-16); Rate 1/2 blocks are 12 (their CRC-32 is already in the payload).
+static void hrc7000ArmDataBurst(void)
+{
+	uint8_t index = hrc.dataTxIndex;
+
+	if (index >= hrc.dataTxCount)
+	{
+		return;
+	}
+	for (uint8_t i = 0; i < hrc.dataTxLength[index]; i++)
+	{
+		*(MODEM_TX_RAM + i) = hrc.dataTxPayload[index][i];
+	}
+	*LAYER2_SEND_TYPE = (uint32_t)(hrc.dataTxType[index] & 0x0Fu) << 4;
+	hrc.dataTxIndex = index + 1;
+}
+
 //used as a delayed callback to allow time for the final Tx burst and then simulate the final Rx Interrupt and return to receive.
 
 void hrc7000TxBurstCallback(void)
@@ -1357,6 +1386,10 @@ void hrc7000TxBurstCallback(void)
 	hrc7000SetInIRQHandler(true);
 	hrc7000RxInterruptHandler();
 	hrc7000SetInIRQHandler(false);
+
+	// A data-burst transmission (APRS over DMR) never goes through the PTT path that clears this for voice (radio.c's
+	// dmr_transmit_check()). Without this the red LED stays on and looks like a stuck transmitter.
+	LedWrite(LED_RED_R, 0);
 }
 
 // Repeater receive, LAYER2_TXRX_CTRL for the next timeslot, as the stock firmware (its DMR task 0x2d604, 0x3022828) and
@@ -1608,6 +1641,15 @@ void RAM_CODE hrc7000TimeslotInterruptHandler(void)
 
 		case DMR_STATE_TX_START_1: // Start TX (second step)
 			LedWrite(LED_RED_R, 1); // for repeater wakeup
+			if (hrc.dataTxActive)
+			{
+				*LAYER2_TXRX_CTRL = 0x80; // Transmit during next Timeslot
+				hrc7000ArmDataBurst();
+				trxIsTransmitting = true;
+				*LAYER2_TXRX_CTRL |= BITSET(31);
+				slotState = DMR_STATE_TX_START_2;
+				break;
+			}
 			hrc7000SendPcOrTgLCHeader();
 			*LAYER2_TXRX_CTRL = 0x80; // Transmit during next Timeslot
 			*LAYER2_SEND_TYPE = 0x10; // Set Data Type to 0001 (Voice LC Header), Data, LCSS=00
@@ -1623,7 +1665,14 @@ void RAM_CODE hrc7000TimeslotInterruptHandler(void)
 
 		case DMR_STATE_TX_START_3: // Start TX (fourth step)
 			*LAYER2_TXRX_CTRL = 0x80; // Transmit during Next Timeslot
-			*LAYER2_SEND_TYPE = 0x10; // Set Data Type to 0001 (Voice LC Header), Data, LCSS=00
+			if (hrc.dataTxActive)
+			{
+				hrc7000ArmDataBurst();
+			}
+			else
+			{
+				*LAYER2_SEND_TYPE = 0x10; // Set Data Type to 0001 (Voice LC Header), Data, LCSS=00
+			}
 			slotState = DMR_STATE_TX_START_4;
 			break;
 
@@ -1631,7 +1680,7 @@ void RAM_CODE hrc7000TimeslotInterruptHandler(void)
 			*LAYER2_TXRX_CTRL = 0x00; // Do nothing on the next TS
 			slotState = DMR_STATE_TX_START_5;
 
-			if (settingsUsbMode != USB_MODE_HOTSPOT)
+			if (!hrc.dataTxActive && (settingsUsbMode != USB_MODE_HOTSPOT))
 			{
 				hrc.ambeBufferCount = 0;
 				hrc.deferredUpdateBufferOutPtr = deferredUpdateBuffer;
@@ -1657,13 +1706,25 @@ void RAM_CODE hrc7000TimeslotInterruptHandler(void)
 
 		case DMR_STATE_TX_START_5: // Start TX (sixth step)
 			*LAYER2_TXRX_CTRL = 0x80; // Transmit during next Timeslot
-			*LAYER2_SEND_TYPE = 0x10; // Set Data Type to 0001 (Voice LC Header), Data, LCSS=00
+			if (hrc.dataTxActive)
+			{
+				hrc7000ArmDataBurst();
+			}
+			else
+			{
+				*LAYER2_SEND_TYPE = 0x10; // Set Data Type to 0001 (Voice LC Header), Data, LCSS=00
+			}
 			hrc.TAPhase = 0;
 			slotState = DMR_STATE_TX_1;
 			break;
 
 		case DMR_STATE_TX_1: // Ongoing TX (inactive timeslot)
 			*LAYER2_TXRX_CTRL = 0x00;
+			if (hrc.dataTxActive)
+			{
+				slotState = (hrc.dataTxIndex >= hrc.dataTxCount) ? DMR_STATE_TX_END_1 : DMR_STATE_TX_2;
+				break;
+			}
 			if ((hrc.transmissionEnabled == false) && (hrc.txSequence == 0))
 			{
 				slotState = DMR_STATE_TX_END_1;        // only exit here to ensure staying in the correct timeslot
@@ -1675,6 +1736,20 @@ void RAM_CODE hrc7000TimeslotInterruptHandler(void)
 			break;
 
 		case DMR_STATE_TX_2: // Ongoing TX (active timeslot)
+			if (hrc.dataTxActive)
+			{
+				if (hrc.dataTxIndex < hrc.dataTxCount)
+				{
+					hrc7000ArmDataBurst();
+					*LAYER2_TXRX_CTRL = 0x80; // Transmit during next Timeslot
+				}
+				else
+				{
+					*LAYER2_TXRX_CTRL = 0x00;
+				}
+				slotState = DMR_STATE_TX_1;
+				break;
+			}
 			if (hrc.transmissionEnabled)
 			{
 				if (settingsUsbMode == USB_MODE_HOTSPOT)
@@ -1758,21 +1833,34 @@ void RAM_CODE hrc7000TimeslotInterruptHandler(void)
 			break;
 
 		case DMR_STATE_TX_END_1: // Stop TX (first step)
-			soundStopMicCapture();
-			if (getCurrentTATxFlag() != TA_TX_OFF)
+			if (!hrc.dataTxActive)
 			{
-				hrc7000SendPcOrTgLCHeader();
+				soundStopMicCapture();
+				if (getCurrentTATxFlag() != TA_TX_OFF)
+				{
+					hrc7000SendPcOrTgLCHeader();
+				}
+				for (int i = 0; i < AMBE_AUDIO_LENGTH; i++) // send silence audio bytes
+				{
+					*(MODEM_VOICE + i) = SILENCE_AUDIO[i];
+				}
+				*LAYER2_TXRX_CTRL = 0x80; // Transmit during Next Timeslot
+				*LAYER2_SEND_TYPE = 0x20; // Data Type =0010 (Terminator with LC), Data, LCSS=0
 			}
-			for (int i = 0; i < AMBE_AUDIO_LENGTH; i++) // send silence audio bytes
+			else
 			{
-				*(MODEM_VOICE + i) = SILENCE_AUDIO[i];
+				*LAYER2_TXRX_CTRL = 0x00;
 			}
-			*LAYER2_TXRX_CTRL = 0x80; // Transmit during Next Timeslot
-			*LAYER2_SEND_TYPE = 0x20; // Data Type =0010 (Terminator with LC), Data, LCSS=0
 			slotState = DMR_STATE_TX_END_2;
 			break;
 
 		case DMR_STATE_TX_END_2: // Stop TX (second step)
+			if (hrc.dataTxActive)
+			{
+				hrc.dataTxActive = false;
+				hrc.dataTxDone = true;
+				trxTransmissionEnabled = false;
+			}
 			// Need to hold on this TS after Tx ends otherwise if DMR Mon TS filtering is disabled the radio may switch timeslot
 			dmrMonitorCapturedTS = hrc.tsLockedTS = trxGetDMRTimeSlot();
 			hrc.dmrMonitorCapturedTimeout = nonVolatileSettings.dmrCaptureTimeout * 1000;
@@ -2691,6 +2779,36 @@ void HRC7000ClearIsWakingState(void)
 int HRC7000GetIsWakingState(void)
 {
 	return hrc.isWaking;
+}
+
+bool HRC7000SendDataBursts(const uint8_t *types, const uint8_t *lengths, const uint8_t (*payloads)[12], uint8_t count)
+{
+	if ((count == 0) || (count > DMR_DATA_BURSTS_MAX) || (types == NULL) || (lengths == NULL) || (payloads == NULL) ||
+		(slotState != DMR_STATE_IDLE) || trxTransmissionEnabled || hrc.dataTxActive)
+	{
+		return false;
+	}
+	for (uint8_t i = 0; i < count; i++)
+	{
+		if ((lengths[i] == 0) || (lengths[i] > 12))
+		{
+			return false;
+		}
+		hrc.dataTxType[i] = types[i];
+		hrc.dataTxLength[i] = lengths[i];
+		memcpy((uint8_t *)hrc.dataTxPayload[i], payloads[i], lengths[i]);
+	}
+	hrc.dataTxCount = count;
+	hrc.dataTxIndex = 0;
+	hrc.dataTxDone = false;
+	hrc.dataTxActive = true;
+	trxTransmissionEnabled = true; // the hrc7000 task takes it from here (including repeater wake-up)
+	return true;
+}
+
+bool HRC7000DataBurstsDone(void)
+{
+	return hrc.dataTxDone;
 }
 
 void HRC7000ClearActiveDMRID(void)

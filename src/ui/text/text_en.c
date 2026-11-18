@@ -261,6 +261,7 @@ const char *const text_en[TEXT_COUNT] = {
     [TEXT_DISTANCE_SORT] = "Dist sort",
     [TEXT_SHOW_DISTANCE] = "Show dist",
     [TEXT_APRS_OPTIONS] = "APRS options",
+    [TEXT_APRS_SEND_VIA] = "Send via",
     [TEXT_APRS_SMART] = "Smart",
     [TEXT_APRS_CHANNEL] = "Channel",
     [TEXT_APRS_DECAY] = "Decay",

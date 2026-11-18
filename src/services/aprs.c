@@ -49,6 +49,7 @@
 #include "p25_radio.h"
 #include "tones.h"
 #include "aprs.h"
+#include "extra_options.h"
 
 #define DESTINATION        "APOG77"
 #define BUFFER_SIZE        256
@@ -115,8 +116,10 @@ static struct {
     bool next_beacon_running;
     uint8_t decay;
     bool trigger;
-    bool waiting;       // a frame is with the radio task
+    bool waiting;       // an AFSK frame is with the radio task
     bool waiting_auto;  // ... sent by the auto modes (the trigger stays on a failure)
+    bool dmr_waiting;   // an LRRP report is with the DMR engine
+    bool dmr_ok;        // ... it was queued (the engine has no per-report failure signal)
     location_t sending; // the location of that frame
 } aprs = {.fixed_lat = NAN, .fixed_lon = NAN, .decay = DECAY_MULT_MIN};
 
@@ -601,11 +604,16 @@ static bool digital_call_active(void)
 static bool send_beacon(bool forced)
 {
     bool manual = forced || (aprs.s.mode == MODE_PTT) || (aprs.s.mode == MODE_MANUAL);
+    uint8_t via = extra_options_aprs_via();
+    bool want_afsk = (via != APRS_VIA_DMR);
+    bool want_dmr = (via != APRS_VIA_AFSK);
     codeplug_channel_t channel;
-    uint32_t frequency;
+    uint32_t frequency = 0;
+    bool afsk_sent = false;
+    bool dmr_sent = false;
 
     if (radio_is_scanning() || !radio_get_channel(&channel) || radio_is_transmitting() ||
-        (aprs.s.mode == MODE_OFF) || !aprs.enabled || aprs.waiting) {
+        (aprs.s.mode == MODE_OFF) || !aprs.enabled || aprs.waiting || aprs.dmr_waiting) {
         return false;
     }
 
@@ -628,32 +636,58 @@ static bool send_beacon(bool forced)
     if (digital_call_active()) {
         return false;
     }
-    // The beacon goes out in FM on the configuration's own frequency ("Frec TX" of the CPS) when it has one. The
-    // radio task tunes for the frame and comes back: this task never touches the channel (the UI's), so no event can
-    // send the beacon on the channel's frequency instead (or undo a channel change while it is out). A channel that
-    // isn't FM has no frequency of its own for the beacon: it needs the configuration's.
-    frequency = config_frequency(&aprs.config);
-    if ((channel.mode != CODEPLUG_MODE_FM) && (frequency == 0)) {
+
+    // The AFSK frame goes out in FM, either on the channel or on the configuration's own frequency ("Frec TX"), which
+    // the radio task tunes for one frame. The LRRP report goes out on the current DMR channel, with no tuning.
+    if (want_afsk) {
+        frequency = config_frequency(&aprs.config);
+        if ((channel.mode != CODEPLUG_MODE_FM) && (frequency == 0)) {
+            want_afsk = false;
+        }
+    }
+    if (want_dmr && (channel.mode != CODEPLUG_MODE_DMR)) {
+        want_dmr = false;
+    }
+    if (!want_afsk && !want_dmr) {
         return false;
     }
-    {
+
+    if (want_afsk) {
         uint16_t bits = build_frame(&aprs.previous, &aprs.current);
 
-        if (!radio_aprs_send(ax25.buffer, bits, (aprs.config.flags & 0x01) != 0, frequency)) {
-            return false;
-        }
-        aprs.waiting = true;
-        aprs.waiting_auto = !manual;
-        aprs.sending = aprs.current;
-        if (aprs.s.mode == MODE_PTT) {
-            aprs.next_beacon_ms = systime_get_ms() + interval_ms();
-            aprs.next_beacon_running = true;
-        }
-        if (manual) {
-            aprs.previous = aprs.current;
+        afsk_sent = radio_aprs_send(ax25.buffer, bits, (aprs.config.flags & 0x01) != 0, frequency);
+    }
+
+    if (want_dmr) {
+        uint32_t own_id = codeplug_get_dmr_id();
+        uint32_t gateway = extra_options_aprs_dmr_gateway();
+        uint16_t speed = (aprs.current.speed > SPEED_MIN_CKN) ? (uint16_t)(aprs.current.speed / 100u)
+                                                              : APRS_DMR_SPEED_UNKNOWN;
+        uint16_t course = (aprs.current.bearing != BEARING_INVALID) ? (uint16_t)(aprs.current.bearing / 100u)
+                                                                   : APRS_DMR_COURSE_UNKNOWN;
+
+        if ((own_id != 0) && (gateway != 0) &&
+            radio_aprs_dmr_send((int32_t)llround(aprs.current.latitude * 1E7),
+                                (int32_t)llround(aprs.current.longitude * 1E7), speed, course, gateway, own_id)) {
+            dmr_sent = true;
         }
     }
 
+    if (!afsk_sent && !dmr_sent) {
+        return false;
+    }
+    aprs.waiting = afsk_sent;
+    aprs.dmr_waiting = dmr_sent;
+    aprs.dmr_ok = dmr_sent;
+    aprs.waiting_auto = !manual;
+    aprs.sending = aprs.current;
+    if (aprs.s.mode == MODE_PTT) {
+        aprs.next_beacon_ms = systime_get_ms() + interval_ms();
+        aprs.next_beacon_running = true;
+    }
+    if (manual) {
+        aprs.previous = aprs.current;
+    }
     return true;
 }
 
@@ -725,6 +759,7 @@ static void decay(bool reset_it)
 static void sent(bool ok)
 {
     aprs.waiting = false;
+    aprs.dmr_waiting = false;
     if (!aprs.waiting_auto) {
         if (!ok) {
             sound_play(SOUND_ERROR); // the radio task could not send it: busy channel, Rx only, out of band
@@ -832,8 +867,13 @@ void aprs_tick(void)
     if (radio_get_channel(&channel) && (channel.aprs_config_index != aprs.config_index)) {
         reset(channel.aprs_config_index);
     }
-    if (aprs.waiting && !radio_aprs_busy()) {
-        sent(radio_aprs_sent());
+    if ((aprs.waiting || aprs.dmr_waiting) && !radio_aprs_busy() && !radio_aprs_dmr_busy()) {
+        bool ok = aprs.dmr_waiting ? aprs.dmr_ok : radio_aprs_sent();
+
+        if (aprs.waiting) {
+            ok = ok && radio_aprs_sent();
+        }
+        sent(ok);
     }
 
     if (toggle_asked) {
@@ -889,4 +929,17 @@ void aprs_send(void)
 void aprs_after_ptt(void)
 {
     ptt_asked = true;
+}
+
+void aprs_debug_status(uint32_t *flags, int32_t *lat_e7, int32_t *lon_e7)
+{
+    double lat;
+    double lon;
+
+    fixed_position(&lat, &lon);
+    *flags = ((uint32_t)aprs.enabled << 0) | ((uint32_t)aprs.has_config << 1) |
+             ((uint32_t)position_valid() << 2) | ((uint32_t)aprs.dmr_waiting << 3) |
+             ((uint32_t)aprs.dmr_ok << 4) | ((uint32_t)aprs.s.mode << 5);
+    *lat_e7 = isnan(lat) ? 0 : (int32_t)llround(lat * 1E7);
+    *lon_e7 = isnan(lon) ? 0 : (int32_t)llround(lon * 1E7);
 }

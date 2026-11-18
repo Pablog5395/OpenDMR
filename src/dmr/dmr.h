@@ -52,6 +52,11 @@ bool dmr_is_transmitting(void); // asked or still ending
 bool dmr_has_sync(void);        // a DMR signal's timeslots found (scan)
 bool dmr_repeater_failed(void); // the repeater didn't wake up
 
+// APRS over DMR: one LRRP position report to a gateway, reusing the current DMR channel. Coordinates are 1e-7 degrees.
+bool dmr_aprs_send_position(int32_t latitude_e7, int32_t longitude_e7, uint16_t speed_knots, uint16_t course,
+                            uint32_t destination, uint32_t source);
+bool dmr_aprs_busy(void); // a queued report is still being transmitted
+
 typedef struct {
     uint32_t source;   // the caller's DMR ID
     uint32_t tg_or_pc; // the talk group, or LAST_HEARD_PC_FLAG << 24 | the called ID (last_heard.h)

@@ -261,6 +261,7 @@ const char *const text_zh[TEXT_COUNT] = {
     [TEXT_DISTANCE_SORT] = "按距离排序",
     [TEXT_SHOW_DISTANCE] = "显示距离",
     [TEXT_APRS_OPTIONS] = "APRS设置",
+    [TEXT_APRS_SEND_VIA] = "发送方式",
     [TEXT_APRS_SMART] = "智能",
     [TEXT_APRS_CHANNEL] = "信道",
     [TEXT_APRS_DECAY] = "衰减",
