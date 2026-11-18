@@ -34,6 +34,7 @@
 
 // Options of ours that the OpenGD77 settings have no room for, in a block of our own after them (extra_options.c)
 #define EXTRA_OPTION_HIDE_CALLER_PLACE (1UL << 0) // the DMR caller panel without the city and state (qso_panel.c)
+#define EXTRA_OPTION_HIDE_RECENT_CALLERS (1UL << 1) // the channel screen's last two callers (off: shown)
 
 void extra_options_load(void); // after flash_init()
 bool extra_option(uint32_t bit);

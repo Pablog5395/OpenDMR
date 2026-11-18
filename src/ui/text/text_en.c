@@ -434,6 +434,7 @@ const char *const text_en[TEXT_COUNT] = {
     [TEXT_UI_PIN_WAIT] = "Wait %u s",
     [TEXT_UI_ANY_KEY_UNLOCK] = "Any key to unlock",
     [TEXT_CALLER_PLACE] = "Caller's place",
+    [TEXT_SHOW_RECENT_CALLERS] = "Recent callers",
     [TEXT_THEME] = "Theme",
     [TEXT_LANGUAGE_MENU] = "Language",
     [TEXT_NXDN_ID] = "NXDN ID",

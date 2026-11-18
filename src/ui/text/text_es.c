@@ -434,6 +434,7 @@ const char *const text_es[TEXT_COUNT] = {
     [TEXT_UI_PIN_WAIT] = "Espere %u s",
     [TEXT_UI_ANY_KEY_UNLOCK] = "Tecla: desbloquear",
     [TEXT_CALLER_PLACE] = "Lugar llamante",
+    [TEXT_SHOW_RECENT_CALLERS] = "Ult. llamadas",
     [TEXT_THEME] = "Tema",
     [TEXT_LANGUAGE_MENU] = "Language",
     [TEXT_NXDN_ID] = "ID NXDN",

@@ -240,8 +240,9 @@ frequency comes the target transmitted to (a group or an individual call), with 
   - the talk group (or whom a private call is for), the S meter, the bottom bar as on the screen under it.
   The caller shows within about 0.7 s. Names come from the contacts, the DMR ID database, or the caller's talker alias.
 - Calls go into Last heard. **SK2** calls back the talk group just heard (a private call: the caller).
-- Under the talk group line, the channel screen shows the last two callers of Last heard (callsign and name, how long
-  ago); the talk group and timeslot are already on the screen, so they are not repeated.
+- On DMR and P25 channels, the channel screen shows the last two callers of Last heard of that same protocol (callsign
+  and name, how long ago, and the talk group or `PC` of each call). The caller shows there within about 0.7 s.
+  Display options → **Recent callers** turns the block off (it is on by default); FM, AM and USB channels never show it.
 - FM: audio when the squelch opens; ▶ ◀ change the squelch, shown on the screen for a moment. 0 % is always open
   (the noise is heard); a receive tone still applies.
 
@@ -474,8 +475,9 @@ SK2 + ▶ ◀ changes the one in use, and it is kept.
 
 Brightness (day), Nite bright, Min bright (the backlight when "off"); Mode (Auto / Squelch / Manual / Buttons),
 Timeout; Auto night; LEDs; Timezone (an hour a step, a quarter with SK2 held); Time shown in UTC or local time;
-Caller's place (the city and state of a DMR caller on the receive screen; the country always shows); Theme (the
-whole look, colours and bands):
+Caller's place (the city and state of a DMR caller on the receive screen; the country always shows); Recent callers
+(the last two callers under the talk group line on a DMR or P25 channel, on by default); Theme (the whole look,
+colours and bands):
 
 | Theme | |
 |---|---|

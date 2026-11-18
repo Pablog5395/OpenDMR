@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 Junqiang Shi, VA3BPF / BG8AM
+ * Copyright (C) 2026 Pablo Gualtieri (Pablog5395)
  *
  * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
  * following conditions are met:

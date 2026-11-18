@@ -26,8 +26,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stdio.h>
-#include <string.h>
 #include "widgets.h"
 #include "draw.h"
 #include "fonts.h"
@@ -45,32 +43,6 @@
 #define RECENT_TITLE_Y    186
 #define RECENT_Y          206
 #define RECENT_ROW_HEIGHT 22
-
-// The text cut to the width, "..." at its end then (whole UTF-8 characters off)
-static void draw_fitted(int32_t x, int32_t y, const char *text, const font_t *font, int32_t width,
-                        theme_colour_t colour)
-{
-    char shown[96];
-    size_t length;
-
-    snprintf(shown, sizeof(shown), "%s", text);
-    if (font_text_width(font, shown) > width) {
-        length = strlen(shown);
-        while (length > 0) {
-            do {
-                length--;
-            } while ((length > 0) && ((shown[length] & 0xC0) == 0x80));
-            while ((length > 0) && (shown[length - 1] == ' ')) {
-                length--;
-            }
-            snprintf(&shown[length], sizeof(shown) - length, "...");
-            if (font_text_width(font, shown) <= width) {
-                break;
-            }
-        }
-    }
-    draw_text(x, y, shown, font, FONT_ALIGN_LEFT, colour);
-}
 
 void channel_panel_draw(const channel_panel_data_t *data)
 {
@@ -113,17 +85,20 @@ void channel_panel_draw(const channel_panel_data_t *data)
         }
     }
 
-    // The last heard callers: the talk group and the timeslot are already on the screen, so only who and how long ago
+    // The last heard callers: the line above is the channel's TX contact, not the caller's talk group, so each row
+    // carries its own TG (or "PC"); the timeslot is already on the status bar
     if (data->recent_count > 0) {
         draw_text(x, RECENT_TITLE_Y, text(TEXT_LAST_HEARD), &font_roboto14, FONT_ALIGN_LEFT,
                   THEME_COLOUR_TEXT_LABEL);
     }
     for (uint8_t row = 0; (row < data->recent_count) && (row < CHANNEL_PANEL_RECENT); row++) {
         const char *name = data->recent[row];
+        const char *detail = data->recent_detail[row];
         const char *when = data->recent_when[row];
         int32_t y = RECENT_Y + (row * RECENT_ROW_HEIGHT);
         int32_t lx = x;
         int32_t right_width;
+        int32_t detail_width;
         int32_t name_width;
 
         if (!name) {
@@ -133,9 +108,14 @@ void channel_panel_draw(const channel_panel_data_t *data)
                          THEME_COLOUR_TEXT_LABEL) +
               8;
         right_width = when ? font_text_width(&font_roboto17, when) : 0;
-        name_width = (FB_WIDTH - WIDGET_MARGIN) - lx - ((right_width > 0) ? (right_width + 8) : 0);
+        detail_width = detail ? (font_text_width(&font_roboto14, detail) + 8) : 0;
+        name_width = (FB_WIDTH - WIDGET_MARGIN) - lx - detail_width - ((right_width > 0) ? (right_width + 8) : 0);
         if (name_width > 0) {
-            draw_fitted(lx, y, name, &font_roboto17, name_width, THEME_COLOUR_TEXT);
+            draw_text_fitted(lx, y, name, &font_roboto17, name_width, THEME_COLOUR_TEXT);
+        }
+        if (detail) {
+            draw_text(lx + name_width + 4, y + 3, detail, &font_roboto14, FONT_ALIGN_LEFT,
+                      THEME_COLOUR_TEXT_SECOND);
         }
         if (when) {
             draw_text(FB_WIDTH - WIDGET_MARGIN, y, when, &font_roboto17, FONT_ALIGN_RIGHT, THEME_COLOUR_TEXT_LABEL);
