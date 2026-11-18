@@ -48,6 +48,7 @@
 #include "ui.h"
 #include "dmr.h"
 #include "p25_radio.h"
+#include "hotspot.h"
 #include "tones.h"
 #include "aprs.h"
 
@@ -645,7 +646,7 @@ static bool send_beacon(bool forced)
     }
 
     bits = build_frame(&aprs.previous, &aprs.current);
-    if (!radio_aprs_send(ax25.buffer, bits, (aprs.config.flags & 0x01) != 0, frequency)) {
+    if (!radio_aprs_send(ax25.buffer, bits, (aprs.config.flags & 0x01) != 0, frequency, &channel)) {
         return false;
     }
     aprs.waiting = true;

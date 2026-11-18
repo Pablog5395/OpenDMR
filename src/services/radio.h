@@ -62,9 +62,12 @@ void radio_transmit(bool on); // only after RADIO_TX_OK; the task switches over
 void radio_transmit_plain(void); // FM on without the start / end tones and MDC1200 (DTMF); radio_transmit(false) ends
 bool radio_is_transmitting(void);
 // APRS (aprs.c): the AX.25 frame as NRZI bits (bit 0 of byte 0 first), sent as AFSK on the FM channel by the radio
-// task after waiting up to 2 s for a busy channel. false: not now (busy, not FM, transmitting). The bits stay in use
-// until radio_aprs_busy() is false; radio_aprs_sent() then tells if it went out.
-bool radio_aprs_send(const uint8_t *bits, uint16_t bit_count, bool baud300);
+// task after waiting for a busy channel. frequency 0 sends on the channel; else the task tunes FM to that frequency
+// for the frame and comes back, without changing the requested channel. channel is the channel the caller validated;
+// the task sends only while that is still the requested channel. false: not now. The bits stay in use until
+// radio_aprs_busy() is false; radio_aprs_sent() then tells if it went out.
+bool radio_aprs_send(const uint8_t *bits, uint16_t bit_count, bool baud300, uint32_t frequency,
+                     const codeplug_channel_t *channel);
 bool radio_aprs_busy(void);
 bool radio_aprs_sent(void);
 // The VOX (an FM channel with VOX, settings.vox_threshold set) posts PTT presses and releases; a key (from the input

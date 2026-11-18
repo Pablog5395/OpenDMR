@@ -540,11 +540,12 @@ Read only: the factory calibration table (oscillator tune, receive level, power 
 - Location: the fixed location of the channel's APRS configuration, or the GPS;
 - Interval, Decay, Compress; for Smart: Slow / Fast Rate, Low / Hi Speed, Turn Angle / Slope / Time.
 - SK1 + 1 switches APRS on / off at any time. Beacons are sent as AFSK (1200 baud) in FM.
-- The APRS configuration's "Frec TX" (in the CPS) is the frequency the beacon is sent on, in every mode but PTT (the
-  beacon goes out on the channel after each transmission). A channel opts in by naming a configuration: one without it
-  never beacons, and a receive-only channel never beacons either. While the beacon goes out the radio tunes FM to that
-  frequency for the frame and comes back: the channel you had selected is left as it was, and a call being received
-  holds the beacon for the next round.
+- The APRS configuration's "Beacon Tx frequency" (in the CPS) is the frequency the beacon is sent on, in every mode but
+  PTT (the beacon goes out on the channel after each transmission). A channel opts in by naming a configuration: one
+  without it never beacons, and a receive-only channel never beacons either. The radio's channel editor offers the APRS
+  configuration only on FM channels; on a DMR or P25 channel it can only be set with the CPS. While the beacon goes out
+  the radio tunes FM to that frequency for the frame and comes back: the channel you had selected is left as it was,
+  and a call being received holds the beacon for the next round.
 - "Transmit QSY" (in the APRS configuration, in the CPS): the beacon's comment begins with the channel's voice
   frequency, its Tx tone and offset, e.g. "146.520MHz T100 +000" (Toff: no tone; lower case on a narrow channel),
   which aprs.fi and APRS radios read as the frequency to call you on.
@@ -655,5 +656,4 @@ firmware: see the README.
 - P25: simplex group calls in clear only; known issues in [docs/p25.md](p25.md), section 6.
 - NXDN: NXDN48 simplex in clear only (no NXDN96, trunking or encryption); a caller shows as its ID, there is no NXDN
   ID to callsign database yet.
-- Not fully tested on the air yet: APRS beacons received by an APRS decoder (their frames are checked; the radio itself
-  does not decode APRS), the hotspot's CW ID, satellite passes, talkaround, distance sort.
+- Not fully tested on the air yet: the hotspot's CW ID, satellite passes, talkaround, distance sort.
