@@ -5,12 +5,15 @@ OpenDMR 是业余时间做的项目，下面只是打算做的事和大致先后
 
 English: [roadmap.en.md](roadmap.en.md)
 
+## 已完成
+
+- APRS：信标在 APRS 配置的发射频率上发（OpenGD77 的 "Transmit frequency"，CPS 里的「Frec TX」），DMR 信道选了
+  APRS 配置也能发信标，发完回到原来的信道（[#35](https://github.com/va3bpf/OpenDMR/pull/35)）
+
 ## 近期
 
 **APRS**
 
-- 信标在 APRS 配置的发射频率上发（OpenGD77 的 "Transmit frequency"，CPS 里的「Frec TX」），DMR 信道选了 APRS
-  配置也能发信标，发完回到原来的信道（[#35](https://github.com/va3bpf/OpenDMR/pull/35)）
 - 卫星模式发 APRS 信标：用卫星的 APRS 频率（自动修正多普勒）和卫星的路径（如 ISS 的 `RS0ISS`、SONATE-2 的
   `DP0SNX`）（[#55](https://github.com/va3bpf/OpenDMR/issues/55)）
 - 在空中实测：信标用 APRS 解码器 / aprs.fi 接收，QSY 信息，卫星转发

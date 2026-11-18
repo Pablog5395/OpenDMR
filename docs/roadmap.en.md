@@ -5,13 +5,16 @@ Suggestions are welcome in the [issues](https://github.com/va3bpf/OpenDMR/issues
 
 中文：[roadmap.md](roadmap.md)
 
+## Done
+
+- APRS: beacons go out on the APRS configuration's Tx frequency (OpenGD77's "Transmit frequency", "Frec TX" in the
+  CPS), also from a DMR channel with an APRS configuration, back to the channel afterwards
+  ([#35](https://github.com/va3bpf/OpenDMR/pull/35))
+
 ## Next
 
 **APRS**
 
-- Beacons on the APRS configuration's Tx frequency (OpenGD77's "Transmit frequency", "Frec TX" in the CPS), also from
-  a DMR channel with an APRS configuration, back to the channel afterwards
-  ([#35](https://github.com/va3bpf/OpenDMR/pull/35))
 - APRS beacons in the satellite screen: on the satellite's APRS frequency (Doppler corrected) with the satellite's
   path (e.g. `RS0ISS` for the ISS, `DP0SNX` for SONATE-2) ([#55](https://github.com/va3bpf/OpenDMR/issues/55))
 - On-air tests: beacons received by an APRS decoder / aprs.fi, the QSY information, satellite digipeating
