@@ -1010,6 +1010,17 @@ bool radio_aprs_sent(void)
     return aprs_sent;
 }
 
+bool radio_aprs_dmr_send(int32_t latitude_e7, int32_t longitude_e7, uint16_t speed_knots, uint16_t course,
+                         uint32_t gateway, uint32_t own_id)
+{
+    return dmr_aprs_send_position(latitude_e7, longitude_e7, speed_knots, course, gateway, own_id);
+}
+
+bool radio_aprs_dmr_busy(void)
+{
+    return dmr_aprs_busy();
+}
+
 /* VOX */
 
 static bool vox_wanted(void)
@@ -1439,6 +1450,11 @@ void radio_tx_signal(uint16_t hz1, uint16_t hz2)
 bool radio_is_transmitting(void)
 {
     return transmitting;
+}
+
+bool radio_rf_on_air(void)
+{
+    return rf_on_air;
 }
 
 uint32_t radio_tx_frequency(void)

@@ -47,6 +47,7 @@
 #include "ui.h"
 #include "tones.h"
 #include "aprs.h"
+#include "extra_options.h"
 
 #define DESTINATION        "APOG77"
 #define BUFFER_SIZE        256
@@ -114,8 +115,10 @@ static struct {
     bool next_beacon_running;
     uint8_t decay;
     bool trigger;
-    bool waiting;       // a frame is with the radio task
+    bool waiting;       // an AFSK frame is with the radio task
     bool waiting_auto;  // ... sent by the auto modes (the trigger stays on a failure)
+    bool dmr_waiting;   // an LRRP report is with the DMR engine
+    bool dmr_ok;        // ... it was queued (the engine has no per-report failure signal)
     location_t sending; // the location of that frame
 } aprs = {.fixed_lat = NAN, .fixed_lon = NAN, .decay = DECAY_MULT_MIN};
 
@@ -571,10 +574,15 @@ static bool position_valid(void)
 static bool send_beacon(bool forced)
 {
     bool manual = forced || (aprs.s.mode == MODE_PTT) || (aprs.s.mode == MODE_MANUAL);
+    uint8_t via = extra_options_aprs_via();
+    bool want_afsk = (via != APRS_VIA_DMR);
+    bool want_dmr = (via != APRS_VIA_AFSK);
+    bool afsk_sent = false;
+    bool dmr_sent = false;
     codeplug_channel_t channel;
 
-    if (radio_is_scanning() || !radio_get_channel(&channel) || (channel.mode != CODEPLUG_MODE_FM) ||
-        (aprs.s.mode == MODE_OFF) || !aprs.enabled || aprs.waiting) {
+    if (radio_is_scanning() || !radio_get_channel(&channel) || radio_is_transmitting() ||
+        (aprs.s.mode == MODE_OFF) || !aprs.enabled || aprs.waiting || aprs.dmr_waiting) {
         return false;
     }
     if (!forced && (aprs.s.mode == MODE_PTT) &&
@@ -591,12 +599,35 @@ static bool send_beacon(bool forced)
         return false;
     }
 
-    uint16_t bits = build_frame(&aprs.previous, &aprs.current);
+    // AFSK goes out on an FM channel (the radio task sends the AX.25 frame); the LRRP report goes out on a DMR
+    // channel with no retune. "Both" uses each path the selected channel can actually take.
+    if (want_afsk && (channel.mode == CODEPLUG_MODE_FM)) {
+        uint16_t bits = build_frame(&aprs.previous, &aprs.current);
 
-    if (!radio_aprs_send(ax25.buffer, bits, (aprs.config.flags & 0x01) != 0)) {
+        afsk_sent = radio_aprs_send(ax25.buffer, bits, (aprs.config.flags & 0x01) != 0);
+    }
+
+    if (want_dmr) {
+        uint32_t own_id = codeplug_get_dmr_id();
+        uint32_t gateway = extra_options_aprs_dmr_gateway();
+        uint16_t speed = (aprs.current.speed > SPEED_MIN_CKN) ? (uint16_t)(aprs.current.speed / 100u)
+                                                              : APRS_DMR_SPEED_UNKNOWN;
+        uint16_t course = (aprs.current.bearing != BEARING_INVALID) ? (uint16_t)(aprs.current.bearing / 100u)
+                                                                   : APRS_DMR_COURSE_UNKNOWN;
+
+        if ((own_id != 0) && (gateway != 0) &&
+            radio_aprs_dmr_send((int32_t)llround(aprs.current.latitude * 1E7),
+                                (int32_t)llround(aprs.current.longitude * 1E7), speed, course, gateway, own_id)) {
+            dmr_sent = true;
+        }
+    }
+
+    if (!afsk_sent && !dmr_sent) {
         return false;
     }
-    aprs.waiting = true;
+    aprs.waiting = afsk_sent;
+    aprs.dmr_waiting = dmr_sent;
+    aprs.dmr_ok = dmr_sent;
     aprs.waiting_auto = !manual;
     aprs.sending = aprs.current;
     if (aprs.s.mode == MODE_PTT) {
@@ -677,6 +708,7 @@ static void decay(bool reset_it)
 static void sent(bool ok)
 {
     aprs.waiting = false;
+    aprs.dmr_waiting = false;
     if (!aprs.waiting_auto) {
         if (!ok) {
             sound_play(SOUND_ERROR); // the radio task could not send it: busy channel, Rx only, out of band
@@ -786,8 +818,13 @@ void aprs_tick(void)
     if (index != aprs.config_index) {
         reset(index);
     }
-    if (aprs.waiting && !radio_aprs_busy()) {
-        sent(radio_aprs_sent());
+    if ((aprs.waiting || aprs.dmr_waiting) && !radio_aprs_busy() && !radio_aprs_dmr_busy()) {
+        bool ok = aprs.dmr_waiting ? aprs.dmr_ok : radio_aprs_sent();
+
+        if (aprs.waiting) {
+            ok = ok && radio_aprs_sent();
+        }
+        sent(ok);
     }
 
     if (toggle_asked) {
@@ -843,4 +880,17 @@ void aprs_send(void)
 void aprs_after_ptt(void)
 {
     ptt_asked = true;
+}
+
+void aprs_debug_status(uint32_t *flags, int32_t *lat_e7, int32_t *lon_e7)
+{
+    double lat;
+    double lon;
+
+    fixed_position(&lat, &lon);
+    *flags = ((uint32_t)aprs.enabled << 0) | ((uint32_t)aprs.has_config << 1) |
+             ((uint32_t)position_valid() << 2) | ((uint32_t)aprs.dmr_waiting << 3) |
+             ((uint32_t)aprs.dmr_ok << 4) | ((uint32_t)aprs.s.mode << 5);
+    *lat_e7 = isnan(lat) ? 0 : (int32_t)llround(lat * 1E7);
+    *lon_e7 = isnan(lon) ? 0 : (int32_t)llround(lon * 1E7);
 }
