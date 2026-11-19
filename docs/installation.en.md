@@ -1,7 +1,7 @@
 # OpenDMR installation guide
 
 Replacing the stock firmware of the **Baofeng DM-32 / DM-32UV** with OpenDMR, updating it later, and going back to
-the stock firmware. 中文：[installation.md](installation.md). Using the radio afterwards: the
+the stock firmware. Español: [installation.es.md](installation.es.md) · 中文：[installation.md](installation.md). Using the radio afterwards: the
 [user manual](manual.en.md).
 
 > ⚠️ **Flashing can brick the radio. You do it at your own risk.**
@@ -41,7 +41,7 @@ that folder). It holds:
 | `tools/fonts/upload_cjk.py` | Writes the Chinese font again while the radio runs OpenDMR |
 | `tools/debug/pin_wipe.py` | Clears a forgotten power-on / lock PIN (radio off, run, switch on within 30 s; codeplug and settings kept) |
 | `tools/ids/id_db.py` | Builds and writes the DMR ID database with places (user manual, section 13) |
-| `docs/manual.md`, `docs/manual.en.md`, `docs/manual/` | User manual |
+| `docs/manual.md`, `docs/manual.en.md`, `docs/manual.es.md`, `docs/manual/` | User manual |
 | `opendmr-cps.html` | Our codeplug software (OpenDMR CPS): double-click it, in Chrome / Edge; see [5](#5-writing-the-codeplug) |
 | `docs/installation.md`, `docs/installation.en.md`, `README.md`, `README.en.md` | This guide, the project's README |
 | `licences/` | The OFL licences of the fonts (Roboto Condensed, Noto Sans SC) |

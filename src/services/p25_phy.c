@@ -41,6 +41,7 @@
 #include "dmr_compat.h"
 #include "systime.h"
 #include "radio.h"
+#include "radio_hooks.h"
 #include "imbe.h"
 #include "p25_frame.h"
 #include "p25_phy.h"
@@ -54,6 +55,8 @@
 #define RX_RAM_INFO              0x30
 #define P25_SYNC_H               0x805575F5 // the frame sync 0x5575F5FF77FF, 24 bits a register (Open25-DM32)
 #define P25_SYNC_L               0x00FF77FF
+#define SYS_SOFT_RSTN            (volatile uint32_t *)(MODEM_REG_BASE + 0x0000)
+#define PHY_SOFT_RSTN            0x02
 
 p25_phy_block_t p25_phy_buf[P25_PHY_BLOCKS];
 volatile uint32_t p25_phy_count;
@@ -99,6 +102,15 @@ static void restore(void)
     active = false;
 }
 
+// The physical layer soft reset (SYS_SOFT_RSTN bit 1 low, then high; only status registers change): its timing from
+// the start, as after power on
+static void phy_soft_reset(void)
+{
+    uint32_t rst = *SYS_SOFT_RSTN;
+    *SYS_SOFT_RSTN = rst & ~PHY_SOFT_RSTN;
+    *SYS_SOFT_RSTN = rst | PHY_SOFT_RSTN;
+}
+
 // the registers saved, the physical layer receive on
 static void setup(bool p25_sync)
 {
@@ -114,6 +126,10 @@ static void setup(bool p25_sync)
 
     active = true; // the DMR interrupt handlers stand aside from here (dmr.c)
     *LAYER2_TXRX_CTRL = 0;
+    // Reset first: after a DMR transmission (the DMR engine's own send) the physical layer found no sync at all, every
+    // P25 call missed until a P25 or NXDN transmission reset it (measured 2026-11-18: 0 in 5 seconds heard, three
+    // calls of three, each time; with this reset, as before the DMR transmission)
+    phy_soft_reset();
     *WORK_MODE = WORK_MODE_PHY_CONTINUOUS;
     *LAYER2_CONTROL = LAYER2_PHY_RECEIVE;
     if (saved_p25_sync) {
@@ -148,6 +164,139 @@ int p25_phy_capture(int p25_sync, int blocks)
     memset(p25_phy_buf, 0, sizeof(p25_phy_buf));
     setup(p25_sync != 0);
     return 0;
+}
+
+/* ---- NXDN experiments: the HR_C7000's FM receive recording (nxdn/README.md) ----
+   In FM mode (WORK_MODE bit 7) the modem keeps what it receives on its AF input (the FD6818's flat discriminator
+   output while the FD6818 has the DMR settings) in RX RAM 0x160004E0 .. 0x160008DF, two halves of 256 samples (16 bit,
+   8 kHz, 32 ms); FM_ADDR_SW says which half the CPU may read. Busy-waits over the cable: each change of FM_ADDR_SW
+   copies the half it names into p25_phy_buf (as bytes) and logs the value. Returns the halves copied. */
+#define NXDN_AF_RAM      ((const volatile uint8_t *)0x160004E0)
+#define NXDN_FM_ADDR_SW  (*(volatile uint32_t *)(MODEM_REG_BASE + 0x056C))
+#define NXDN_FM_BW       (*(volatile uint32_t *)(MODEM_REG_BASE + 0x0500))
+uint8_t nxdn_af_sw_log[64];
+volatile uint32_t nxdn_af_settle_ms = 600; // waited after the switch to FM before recording
+volatile uint32_t nxdn_af_rewrites; // how often WORK_MODE / FM_BANDWIDTH were found changed during the last capture
+
+int nxdn_af_capture(int halves, uint32_t fm_bandwidth, int work_mode)
+{
+    uint8_t *out = (uint8_t *)p25_phy_buf;
+    int max = (int)(sizeof(p25_phy_buf) / 512);
+
+    if (active || tx_active) {
+        return -1;
+    }
+    if ((halves <= 0) || (halves > max)) {
+        halves = max;
+    }
+    if (halves > (int)sizeof(nxdn_af_sw_log)) {
+        halves = sizeof(nxdn_af_sw_log);
+    }
+    limit = 0;              // p25_phy_isr() records nothing meanwhile
+    p25_phy_count = 0;
+    active = true;          // the DMR interrupt handlers stand aside
+    uint32_t saved_wm = *WORK_MODE;
+    uint32_t saved_bw = NXDN_FM_BW;
+    uint32_t saved_phy_wm = p25_phy_work_mode;
+    p25_phy_work_mode = (uint32_t)work_mode; // dmr_sound.c send() keeps it (it sets this while active)
+    *WORK_MODE = (uint32_t)work_mode;
+    NXDN_FM_BW = fm_bandwidth;
+    nxdn_af_rewrites = 0;
+    // the FM path's DC blocking settles first after the switch (about 0.3 s from far off)
+    uint32_t settle = systime_get_ms();
+    while ((systime_get_ms() - settle) < nxdn_af_settle_ms) {
+        if (*WORK_MODE != (uint32_t)work_mode) {
+            *WORK_MODE = (uint32_t)work_mode;
+        }
+    }
+    uint32_t last = NXDN_FM_ADDR_SW & 3;
+    uint32_t start = systime_get_ms();
+    int n = 0;
+    while ((n < halves) && ((systime_get_ms() - start) < 4000)) {
+        if ((*WORK_MODE != (uint32_t)work_mode) || (NXDN_FM_BW != fm_bandwidth)) { // something set them back
+            *WORK_MODE = (uint32_t)work_mode;
+            NXDN_FM_BW = fm_bandwidth;
+            nxdn_af_rewrites++;
+        }
+        uint32_t sw = NXDN_FM_ADDR_SW & 3;
+        if (sw != last) {
+            const volatile uint8_t *src = NXDN_AF_RAM + ((sw == 2) ? 512 : 0);
+            for (int i = 0; i < 512; i++) {
+                out[(n * 512) + i] = src[i];
+            }
+            nxdn_af_sw_log[n] = (uint8_t)sw;
+            n++;
+            last = sw;
+        }
+    }
+    *WORK_MODE = saved_wm;
+    NXDN_FM_BW = saved_bw;
+    p25_phy_work_mode = saved_phy_wm;
+    active = false;
+    p25_phy_count = (uint32_t)n;
+    return n;
+}
+
+/* The NXDN receiver (nxdn_radio.c): the modem in FM, recording all the time, the DMR handlers standing aside as for
+   the physical layer receive. FM_BANDWIDTH 0x1F: the band-pass off (it cut the 4FSK under 300 Hz), the de-emphasis
+   on (undone in software); FM_DEV_COEF as for 12.5 kHz FM. */
+#define NXDN_FM_WORK_MODE 0x80
+#define NXDN_FM_BW_VALUE  0x1F
+#define NXDN_FM_DEV       (*(volatile uint32_t *)(MODEM_REG_BASE + 0x0504))
+static uint32_t nxdn_saved_wm, nxdn_saved_bw, nxdn_saved_dev, nxdn_saved_phy_wm;
+static uint32_t nxdn_last_sw;
+volatile uint32_t nxdn_fm_rewrites; // WORK_MODE / FM_BANDWIDTH found changed and put back
+
+bool nxdn_fm_start(void)
+{
+    if (active || tx_active) {
+        return false;
+    }
+    nxdn_saved_wm = *WORK_MODE;
+    nxdn_saved_bw = NXDN_FM_BW;
+    nxdn_saved_dev = NXDN_FM_DEV;
+    nxdn_saved_phy_wm = p25_phy_work_mode;
+    active = true; // the DMR interrupt handlers stand aside from here (dmr.c)
+    p25_phy_work_mode = NXDN_FM_WORK_MODE; // dmr_sound.c send() keeps it
+    *WORK_MODE = NXDN_FM_WORK_MODE;
+    NXDN_FM_BW = NXDN_FM_BW_VALUE;
+    NXDN_FM_DEV = 0x40A25;
+    nxdn_last_sw = NXDN_FM_ADDR_SW & 3;
+    return true;
+}
+
+void nxdn_fm_stop(void)
+{
+    if (!active || stream_cb) {
+        return;
+    }
+    *WORK_MODE = nxdn_saved_wm;
+    NXDN_FM_BW = nxdn_saved_bw;
+    NXDN_FM_DEV = nxdn_saved_dev;
+    p25_phy_work_mode = nxdn_saved_phy_wm;
+    active = false;
+}
+
+// The half of the recording the modem finished since the last call (256 samples, 16 bit big endian in its RAM) into
+// out; false: none yet. *skipped: halves that went by unread (more than one change of FM_ADDR_SW cannot be seen: a
+// late reader loses whole halves, told by the caller's clock)
+bool nxdn_fm_read(int16_t out[256])
+{
+    if ((*WORK_MODE != NXDN_FM_WORK_MODE) || (NXDN_FM_BW != NXDN_FM_BW_VALUE)) { // something set them back
+        *WORK_MODE = NXDN_FM_WORK_MODE;
+        NXDN_FM_BW = NXDN_FM_BW_VALUE;
+        nxdn_fm_rewrites++;
+    }
+    uint32_t sw = NXDN_FM_ADDR_SW & 3;
+    if (sw == nxdn_last_sw) {
+        return false;
+    }
+    nxdn_last_sw = sw;
+    const volatile uint8_t *src = NXDN_AF_RAM + ((sw == 2) ? 512 : 0);
+    for (int i = 0; i < 256; i++) {
+        out[i] = (int16_t)((src[2 * i] << 8) | src[2 * i + 1]);
+    }
+    return true;
 }
 
 void p25_phy_stop(void)
@@ -237,8 +386,6 @@ void RAM_CODE p25_phy_rx_slot_isr(void)
 #define TX_BLOCK_DIBITS   (P25_PHY_BLOCK_BYTES * 4)
 #define TX_UNDERRUN_STOP  10
 #define TX_RF_SETUP_MS    30   // radio_phy_tx(): the set up and the PA ramp, then the modem
-#define SYS_SOFT_RSTN     (volatile uint32_t *)(MODEM_REG_BASE + 0x0000)
-#define PHY_SOFT_RSTN     0x02
 #define LAYER2_STATUS_REG (volatile uint32_t *)(MODEM_REG_BASE + 0x041C)
 
 volatile uint32_t p25_phy_tx_state;
@@ -355,9 +502,7 @@ int p25_phy_tx_begin(bool low_power)
     saved_tx_layer2 = *LAYER2_CONTROL;
     saved_tx_txrx = *LAYER2_TXRX_CTRL;
     *LAYER2_TXRX_CTRL = 0;
-    uint32_t rst = *SYS_SOFT_RSTN; // the modem's send timing from the start (above)
-    *SYS_SOFT_RSTN = rst & ~PHY_SOFT_RSTN;
-    *SYS_SOFT_RSTN = rst | PHY_SOFT_RSTN;
+    phy_soft_reset(); // the modem's send timing from the start (above)
     *WORK_MODE = WORK_MODE_PHY_CONTINUOUS;
     *LAYER2_CONTROL = LAYER2_PHY_SEND;
     uint8_t b[P25_PHY_BLOCK_BYTES];
@@ -380,9 +525,7 @@ void p25_phy_tx_end(void)
     // The physical layer reset again: else the modulator keeps its last output after the send, and the next signal
     // received (one call, whatever its length) came with every level a step up, +1 taken as +3 (~10 % of the symbols
     // wrong; measured 2026-11-12: 6 calls in 8 without it, none in 10 with it)
-    uint32_t rst = *SYS_SOFT_RSTN;
-    *SYS_SOFT_RSTN = rst & ~PHY_SOFT_RSTN;
-    *SYS_SOFT_RSTN = rst | PHY_SOFT_RSTN;
+    phy_soft_reset();
     *LAYER2_CONTROL = saved_tx_layer2;
     *WORK_MODE = saved_tx_work_mode;
     *LAYER2_TXRX_CTRL = saved_tx_txrx;
@@ -436,6 +579,43 @@ static void add_ldu(uint32_t k)
     p25_phy_tx_put(unit, n);
 }
 
+// The loop mode of the test (write_mode 1): these dibits (written over the cable, e.g. NXDN96 frames from
+// nxdn/py) sent again and again instead of the P25 call
+uint8_t p25_phy_tx_loop[P25_PHY_TX_LOOP];
+volatile uint32_t p25_phy_tx_loop_len;
+static bool tx_loop_mode;
+
+static void tx_loop(void)
+{
+    TickType_t start = xTaskGetTickCount();
+    uint32_t n = (p25_phy_tx_loop_len > P25_PHY_TX_LOOP) ? P25_PHY_TX_LOOP : p25_phy_tx_loop_len;
+
+    p25_phy_tx_reset();
+    if (n == 0) {
+        p25_phy_tx_state = 5;
+        return;
+    }
+    while (p25_phy_tx_room() > n) {
+        p25_phy_tx_put(p25_phy_tx_loop, (int)n);
+    }
+    if (p25_phy_tx_begin(true) != 0) {
+        p25_phy_tx_state = 5;
+        return;
+    }
+    while ((xTaskGetTickCount() - start) < pdMS_TO_TICKS(tx_ms)) {
+        while (p25_phy_tx_room() > n) {
+            p25_phy_tx_put(p25_phy_tx_loop, (int)n);
+        }
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+    p25_phy_tx_pad();
+    while (p25_phy_tx_level() >= TX_BLOCK_DIBITS) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    vTaskDelay(pdMS_TO_TICKS(60));
+    p25_phy_tx_end();
+}
+
 static void tx_task_main(void *arg)
 {
     (void)arg;
@@ -443,6 +623,10 @@ static void tx_task_main(void *arg)
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         p25_phy_tx_state = 1;
         vTaskDelay(pdMS_TO_TICKS(tx_delay_ms));
+        if (tx_loop_mode) {
+            tx_loop();
+            continue;
+        }
 
         p25_es es;
         memset(&es, 0, sizeof(es));
@@ -488,7 +672,7 @@ int p25_phy_tx_test(int delay_ms, int ms, int write_mode)
     }
     tx_delay_ms = (delay_ms > 0) ? (uint32_t)delay_ms : 0;
     tx_ms = (ms > 0 && ms <= TX_MAX_MS) ? (uint32_t)ms : TX_MAX_MS;
-    (void)write_mode; // the halves are written one way (p25_phy_tx_isr())
+    tx_loop_mode = (write_mode == 1); // 1: p25_phy_tx_loop again and again (the halves are written one way anyway)
     if (!tx_task) {
         tx_task = xTaskCreateStatic(tx_task_main, "p25tx", sizeof(tx_stack) / sizeof(tx_stack[0]), NULL,
                                     tskIDLE_PRIORITY + 2, tx_stack, &tx_tcb);

@@ -106,32 +106,6 @@ static void split_callsign(const char *text, char *callsign, size_t callsign_siz
     }
 }
 
-// The text cut to the width, "..." at its end then (whole UTF-8 characters off)
-static void draw_fitted(int32_t x, int32_t y, const char *text, const font_t *font, int32_t width,
-                        theme_colour_t colour)
-{
-    char shown[96];
-    size_t length;
-
-    snprintf(shown, sizeof(shown), "%s", text);
-    if (font_text_width(font, shown) > width) {
-        length = strlen(shown);
-        while (length > 0) {
-            do {
-                length--;
-            } while ((length > 0) && ((shown[length] & 0xC0) == 0x80));
-            while ((length > 0) && (shown[length - 1] == ' ')) {
-                length--;
-            }
-            snprintf(&shown[length], sizeof(shown) - length, "...");
-            if (font_text_width(font, shown) <= width) {
-                break;
-            }
-        }
-    }
-    draw_text(x, y, shown, font, FONT_ALIGN_LEFT, colour);
-}
-
 // The caller's place from the database (ours: tools/ids/id_db.py), the country from the ID when it is not in it
 static void look_up(uint32_t id)
 {
@@ -156,7 +130,8 @@ static void draw(const dmr_call_t *call, const char *mode, const char *status_it
     const font_t *call_font = &font_roboto44_bold;
     status_bar_data_t status = {.state = STATUS_BAR_RECEIVING};
     s_meter_data_t meter = {.active = true, .open = true, .compact = true};
-    bottom_bar_data_t bottom = {.mode = mode, .item1 = power, .item2 = "12.5K"}; // as the screen's
+    bottom_bar_data_t bottom = {.mode = mode, .item1 = power, // as the screen's (NXDN48: 6.25 kHz)
+                                .item2 = (mode && (strcmp(mode, "NXDN") == 0)) ? "6.25K" : "12.5K"};
     char caller[LAST_HEARD_TEXT_SIZE];
     char callsign[LAST_HEARD_TEXT_SIZE];
     char rest[LAST_HEARD_TEXT_SIZE];
@@ -205,7 +180,7 @@ static void draw(const dmr_call_t *call, const char *mode, const char *status_it
         lx = font_text_width(&font_roboto17, id) + 12;
     }
     if (channel_name && channel_name[0]) {
-        draw_fitted(x, TOP_Y, channel_name, &font_roboto17_bold, width - lx, THEME_COLOUR_TEXT);
+        draw_text_fitted(x, TOP_Y, channel_name, &font_roboto17_bold, width - lx, THEME_COLOUR_TEXT);
     }
 
     if (font_text_width(call_font, callsign) > width) {
@@ -243,7 +218,7 @@ static void draw(const dmr_call_t *call, const char *mode, const char *status_it
             }
         }
         if (details[i][0]) {
-            draw_fitted(tx, DETAIL_Y[i], details[i], font, x + width - tx, DETAIL_COLOURS[i]);
+            draw_text_fitted(tx, DETAIL_Y[i], details[i], font, x + width - tx, DETAIL_COLOURS[i]);
         }
     }
 
@@ -255,7 +230,7 @@ static void draw(const dmr_call_t *call, const char *mode, const char *status_it
         draw_text(x + width, TG_Y + 2, tg_right, &font_roboto17, FONT_ALIGN_RIGHT, THEME_COLOUR_TEXT_LABEL);
         tg_end -= font_text_width(&font_roboto17, tg_right) + 10;
     }
-    draw_fitted(lx, TG_Y, line, &font_roboto20, tg_end - lx, THEME_COLOUR_TEXT);
+    draw_text_fitted(lx, TG_Y, line, &font_roboto20, tg_end - lx, THEME_COLOUR_TEXT);
 
     s_meter_draw(S_METER_Y, &meter);
     bottom_bar_draw(&bottom);
@@ -278,4 +253,13 @@ void qso_panel_draw_p25(const p25_call_t *call, const char *channel_name, const 
 
     snprintf(nac_text, sizeof(nac_text), "NAC %03X", call->nac);
     draw(&shown, "P25", NULL, NULL, channel_name, power, nac_text);
+}
+
+void qso_panel_draw_nxdn(const nxdn_call_t *call, const char *channel_name, const char *power)
+{
+    dmr_call_t shown = {.source = call->src, .tg_or_pc = nxdn_call_tg_or_pc(call)};
+    char ran_text[12];
+
+    snprintf(ran_text, sizeof(ran_text), "RAN %u", (unsigned)call->ran);
+    draw(&shown, "NXDN", NULL, NULL, channel_name, power, ran_text);
 }

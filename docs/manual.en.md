@@ -1,6 +1,6 @@
 # OpenDMR user manual
 
-For the **Baofeng DM-32 / DM-32UV** running the OpenDMR firmware. 中文版：[manual.md](manual.md).
+For the **Baofeng DM-32 / DM-32UV** running the OpenDMR firmware. Español: [manual.es.md](manual.es.md) · 中文版：[manual.md](manual.md).
 
 Every picture is a real screenshot from the radio (`tools/debug/fshot.py`, 240×320). The location on the GPS and
 radio info screens is blurred.
@@ -55,7 +55,7 @@ All of these can be changed in Options → Key settings (see [12](#12-lock-quick
 | # long | Reverse repeater (channel mode only) | Same |
 | * | Timeslot | Bandwidth 12.5 / 25 kHz |
 | * long | Back to the channel's own timeslot | — |
-| SK1 + * | Mode: FM → AM → USB → LSB → DMR → P25 | Same |
+| SK1 + * | Mode: FM → AM → USB → LSB → DMR → P25 → NXDN | Same |
 | ▶ / ◀ | Talk group + / − (through the RX group list) | Squelch + / − |
 | SK2 + ▶ / ◀ | Power + / − | Same |
 | SK2 + ▶ long | User power | Same |
@@ -133,7 +133,7 @@ changes.
 
 <img src="manual/en/channel-details.png" alt="Channel details 1"> <img src="manual/en/channel-details-2.png" alt="Channel details 2"> <img src="manual/en/channel-details-3.png" alt="Channel details 3"> <img src="manual/en/channel-details-4.png" alt="Channel details 4">
 
-Name, receive and transmit frequencies, mode, DMR ID, colour code (the NAC on a P25 channel), timeslot, TG list, contact, receive and transmit
+Name, receive and transmit frequencies, mode, DMR ID, colour code (the NAC on a P25 channel, the RAN on an NXDN channel), timeslot, TG list, contact, receive and transmit
 CTCSS/DCS, bandwidth, step, transmit timeout, Rx only, zone skip, all skip, VOX, channel power, squelch, beep, eco,
 talker alias transmit on TS1 / TS2, APRS configuration.
 
@@ -159,8 +159,8 @@ and B): **hold the back key** to switch, or choose in the VFO menu.
 | Choose the receive / the transmit frequency | SK2 + ▲ / SK2 + ▼ |
 | Type a frequency | Digits (e.g. `43500000`: it is set after the 8th digit, or with the menu key; the back key deletes one) |
 | Swap Rx and Tx while held | SK1 + SK2 |
-| Mode: FM → AM → USB → LSB → DMR → P25 | SK1 + * |
-| Squelch (FM, AM, SSB) / talk group (DMR, P25) | ▶ ◀ |
+| Mode: FM → AM → USB → LSB → DMR → P25 → NXDN | SK1 + * |
+| Squelch (FM, AM, SSB) / talk group (DMR, P25, NXDN) | ▶ ◀ |
 
 Both frequencies are shown large: the receive one with `RX` (green) on its right, the transmit one with `TX` (red).
 The one the keys change is white, and the digit its step changes is underlined (in its colour): a 12.5 or 25 kHz step
@@ -185,6 +185,22 @@ comes the talk group, with the NAC on the right of its line (e.g. `NAC 293`).
 - An encrypted call only shows a lock and is not played. The CPS sees a P25 channel as DMR: **editing that channel in
   the CPS may change its NAC**.
 - Known issues and the technical details: [docs/p25.md](p25.md) (in Chinese).
+
+**NXDN** (NXDN48, 6.25 kHz, conventional simplex voice, clear): the bottom bar shows `NXDN` and `6.25K`; below the
+frequency comes the target transmitted to (a group or an individual call), with the RAN on the right of its line
+(e.g. `RAN 1`).
+
+- The **RAN** (radio access number, 0 - 63, 1 by default) works like DMR's colour code: only calls with the same RAN
+  are received; 0 receives them all (and transmits 0). It is set in the channel details (on an NXDN channel the
+  colour code row becomes the RAN; ◀ ▶ step 1, held 8).
+- The **target** is chosen as in DMR (▶ ◀, typed, contacts): a group gets a group call, a private contact an
+  individual call. NXDN IDs have 16 bits: a group or contact over 65535 goes to group 1 instead. Individual calls
+  to other radios are not played.
+- **Your NXDN ID** is set in General options → NXDN ID (1 - 65535; NXDN IDs are registered apart from DMR IDs); not
+  set: your DMR ID (its low 16 bits over 65535).
+- Receive: the radio records the discriminator and demodulates and decodes it in software; transmit: our own AMBE+2
+  encoder, NXDN48's ±1050 Hz deviation. Tested with an MMDVM hotspot (0 % bit errors). Encrypted calls are not decoded.
+- CPS versions after 0.7.1 support NXDN channels (mode, RAN, NXDN ID).
 
 ### VFO quick menu (menu key)
 
@@ -224,8 +240,9 @@ comes the talk group, with the NAC on the right of its line (e.g. `NAC 293`).
   - the talk group (or whom a private call is for), the S meter, the bottom bar as on the screen under it.
   The caller shows within about 0.7 s. Names come from the contacts, the DMR ID database, or the caller's talker alias.
 - Calls go into Last heard. **SK2** calls back the talk group just heard (a private call: the caller).
-- Under the talk group line, the channel screen shows the last two callers of Last heard (callsign and name, how long
-  ago); the talk group and timeslot are already on the screen, so they are not repeated.
+- On DMR and P25 channels, the channel screen shows the last two callers of Last heard of that same protocol (callsign
+  and name, how long ago, and the talk group or `PC` of each call). The caller shows there within about 0.7 s.
+  Display options → **Recent callers** turns the block off (it is on by default); FM, AM, USB, LSB and NXDN channels never show it.
 - FM: audio when the squelch opens; ▶ ◀ change the squelch, shown on the screen for a moment. 0 % is always open
   (the noise is heard); a receive tone still applies.
 
@@ -249,7 +266,9 @@ While transmitting:
 - **FM**: **SK2** sends the 1750 Hz repeater tone; the digits send DTMF;
 - Start / end tones, MDC1200 and the tail elimination are set in Sound options → FM Tx tones;
 - **VOX**: Sound options → VOX Thres. (0 = off) and VOX Tail;
-- **PTT latch** (Radio options): one press of the PTT starts transmitting, another one stops.
+- **PTT latch** (Radio options): the transmission goes on after the PTT is released; another press of the PTT (or
+  RED) ends it. Only on a channel with a TX timeout (TOT), so it never transmits without end, and the timeout ends it;
+  not for VOX.
 
 ---
 
@@ -260,11 +279,20 @@ While transmitting:
 - **SK1 + ▲** scans up, **SK1 + ▼** down. In channel mode the zone is scanned (channels with Zone Skip are skipped;
   in All Channels those with All Skip); in the VFO between the scan limits (without limits: the whole band). The
   status bar shows the scan icon.
-- While scanning: **▲** goes on at once; **◀** reverses; when it has stopped on a signal, **\*** skips that channel /
-  frequency as a nuisance (for this scan); **PTT** stops the scan and transmits; **any other key** stops it.
+- While scanning: **▲** goes on at once; **◀** reverses; when it has stopped on a signal, **\*** locks that channel /
+  frequency out: **short** (a click) until the radio is switched off (nuisance delete, up to 64), **held** (a
+  confirmation tone) for good: a channel gets Zone Skip (All Skip in All Channels) in the codeplug, a VFO frequency
+  is kept in the radio (up to 32). The scan goes on, and shows how many are locked out. **PTT** stops the scan and
+  transmits; **any other key** stops it.
+- The channel or VFO quick menu's **Scan lockout** (On / Off, with ◀ ▶ or the knob) is the current channel or
+  frequency: On locks it out for good (also after a Stop mode scan ended on it), Off puts it back in the scans,
+  however it was locked out.
+- Main menu → **Scan lockouts** lists all of them, the kind on the right: Temp (until power off), Saved (a VFO
+  frequency), Zone skip / All skip (a channel, from the codeplug: also those set in the CPS or the channel details).
+  The menu key on a row unlocks it, the last row unlocks them all.
 - Radio options: Scan delay (how long it stays), Scan dwell (the time on each channel / frequency), Scan mode (Hold /
   Pause / Stop), Scan On Boot.
-- DMR and P25 channels take at least 50 ms each; where the signal strength rises over the noise, the scan waits up to
+- DMR, P25 and NXDN channels take at least 50 ms each; where the signal strength rises over the noise, the scan waits up to
   0.4 s for the DMR sync (P25: a data unit), then up to 3 s for the audio, so it also stops in the middle of a call.
 
 ---
@@ -377,7 +405,11 @@ E / W). The battery graph has a point every 40 s (6.4 – 8.2 V).
 Needs **the time and your location** (Radio info, or the GPS) and **the satellite keps written by the CPS**. Then:
 the coming passes of all the satellites; open one for the pass (polar track, azimuth / elevation) and the Doppler
 corrected frequencies (the menu key switches voice / APRS / other). The pass screen tunes the radio with the Doppler
-correction, and the PTT transmits on the corrected frequency of that moment. Without keps: "List empty — Load keps
+correction, and the PTT transmits on the corrected frequency of that moment. On the **APRS** frequencies the PTT sends
+an APRS beacon through the satellite's digipeater instead of voice (as OpenGD77): it uses the APRS configuration
+**named as the satellite** (one named ISS with the path RS0ISS, SONATE-2 with DP0SNX ...), made on the CPS's APRS page,
+and the position of the APRS options (the GPS or the fixed one). No configuration of that name, or no position: an
+error tone. Without keps: "List empty — Load keps
 with CPS".
 
 ### GPS
@@ -417,6 +449,7 @@ these settings.**
 | GPS | Off / On / NMEA (NMEA sentences out of the programming cable) |
 | Keep menu places | On: the menus open where they were left, also after power off (off: only until power off) |
 | User DMR ID | Your DMR ID; the menu key opens the number entry |
+| NXDN ID | Your NXDN ID (1 - 65535); the menu key opens the number entry, 0 clears it; not set: "(DMR ID)", the DMR ID used |
 
 ### Radio options
 
@@ -429,7 +462,7 @@ these settings.**
 | Scan delay, Scan dwell, Scan mode, Scan On Boot | See [7](#7-scanning) |
 | Boot screen | Boot screen and boot melody at power on (off by default: straight to the main screen) |
 | VHF / 220 / UHF Squelch | Default squelch of the channels of each band |
-| PTT latch | One press of the PTT starts transmitting, another one stops |
+| PTT latch | One press of the PTT starts transmitting, another one stops; needs the channel's TOT |
 | Allow PC | Off / On / PTT (a private call heard: the PTT calls back) |
 | Default Power | Power of a new channel and of a VFO used the first time (each keeps its own after), and of old channels set to "radio" |
 | Power To All | The default power into every channel and VFO A / B (asked first) |
@@ -446,8 +479,9 @@ SK2 + ▶ ◀ changes the one in use, and it is kept.
 
 Brightness (day), Nite bright, Min bright (the backlight when "off"); Mode (Auto / Squelch / Manual / Buttons),
 Timeout; Auto night; LEDs; Timezone (an hour a step, a quarter with SK2 held); Time shown in UTC or local time;
-Caller's place (the city and state of a DMR caller on the receive screen; the country always shows); Theme (the
-whole look, colours and bands):
+Caller's place (the city and state of a DMR caller on the receive screen; the country always shows); Recent callers
+(the last two callers under the talk group line on a DMR or P25 channel, on by default); Theme (the whole look,
+colours and bands):
 
 | Theme | |
 |---|---|
@@ -510,11 +544,26 @@ Read only: the factory calibration table (oscillator tune, receive level, power 
 - Location: the fixed location of the channel's APRS configuration, or the GPS;
 - Interval, Decay, Compress; for Smart: Slow / Fast Rate, Low / Hi Speed, Turn Angle / Slope / Time.
 - SK1 + 1 switches APRS on / off at any time. Beacons are sent as AFSK (1200 baud) in FM.
-- The APRS configuration (in the CPS) has the frequency to announce and a "Transmit QSY" tick: with it the beacon
-  begins with e.g. "144.390MHz", which aprs.fi reads as the frequency the station listens on.
-- The beacon goes out in FM on that configuration's frequency ("Frec TX") when it has one, from whatever channel is
-  selected (DMR, P25, AM, USB: the radio goes to FM for the beacon and back to the channel once it is sent); while a
-  call is being received the beacon waits for the next round.
+- The APRS configuration's "Beacon Tx frequency" (in the CPS) is the frequency the beacon is sent on, in every mode but
+  PTT (the beacon goes out on the channel after each transmission). A channel opts in by naming a configuration: one
+  without it never beacons, and a receive-only channel never beacons either. With no beacon frequency, an FM channel
+  beacons on its own frequency; a DMR, P25, NXDN, AM or USB channel never beacons. PTT mode beacons only on FM
+  channels. The radio's channel editor offers the APRS configuration only on FM channels; on a DMR, P25 or NXDN channel
+  it can only be set with the CPS. While the beacon goes out the radio tunes FM to that frequency for the frame and
+  comes back: the channel you had selected is left as it was, and a call being received holds the beacon for the next
+  round.
+- "Transmit QSY" (in the APRS configuration, in the CPS): the beacon's comment begins with the channel's voice
+  frequency, its Tx tone and offset, e.g. "146.520MHz T100 +000" (Toff: no tone; lower case on a narrow channel),
+  which aprs.fi and APRS radios read as the frequency to call you on.
+- Send via: **AFSK** (the default: the FM beacon above) / **DMR** / **Both**. DMR: on a DMR channel the position goes
+  to an APRS gateway as an LRRP data report, without retuning, on the channel's own timeslot and colour code; it waits
+  for a free channel first (2 s at most), and a PTT pressed while it is sent waits for it, then the voice goes out. The
+  radio needs its DMR ID. Both: each path the channel can take; on a DMR channel with a beacon frequency the AFSK
+  beacon goes first, then the LRRP report.
+- Gateway: the DMR ID of the gateway that receives the LRRP reports, 222999 by default (BrandMeister's APRS gateway);
+  the menu key opens the number entry.
+- Send via and the gateway are kept in the radio, not in the CPS's settings. Sending over DMR is still experimental: a
+  gateway decoding the report hasn't been confirmed yet.
 
 ---
 
@@ -620,5 +669,6 @@ firmware: see the README.
 - The calibration is read only: power and oscillator can't be changed.
 - Safe Pwr-On and Sat (Manual / Auto) have no effect yet.
 - P25: simplex group calls in clear only; known issues in [docs/p25.md](p25.md), section 6.
-- Not fully tested on the air yet: APRS beacons received by an APRS decoder (their frames are checked; the radio itself
-  does not decode APRS), the hotspot's CW ID, satellite passes, talkaround, distance sort.
+- NXDN: NXDN48 simplex in clear only (no NXDN96, trunking or encryption); a caller shows as its ID, there is no NXDN
+  ID to callsign database yet.
+- Not fully tested on the air yet: the hotspot's CW ID, satellite passes, talkaround, distance sort.

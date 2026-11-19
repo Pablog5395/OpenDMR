@@ -49,8 +49,12 @@
 #include "codeplug.h"
 #include "codeplug_text.h"
 #include "vfo_screen.h"
+#include "channel_screen.h"
+#include "lockouts.h"
+#include "sound.h"
 #include "channel_details.h"
 #include "quick_menu.h"
+#include "scan.h"
 
 // Bits of settings.bitfield_options (the main firmware's BIT_x)
 #define BIT_DUAL_WATCH    (1UL << 10) // BIT_DUAL_WATCH
@@ -86,6 +90,7 @@ typedef enum {
     QM_TONE_SCAN,
     QM_SCAN_LOW,  // the VFO's scan limits (vfo_screen.c scan): the RX frequency
     QM_SCAN_HIGH,
+    QM_LOCKOUT,      // the channel / VFO frequency locked out of the scans (lockouts.c): off / temp / permanent
 } item_t;
 
 typedef struct {
@@ -96,10 +101,11 @@ typedef struct {
 // The orders of CHANNEL_SCREEN_QUICK_MENU_ITEMS and VFO_SCREEN_QUICK_MENU_ITEMS (DM-32)
 static const uint8_t channel_items[] = {QM_CHANNEL_DETAILS, QM_CHANNEL_TO_VFO, QM_VFO_TO_CHANNEL, QM_FILTER,
                                         QM_DMR_FILTER,      QM_CC_SCAN,        QM_TS_FILTER,      QM_TALKAROUND,
-                                        QM_DISTANCE_SORT,   QM_DUAL_WATCH,     QM_DUAL_ADD};
+                                        QM_DISTANCE_SORT,   QM_DUAL_WATCH,     QM_DUAL_ADD,       QM_LOCKOUT};
 static const uint8_t vfo_items[] = {QM_CHANNEL_DETAILS, QM_VFO_AB,    QM_SWAP,       QM_RX_TO_TX,  QM_TX_TO_RX,
                                     QM_FILTER,          QM_DMR_FILTER, QM_CC_SCAN,   QM_TS_FILTER, QM_VFO_TO_NEW,
-                                    QM_TONE_SCAN,       QM_DUAL_WATCH, QM_SCAN_LOW,  QM_SCAN_HIGH, QM_DUAL_ADD};
+                                    QM_TONE_SCAN,       QM_DUAL_WATCH, QM_SCAN_LOW,  QM_SCAN_HIGH, QM_DUAL_ADD,
+                                    QM_LOCKOUT};
 static const menu_t channel_menu = {channel_items, sizeof(channel_items)};
 static const menu_t vfo_menu = {vfo_items, sizeof(vfo_items)};
 
@@ -124,6 +130,16 @@ static const menu_t *menu(void)
     return (const menu_t *)ui_arg();
 }
 
+// The menu shown: its rows without the skipped lists that have nothing in them
+static uint8_t shown_items[24];
+static menu_t shown = {shown_items, 0};
+static bool shown_vfo = false;
+
+static bool row_empty(uint8_t item)
+{
+    return false;
+}
+
 static const ui_screen_t quick_menu_screen;
 
 static void open(const menu_t *m)
@@ -131,8 +147,15 @@ static void open(const menu_t *m)
     ref = channel_details_current_ref();
     opened_vfo = vfo_screen_current();
     confirming = -1;
-    ui_push(&quick_menu_screen, (void *)m);
-    *ui_state() = ui_list_recall(ui_list_id((m == &vfo_menu) ? "VFO quick menu" : "Channel quick menu"), m->count);
+    shown_vfo = (m == &vfo_menu);
+    shown.count = 0;
+    for (int i = 0; (i < m->count) && (shown.count < sizeof(shown_items)); i++) {
+        if (!row_empty(m->items[i])) {
+            shown_items[shown.count++] = m->items[i];
+        }
+    }
+    ui_push(&quick_menu_screen, (void *)&shown);
+    *ui_state() = ui_list_recall(ui_list_id(shown_vfo ? "VFO quick menu" : "Channel quick menu"), shown.count);
 }
 
 void quick_menu_open_channel(void)
@@ -210,6 +233,14 @@ static void change(item_t item, int direction)
             settings.dmr_cc_ts_filter = (uint8_t)(on ? (settings.dmr_cc_ts_filter | TS_FILTER)
                                                      : (settings.dmr_cc_ts_filter & ~TS_FILTER));
             break;
+        case QM_LOCKOUT: { // off, temp, permanent; at once (the codeplug, the saved list), not in the settings
+            int state = (int)lockouts_current() + direction;
+
+            if ((state >= LOCKOUT_OFF) && (state <= LOCKOUT_PERMANENT)) {
+                ui_key_beep(lockouts_set_current((lockout_t)state) ? SOUND_KEY : SOUND_ERROR);
+            }
+            return;
+        }
         case QM_TALKAROUND:
             talkaround = (on && talkaround_possible());
             return;
@@ -444,6 +475,7 @@ static const char *format_item(item_t item, char *name, size_t name_size, char *
         [QM_TONE_SCAN] = TEXT_TONE_SCAN,
         [QM_SCAN_LOW] = TEXT_SCAN_LOW,
         [QM_SCAN_HIGH] = TEXT_SCAN_HIGH,
+        [QM_LOCKOUT] = TEXT_SCAN_LOCKOUT,
     };
     const char *value = NULL;
 
@@ -476,6 +508,11 @@ static const char *format_item(item_t item, char *name, size_t name_size, char *
             break;
         case QM_TS_FILTER:
             value = on_off(settings.dmr_cc_ts_filter & TS_FILTER);
+            break;
+        case QM_LOCKOUT:
+            value = (lockouts_current() == LOCKOUT_TEMP)        ? text(TEXT_LOCKOUT_TEMP)
+                    : (lockouts_current() == LOCKOUT_PERMANENT) ? text(TEXT_LOCKOUT_SAVED)
+                                                                : text(TEXT_OFF);
             break;
         case QM_TALKAROUND:
             value = (talkaround_possible() ? on_off(talkaround) : text(TEXT_N_A));
@@ -555,7 +592,7 @@ static void draw(void)
 static void leave(void)
 {
     settings_save_if_changed(); // the changes are in use already; kept whichever way the menu is left
-    ui_list_remember(ui_list_id((menu() == &vfo_menu) ? "VFO quick menu" : "Channel quick menu"), *ui_state());
+    ui_list_remember(ui_list_id(shown_vfo ? "VFO quick menu" : "Channel quick menu"), *ui_state());
 }
 
 static const ui_screen_t quick_menu_screen = {
@@ -563,3 +600,25 @@ static const ui_screen_t quick_menu_screen = {
     .handle = handle,
     .draw = draw,
 };
+
+bool quick_menu_describe(char *out, size_t size)
+{
+    char name[VALUE_SIZE];
+    char value[VALUE_SIZE];
+
+    if (ui_top_screen() != &quick_menu_screen) {
+        return false;
+    }
+
+    const menu_t *m = menu();
+    int32_t selected = *ui_state();
+    const char *shown = NULL;
+
+    name[0] = '\0';
+    if ((selected >= 0) && (selected < m->count)) {
+        shown = format_item((item_t)m->items[selected], name, sizeof(name), value, sizeof(value));
+    }
+    snprintf(out, size, "title=%s\nsel=%d\ncount=%d\nrow=%s\nvalue=%s\n", shown_vfo ? "VFO quick menu" : "Channel quick menu",
+             (int)selected, (int)m->count, name, shown ? shown : "");
+    return true;
+}

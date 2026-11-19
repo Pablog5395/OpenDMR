@@ -1,6 +1,6 @@
 # OpenDMR 安装手册
 
-把 **Baofeng DM-32 / DM-32UV** 从原厂固件换成 OpenDMR，以及以后的升级和恢复原厂。English: [installation.en.md](installation.en.md)。
+把 **Baofeng DM-32 / DM-32UV** 从原厂固件换成 OpenDMR，以及以后的升级和恢复原厂。English: [installation.en.md](installation.en.md) · Español: [installation.es.md](installation.es.md)。
 装好以后怎么用见 [使用说明书](manual.md)。
 
 > ⚠️ **刷机有变砖风险，后果自负。**
@@ -37,7 +37,7 @@
 | `tools/fonts/upload_cjk.py` | 电台跑着 OpenDMR 时单独重写中文字库 |
 | `tools/debug/pin_wipe.py` | 忘了开机 / 锁屏密码时清除密码（关机、运行、30 秒内开机；码表和设置保留） |
 | `tools/ids/id_db.py` | 生成并写入带地址的 DMR ID 数据库（使用说明书第 13 节） |
-| `docs/manual.md`、`docs/manual.en.md`、`docs/manual/` | 使用说明书 |
+| `docs/manual.md`、`docs/manual.en.md`、`docs/manual.es.md`、`docs/manual/` | 使用说明书 |
 | `opendmr-cps.html` | 我们的写频软件（OpenDMR CPS），Chrome / Edge 双击打开，见 [5](#5-写码表) |
 | `docs/installation.md`、`docs/installation.en.md`、`README.md`、`README.en.md` | 本手册、项目说明 |
 | `licences/` | 字体（Roboto Condensed、Noto Sans SC）的 OFL 许可 |

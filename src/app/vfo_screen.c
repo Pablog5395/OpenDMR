@@ -140,11 +140,7 @@ static bool dirty = false;
 
 static bool editing_tx = false; // the TX frequency was stepped last: shown large, digits enter it
 
-#define SCAN_NUISANCE_MAX 16
-
 static scan_t scan = {.swallow_key = UI_KEY_COUNT};
-static uint32_t scan_nuisance[SCAN_NUISANCE_MAX];
-static int scan_nuisance_count;
 static digit_entry_t entry = {
     .max = FREQ_DIGITS, .dot_after = FREQ_DOT_AFTER, .zero_fill = true, .ok_on_release = true};
 static uint8_t held = 0; // UI_MODIFIER_x of the last key or rotary event
@@ -310,8 +306,8 @@ void vfo_screen_show(void)
 
 void vfo_screen_leave(void)
 {
+    ui_home(); // from the quick menu (VFO --> New Chan): back on this screen, whose enter() sets the VFO home
     set_home_mode(false);
-    ui_home();
     ui_replace(&channel_screen, NULL);
 }
 
@@ -420,7 +416,8 @@ static void scan_range(uint32_t *low, uint32_t *high)
 
 static scan_kind_t scan_kind(void)
 {
-    return (vfo()->mode == CODEPLUG_MODE_DMR) ? SCAN_DMR : (vfo()->mode == CODEPLUG_MODE_P25) ? SCAN_P25 : SCAN_ANALOG;
+    return (vfo()->mode == CODEPLUG_MODE_DMR) ? SCAN_DMR : (vfo()->mode == CODEPLUG_MODE_P25) ? SCAN_P25
+         : (vfo()->mode == CODEPLUG_MODE_NXDN) ? SCAN_NXDN : SCAN_ANALOG;
 }
 
 static uint32_t scan_dwell(void)
@@ -428,14 +425,15 @@ static uint32_t scan_dwell(void)
     return scan_dwell_ms(scan_kind());
 }
 
+int vfo_screen_scanning(void)
+{
+    return scan_on_signal(&scan) ? 2 : (scan.active ? 1 : 0);
+}
+
+// Skipped with * (nuisance delete, scan_skipped_frequencies): until cleared in the quick menu or power off
 static bool scan_skipped(uint32_t frequency)
 {
-    for (int i = 0; i < scan_nuisance_count; i++) {
-        if (scan_nuisance[i] == frequency) {
-            return true;
-        }
-    }
-    return false;
+    return scan_skipped_has(&scan_skipped_frequencies, frequency) || scan_saved_has(frequency);
 }
 
 // One VFO step on in the scan direction, round within the limits (skipped frequencies left out); 0: none left
@@ -448,7 +446,7 @@ static uint32_t scan_next(void)
     uint32_t f = v->rx_freq;
 
     scan_range(&low, &high);
-    for (int i = 0; i <= SCAN_NUISANCE_MAX; i++) {
+    for (int i = 0; i <= SCAN_SKIPPED_MAX; i++) {
         if (scan.direction > 0) {
             f = ((f + step) > high) ? low : (f + step);
         } else {
@@ -474,7 +472,6 @@ static void scan_begin(int direction)
     }
     digit_entry_stop(&entry);
     editing_tx = false;
-    scan_nuisance_count = 0;
     if ((v->rx_freq < low) || (v->rx_freq > high)) {
         v->rx_freq = (direction > 0) ? low : high; // into the range
         dirty = true;
@@ -768,9 +765,11 @@ static bool handle_event(const ui_event_t *ev)
             held = ev->modifiers;
             switch (scan_key(&scan, ev)) {
                 case SCAN_KEY_SKIP:
-                    if (scan_nuisance_count < SCAN_NUISANCE_MAX) {
-                        scan_nuisance[scan_nuisance_count++] = vfo()->rx_freq;
-                    }
+                    ui_key_beep(scan_skipped_add(&scan_skipped_frequencies, vfo()->rx_freq) ? SOUND_KEY : SOUND_ERROR);
+                    (void)keymap_action(ev, KEYMAP_SCREEN_VFO);
+                    return true;
+                case SCAN_KEY_SKIP_SAVED:
+                    ui_key_beep(scan_saved_add(vfo()->rx_freq) ? SOUND_ACK : SOUND_ERROR);
                     // fall through
                 case SCAN_KEY_USED:
                 case SCAN_KEY_STOPPED:
@@ -945,6 +944,7 @@ static void draw(void)
     char buffer[40];
     dmr_call_t call;
     p25_call_t p25;
+    nxdn_call_t nxdn;
 
     if ((v->mode == CODEPLUG_MODE_DMR) && !digit_entry_active(&entry) && dmr_call(&call)) {
         snprintf(buffer, sizeof(buffer), "VFO %c", (vfo_screen_current() == 0) ? 'A' : 'B');
@@ -954,6 +954,11 @@ static void draw(void)
     if ((v->mode == CODEPLUG_MODE_P25) && !digit_entry_active(&entry) && p25_radio_call(&p25) && (p25.src != 0)) {
         snprintf(buffer, sizeof(buffer), "VFO %c", (vfo_screen_current() == 0) ? 'A' : 'B');
         qso_panel_draw_p25(&p25, buffer, power_text(v));
+        return;
+    }
+    if ((v->mode == CODEPLUG_MODE_NXDN) && !digit_entry_active(&entry) && nxdn_radio_call(&nxdn) && (nxdn.src != 0)) {
+        snprintf(buffer, sizeof(buffer), "VFO %c", (vfo_screen_current() == 0) ? 'A' : 'B');
+        qso_panel_draw_nxdn(&nxdn, buffer, power_text(v));
         return;
     }
     draw_status_bar(v);
@@ -976,6 +981,10 @@ static void draw(void)
                  (unsigned long)((low % 100000) / 100), (unsigned long)(high / 100000),
                  (unsigned long)((high % 100000) / 100));
         draw_info_line(TX_Y + 10, text(TEXT_SCAN), buffer);
+        if (scan_skipped_frequencies.count + scan_saved_count()) { // nuisance delete: how many are left out
+            snprintf(buffer, sizeof(buffer), "%u", (unsigned)(scan_skipped_frequencies.count + scan_saved_count()));
+            draw_info_line(TX_Y + 34, text(TEXT_SCAN_SKIPPED), buffer);
+        }
     } else {
         draw_frequency(TX_Y, true, tx, step);
     }
@@ -990,6 +999,17 @@ static void draw(void)
             icons_draw(WIDGET_MARGIN, TONE_Y + 3, (pc ? ICONS_CONTACT : ICONS_TALKGROUP), THEME_COLOUR_TEXT_LABEL);
             draw_text(VALUE_X, TONE_Y, target.name, &font_roboto20, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
         }
+    } else if (v->mode == CODEPLUG_MODE_NXDN) {
+        // NXDN: as P25, the group or unit transmitted to (tx_target_apply()), the RAN on its line, right
+        bool pc = ((target.id >> 24) == TX_TARGET_PC_FLAG);
+
+        icons_draw(WIDGET_MARGIN, TONE_Y + 3, (pc ? ICONS_CONTACT : ICONS_TALKGROUP), THEME_COLOUR_TEXT_LABEL);
+        if (target.id != 0) {
+            draw_text(VALUE_X, TONE_Y, target.name, &font_roboto20, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
+        }
+        snprintf(buffer, sizeof(buffer), "RAN %u", (unsigned)codeplug_nxdn_ran(v));
+        draw_text(FB_WIDTH - WIDGET_MARGIN, TONE_Y + 2, buffer, &font_roboto17, FONT_ALIGN_RIGHT,
+                  THEME_COLOUR_TEXT_LABEL);
     } else if (v->mode == CODEPLUG_MODE_P25) {
         // P25: the talk group transmitted to (tx_target_apply()), the NAC on its line, right
         icons_draw(WIDGET_MARGIN, TONE_Y + 3, ICONS_TALKGROUP, THEME_COLOUR_TEXT_LABEL);
@@ -1025,6 +1045,9 @@ static void draw(void)
     bottom.mode = codeplug_mode_name(v->mode);
     bottom.item1 = power_text(v);
     bottom.item2 = ((v->mode == CODEPLUG_MODE_FM) && (v->flag4 & FLAG4_BANDWIDTH_25K)) ? "25K" : "12.5K";
+    if (v->mode == CODEPLUG_MODE_NXDN) {
+        bottom.item2 = "6.25K"; // NXDN48
+    }
     if (codeplug_mode_is_ssb(v->mode)) {
         bottom.item2 = "3K";
     }

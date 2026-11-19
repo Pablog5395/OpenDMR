@@ -38,8 +38,6 @@
 #include <stdio.h>
 #include <string.h>
 #include "widgets.h"
-#include "codeplug_text.h"
-#include "settings.h"
 #include "codeplug.h"
 #include "systime.h"
 #include "last_heard.h"
@@ -136,8 +134,6 @@ static bool handle(const ui_event_t *ev)
     list_handle_back(ev);
     return false;
 }
-
-// The channel screen's recent callers and this list show the same caller text (last_heard_format.c)
 
 static void draw_row(int row, const last_heard_entry_t *e, bool selected, uint32_t now)
 {
