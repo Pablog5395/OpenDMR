@@ -1,0 +1,23 @@
+OpenDMR CPS 0.6.1  —  para el Baofeng DM-32 / DM-32UV
+=====================================================
+
+Abrir opendmr-cps.html en Chrome o Edge (doble clic). No instala nada.
+
+Base de DMR IDs (el nombre de quien llama)
+------------------------------------------
+1. "Importar CSV": elegí un CSV propio, o usá "Download (ContactLists)": baja la lista de DMR Database (el enlace viejo de ContactLists daba 404; ahora tiene mirror de respaldo).
+2. "ID prefixes": poné los paises separados por coma. Ej:  722,214   (Argentina y Espana).
+   El CPS muestra en "Selected" cuantos van a la radio.
+3. "Write": escribe la base en la radio. Solo se escriben los filtrados.
+
+En la radio el llamante se ve como INDICATIVO (grande) + nombre (debajo).
+
+El largo de registro por defecto es 31 caracteres, que es lo maximo que muestra la radio
+(LAST_HEARD_TEXT_SIZE 32). Con 31 entran ~326.000 IDs: la lista completa de radioid.net entra
+sin cortar. Un largo mayor no muestra nada mas y deja entrar menos IDs.
+
+Si hay mas IDs que capacidad, el CPS avisa y descarta los IDs mas altos.
+
+Firmware de la radio (release vedef782): edef782. El CPS va aparte, no dentro del zip del firmware.
+Novedad: el editor de canales permite elegir APRS config (0 = ninguna, 1..8 = estacion APRS).
+Novedad: pestana "Key guide" con los accesos rapidos de teclas (en chino/ingles).

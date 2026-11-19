@@ -1,0 +1,374 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Guía OpenDMR DM-32 · principiante y teclas</title><style>
+:root{color-scheme:light;--ink:#17212e;--mut:#526173;--line:#d7dee7;--acc:#b5691b;--bg:#f6f8fb}
+*{box-sizing:border-box}body{margin:0;font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg)}
+header{background:#122033;color:#fff;padding:1.2rem 1rem}header .wrap{max-width:900px;margin:auto;display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between}
+header strong{font-size:1.15rem}header small{display:block;color:#a9bad0}
+header a{color:#ffd08a;text-decoration:none;font-size:.9rem;border:1px solid #5b6d84;border-radius:999px;padding:.35rem .8rem}
+main{max-width:900px;margin:1.5rem auto;padding:0 1rem 3rem}
+nav{background:#fff;border:1px solid var(--line);border-radius:12px;padding:1rem 1.4rem;margin-bottom:1.5rem}
+nav a{color:#8a4d10;text-decoration:none;margin-right:1rem;font-size:.93rem;white-space:nowrap}
+section{background:#fff;border:1px solid var(--line);border-radius:12px;padding:1.2rem 1.5rem;margin-bottom:1.2rem}
+h1{font-size:1.7rem;margin:.2rem 0 .6rem}h2{font-size:1.2rem;margin:1.6rem 0 .5rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+h3{font-size:1.05rem}p{margin:.5rem 0}pre{background:#eef2f7;border-left:3px solid var(--acc);padding:.8rem 1rem;border-radius:6px;overflow-x:auto;font:13px/1.5 ui-monospace,Consolas,monospace;white-space:pre-wrap}
+code{background:#eef2f7;padding:.1rem .35rem;border-radius:4px;font-size:.92em}
+table{border-collapse:collapse;width:100%;font-size:.92rem}th,td{border:1px solid var(--line);padding:.5rem .65rem;text-align:left;vertical-align:top}th{background:#eef2f7}
+.warn{background:#fff6e5;border:1px solid #e7b66a;border-radius:8px;padding:.8rem 1rem}
+a{color:#8a4d10}
+@media print{body{background:#fff}header,nav{display:none}section{break-inside:avoid;box-shadow:none}}
+</style></head><body>
+<header><div class="wrap"><div><strong>OpenDMR · guía en español</strong><small>DM-32 / DM-32UV · firmware 0.4.2-lu8hpa</small></div><div><a href="https://github.com/va3bpf/OpenDMR" target="_blank" rel="noopener">GitHub · proyecto principal</a> <a href="https://github.com/Pablog5395/OpenDMR" target="_blank" rel="noopener">GitHub · mi fork</a></div></div></header>
+<main><nav><a href="#guia">Guía paso a paso</a><a href="#teclas">Manual de teclas y botones</a><a href="#ayuda">Si algo falla</a></nav>
+<section id="guia"><h1>GUÍA PARA PRINCIPIANTES</h1><p class="warn"><strong>Lee esto antes de tocar nada.</strong> Imprime el paso 3 (copia de seguridad) y no te lo saltes. Batería al 100 %. Tiempo total: 40–60 minutos.</p>
+<p>OpenDMR para la DM-32 - GUIA PARA PRINCIPIANTES</p>
+<p>Paquete: OpenDMR 0.4.2-lu8hpa (commit 2f14da6, compilado 2026-11-17)</p>
+<p>Radio:   Baofeng / Radioddity / TIDRADIO DM-32 y DM-32UV</p>
+<p>LEE ESTO ANTES DE TOCAR NADA. Imprime el paso 3 (copia de seguridad)</p>
+<p>y no te lo saltes: es lo unico que te salva si algo sale mal.</p>
+<p>Tiempo total: 40-60 minutos (la copia de seguridad es lo que mas tarda).</p>
+<p>Bateria: cargala al 100% antes de empezar.</p>
+<h2 id="s1">0. QUE PROGRAMAS TIENE QUE INSTALAR EL COLEGA</h2>
+<p>No hace falta compilar nada ni instalar el CPS de fabrica.</p>
+<p>Solo esto, en Windows 10/11:</p>
+<pre>  1) Python 3.8 o mas reciente
+     Descargar de https://www.python.org/downloads/
+     IMPORTANTE: en el instalador marcar la casilla
+     &quot;Add python.exe to PATH&quot; y pulsar Install Now.
+
+  2) La libreria pyserial (para hablar con el cable)
+     Abrir PowerShell o CMD y escribir:
+         py -m pip install pyserial
+     (Los archivos .bat de esta carpeta la instalan solos la
+      primera vez. Si &quot;py&quot; no funciona, usar &quot;python&quot; en su lugar.)
+
+  3) Opcional pero recomendado: pillow
+         py -m pip install pillow
+     Con esto la radio muestra texto en pantalla mientras hace
+     la copia de seguridad; sin ella solo sale la barra de progreso.
+
+  4) Driver del cable (solo si el PC no ve el puerto COM)
+     Si el cable es CH340, instalar el driver WCH CH341SER:
+     https://www.wch-ic.com/downloads/CH341SER_ZIP.html
+     Los cables con chip FTDI (BTECH PC03, etc.) suelen funcionar
+     sin driver y son mas estables.
+
+  5) Un navegador Chrome o Edge (ya viene con Windows)
+     No hay que instalar el CPS: esta dentro del zip, es el archivo
+     opendmr-cps.html y se abre con doble clic.
+
+  6) 7-Zip / WinRAR o el descomprimidor de Windows para abrir el zip.</pre>
+<p>NO hace falta: toolchain de C-SKY, Visual Studio, Arduino, ni el</p>
+<p>CPS original de Baofeng/Radioddity (ademas: su archivo de canal</p>
+<p>no sirve con este firmware, hay que hacer uno nuevo).</p>
+<p>RESUMEN: Python se usa SOLO para la copia de seguridad, grabar o</p>
+<p>actualizar el firmware, la tipografia y restaurar (los .bat).</p>
+<p>Para el CPS NO se abre ningun terminal ni se escribe &quot;py&quot;: es</p>
+<p>solamente el navegador, con la radio encendida y el cable puesto.</p>
+<h2 id="s2">1. PREPARAR EL MATERIAL</h2>
+<p>a) Descargar el zip y descomprimirlo en una carpeta facil, por</p>
+<pre>   ejemplo:  C:\OpenDMR\
+   Importante: NO trabajar desde dentro del zip. Extraerlo.</pre>
+<p>b) Conectar el cable de programacion a la radio y al PC.</p>
+<pre>   El conector de la DM-32 es muy justo: empujar hasta el fondo.</pre>
+<p>c) Saber que puerto COM usa el cable:</p>
+<pre>   Click derecho en el boton de Windows -&gt; Administrador de
+   dispositivos -&gt; Puertos (COM y LPT). Aparecera algo como
+   &quot;USB-SERIAL CH340 (COM5)&quot; o &quot;USB Serial Port (COM3)&quot;.
+
+   En los .bat el puerto por defecto es COM3. Para cambiarlo:
+    - opcion facil: ejecutar el .bat con el puerto como parametro,
+      por ejemplo arrastrar el archivo Terminal a la ventana y
+      escribir:  1-RESPALDO.bat COM5
+    - o abrir el .bat con el Bloque de notas y cambiar la linea
+      &quot;set PORT=...&quot; (las demas lineas no se tocan).</pre>
+<p>d) Los .bat llevan pausas y avisan de cuando apagar/encender la</p>
+<pre>   radio. Si se prefiere hacerlo a mano, los comandos equivalentes
+   estan al final de esta guia.</pre>
+<h2 id="s3">2. QUE HAY DENTRO DEL ZIP</h2>
+<p>opendmr.bin ................ el firmware (lo que se graba en la radio)</p>
+<p>opendmr_BFUV32.bin ......... el mismo firmware con cabecera de fabrica</p>
+<pre>                             (casos especiales; NO lo uses para instalar)</pre>
+<p>cjk.bin .................... tipografia china (opcional)</p>
+<p>opendmr-cps.html ........... programa para hacer el archivo de canales</p>
+<p>tools\backup\dm32_dump.py .. hacer copias y grabar por el bootloader</p>
+<p>tools\debug\fw_update.py .... actualizar con la radio encendida</p>
+<p>tools\fonts\upload_cjk.py ... volver a grabar la tipografia</p>
+<p>tools\debug\pin_wipe.py ..... borrar contrasena olvidada</p>
+<p>docs\manual.en.md .......... manual de uso (en ingles)</p>
+<p>docs\installation.en.md .... manual de instalacion (en ingles)</p>
+<p>VERSION.txt ................ version y commit del firmware</p>
+<p>LEEME-PRINCIPIANTE.txt ..... esta guia</p>
+<p>1-RESPALDO.bat ............. paso 3 automatico</p>
+<p>2-INSTALAR.bat ............. paso 4 automatico</p>
+<p>3-ACTUALIZAR.bat ........... paso 7 automatico</p>
+<p>4-VOLVER-ORIGINAL.bat ...... paso 8 automatico</p>
+<h2 id="s4">3. COPIA DE SEGURIDAD  --  OBLIGATORIA, NO SALTAR</h2>
+<p>La radio tiene dos memorias (flash):</p>
+<pre>  - &quot;program&quot;: el bootloader y el firmware de fabrica (1 min).
+  - &quot;data&quot;: el archivo de canales, voces, tipografias y, sobre todo,
+    los datos de CALIBRACION DE EMISION Y RECEPCION de ESA radio
+    (13 min). Esos datos son unicos: no se pueden copiar de otra
+    radio. Sin copia, si algo va mal la radio no queda calibrada.</pre>
+<p>Se lee cada memoria DOS veces y se comparan: solo se considera</p>
+<p>buena una copia cuando las dos lecturas son identicas.</p>
+<p>Con los .bat:</p>
+<pre>  - Doble clic en  1-RESPALDO.bat
+  - El programa pedira: apaga la radio, pulsa una tecla, y enciende
+    la radio SIN tocar ninguna tecla en los primeros 30 segundos.
+    Pantalla negra y LED apagado mientras lee: es NORMAL.
+  - Repite eso 4 veces (program-1, program-2, data-1, data-2).
+    Las dos lecturas de &quot;data&quot; tardan unos 13 minutos cada una.
+  - Al final compara los dos pares y debe decir
+    &quot;Las dos lecturas son IGUALES (FC: no differences encountered)&quot;.</pre>
+<p>Si las dos lecturas NO son iguales, vuelve a hacer esa lectura</p>
+<p>hasta que dos seguidas coincidan.</p>
+<p>Guarda la carpeta backup\ en el Dropbox/Google Drive/un pendrive,</p>
+<p>y escribe en ella el NUMERO DE SERIE de la radio. Una copia solo</p>
+<p>sirve para SU radio. Guardala para siempre.</p>
+<p>*** NO SIGAS HASTA TENER LA COPIA GUARDADA Y VERIFICADA. ***</p>
+<h2 id="s5">4. INSTALAR OPEN DMR (primera vez, viniendo del firmware de fabrica)</h2>
+<p>IMPORTANTE: aqui la radio se apaga, se lanza el comando y se</p>
+<p>enciende SIN pulsar nada en menos de 30 segundos ( igual que en</p>
+<p>el paso 3 ). Si la radio tiene OpenDMR puesto y no se apaga con</p>
+<p>el boton, quitar la bateria y volver a ponerla.</p>
+<p>Con los .bat:</p>
+<pre>  - Doble clic en  2-INSTALAR.bat
+  - Te preguntara si ya hiciste la copia: responder S.
+  - Paso A: graba opendmr.bin (menos de 1 minuto).
+      Radio apagada -&gt; pulsar tecla -&gt; encender sin tocar nada.
+      Debe terminar con un mensaje de &quot;sectores escritos, todos
+      iguales al archivo&quot;. Apagar la radio.
+  - Paso B: graba cjk.bin, la tipografia (unos 5 minutos).
+      Igual: radio apagada -&gt; pulsar tecla -&gt; encender sin tocar nada.
+      Es obligatoria solo si quieres nombres de canal/contacto en
+      chino; para español no hace falta, pero se recomienda grabarla
+      igual para no tener que repetir el proceso despues.
+  - Al terminar, apaga y enciende la radio normalmente.</pre>
+<p>Si se corta la grabacion a mitad: no pasa nada, vuelve a ejecutar</p>
+<p>el mismo paso. Solo se reescriben los bloques que cambiaron; los</p>
+<p>ya escritos no se tocan. En la memoria hay un bootloader de fabrica</p>
+<p>que no se sobrescribe, asi que la radio siempre se puede recuperar.</p>
+<h2 id="s6">5. PRIMER ARRANQUE Y CONFIGURACION BASICA</h2>
+<p>La radio arranca en la pantalla de canal, sin canales (archivo</p>
+<p>vacio). Primero pon el idioma:</p>
+<pre>  - Mantener pulsada la tecla MENU (la izquierda de debajo de la
+    pantalla) -&gt; Opciones -&gt; Idioma -&gt; elegir &quot;Espanol&quot;.
+    El boton MENU sirve para confirmar; el derecho de debajo de la
+    pantalla es Atras / Volver.</pre>
+<p>Despues, si vas a usar DMR:</p>
+<pre>  - Opciones -&gt; Opc. generales -&gt; ID DMR usuario  (tu ID DMR).
+  - Menu -&gt; Info radio -&gt; Hora / Fecha  (con GPS fijo se ajusta sola).</pre>
+<h2 id="s7">6. HACER EL ARCHIVO DE CANALES (CODEPLUG)</h2>
+<p>EL CPS DE FABRICA NO SIRVE. Usa el que viene en el zip.</p>
+<pre>  El CPS NO hay que descargarlo de ninguna web: es un archivo que
+  ya esta dentro de la carpeta (opendmr-cps.html, en la raiz).
+  Funciona sin internet: es una pagina local que usa el navegador
+  para hablar con el cable serie.
+  Aqui NO se ejecuta Python ni ningun comando: solo pulsar botones
+  en el navegador (Connect, Read radio, Write radio). Cierra antes
+  los programas que usen el puerto serie para que no este ocupado.
+
+  1) Abre opendmr-cps.html con doble clic en Chrome o Edge.
+     (Si el navegador no lo abre, arrastra el archivo a una
+      ventana de Chrome/Edge.)
+     Los botones estan en ingles: Connect, Read radio,
+     Write radio, Save file.
+
+  2) Radio ENCENDIDA normalmente (con OpenDMR ya arrancado) y cable
+     conectado. Clic en Connect y eliges el puerto COM del cable.
+
+  3) Clic en Read radio (leer). Primero guarda una copia con
+     Save file, por si acaso.
+
+  4) Editar: Channels (canales), Zones (zonas), Contacts
+     (contactos), TG lists (listas de grupos), General, etc.
+     Para un canal DMR: modo DMR, frecuencia, Color Code,
+     Timeslot, talkgroup y lista RX. Para FM: modo FM, frecuencia
+     y CTCSS/DCS si hace falta.
+
+  5) Clic en Write radio (grabar). La radio muestra el progreso
+     en pantalla y se reinicia sola al terminar.
+     NO desconectes el cable ni apagues la radio mientras graba.
+
+  6) APRS (configuracion por canal):
+     Primero crea la estacion APRS en la pestaña &quot;APRS&quot; (hasta
+     8 estaciones): APRS station (indicativo), SSID,
+     Symbol, Fixed position / Position, Path 1 y Path 2, Comment,
+     Tx freq (MHz), Transmit QSY, Bauds y Beacon silently.
+
+     Despues abre un canal en la pestaña &quot;Channels&quot; (Canales)
+     y busca el campo &quot;APRS config&quot;:
+        0 / Ninguna = el canal NO emite baliza;
+        1..8 = elige una estacion APRS de la pestaña &quot;APRS&quot;
+               (aparece con su numero y nombre, p.ej. &quot;1. APRS1&quot;).
+     El mismo campo existe en VFO A / VFO B. En la tabla de
+     canales aparece una etiqueta &quot;APRS &lt;nombre&gt;&quot; en los canales
+     que ya tienen una estacion asignada.
+
+     Si al hacer &quot;Read radio&quot; el canal ya tenia APRS asignado,
+     el CPS lo muestra y lo conserva al grabar. Si aparece un
+     numero seguido de &quot;(raw)&quot; es un valor que la radio tenia
+     fuera de 0..8: no lo toques salvo que sepas lo que haces.
+     Si borras una estacion APRS, los canales que la usaban
+     pasan a &quot;Ninguna&quot; (no se quedan apuntando a un hueco).
+
+     Importante: un canal sin estacion APRS asignada (0) NO
+     emite baliza, aunque exista una estacion en la pestaña APRS.
+     La baliza sale en FM, con AFSK de 1200 baudios, por la
+     frecuencia &quot;Tx freq (MHz)&quot; de la estacion elegida (marca
+     &quot;Transmit QSY&quot; si quieres que la baliza lleve, por ejemplo,
+     &quot;144.390MHz&quot;).
+
+     Para usarlo en la radio: Mantener MENU -&gt; Opciones -&gt;
+     Opc. APRS -&gt; Mode (Off / Manual / PTT / Auto / Smart),
+     Location (Canal o GPS), Intervalo, etc. SK1 + 3 envia una
+     baliza al momento (tambien esta &quot;Enviar baliza&quot; en el menu).
+     SK1 + 1 enciende/apaga APRS. La baliza sale en FM, con AFSK
+     de 1200 baudios; LED rojo medio segundo al transmitir.
+
+  7) Base de datos de IDs DMR (opcional):
+     En la pestaña &quot;DMR IDs&quot; del CPS, el boton
+     &quot;Download (ContactLists)&quot; baja la lista de usuarios DMR de
+     internet (DMR Database) y la deja lista para grabar con
+     &quot;Write database&quot; con la radio encendida. Necesita internet.
+     Si falla la descarga, baja un CSV a mano y usa &quot;Import CSV&quot;.
+     &quot;Read database&quot; lee los IDs que ya tenga la radio.
+     No hace falta cargar los 190.000 IDs: puedes filtrar por
+     prefijo (por ejemplo &quot;722, 214&quot;) antes de grabar.
+
+  8) Atajos de teclas (pestana &quot;Key guide&quot; del CPS):
+     El CPS tiene una pestana nueva con la guia de teclas, tanto
+     en chino como en ingles. Aqui va un resumen de lo mas usado:
+        SK1 + 1 .... enciende/apaga APRS
+        SK1 + 3 .... envia una baliza APRS ahora mismo
+        SK2 corta .. repite el TG del ultimo que llamo (callback)
+        SK2 larga .. bloquea el teclado (SK1 + * para desbloquear)
+        MENU corta . menu rapido de la pantalla actual
+        MENU larga . menu principal
+        BACK corta . volver (en pantalla de canal: canal &lt;-&gt; VFO)
+        BACK larga . salir de listas; en VFO cambia A/B
+        PTT ........ transmitir (para el escaneo)
+        SK2 + MENUE .. detalles del canal / VFO
+        SK2 + numero . tecla rapida: guardar en menu, ejecutar afuera
+        # .......... entrada de numero (TG / PC / ID / DTMF)
+        SK2 + # .... lista de contactos
+        * .......... cambia timeslot (DMR) o ancho de banda (FM)
+        SK1 + * .... cambia modo FM / AM / USB / LSB / DMR / P25
+        ▶ / ◀ ..... TG arriba/abajo (DMR), subir/bajar squelch (FM)
+        SK1 + ▲/▼ .. escanear arriba/abajo
+        SK2 + ▲/▼ .. zona arriba/abajo (en VFO elige RX / TX)
+     Las teclas se pueden cambiar en la radio: MANTENER MENU -&gt;
+     Opciones -&gt; Opc. teclas. El CPS NO cambia las teclas, solo
+     muestra los tiempos en General -&gt; General (Key long y
+     Key repeat, 0,1..9,0 s; por defecto 0,4 s y 0,2 s).
+     No hay doble ni triple pulsacion. SK1 + 2 y SK2 + * no se
+     pueden leer en esta radio; por eso la baliza es SK1 + 3.</pre>
+<p>Otra opcion: el CPS de OpenGD77 (descargarlo de opengd77.com,</p>
+<p>version que ponga DM32/UV008; se ha probado la E2026.07.13.01).</p>
+<p>Ahi hay que elegir Radio type = DM32/UV008 y hacer primero</p>
+<p>Read codeplug y despues Write codeplug. El OpenGD77 CPS no lee</p>
+<p>ni escribe los ajustes de la radio (potencia, brillo, micro...)</p>
+<h2 id="s8">7. ACTUALIZAR A UNA VERSION NUEVA (radio ya con OpenDMR)</h2>
+<p>Aqui NO hay que apagar la radio ni hacer el truco de los 30 s.</p>
+<pre>  - Radio ENCENDIDA, cable conectado, CPS y otros programas
+    serie cerrados.
+  - Doble clic en  3-ACTUALIZAR.bat
+  - Tarda unos 30-35 segundos; la radio muestra la barra y se
+    reinicia sola. Canales y ajustes se conservan.
+  - Si el aviso de la version nueva dice que cambio la tipografia,
+    ademas, con la radio encendida:
+        py tools\fonts\upload_cjk.py COM3 --file cjk.bin
+    y reinicia la radio al terminar.</pre>
+<h2 id="s9">8. VOLVER AL FIRMWARE DE FABRICA</h2>
+<p>Con la copia del paso 3 (la de ESTA radio):</p>
+<pre>  - Doble clic en  4-VOLVER-ORIGINAL.bat
+  - Igual que al instalar: apagada -&gt; ejecutar -&gt; encender en
+    30 s sin tocar nada -&gt; apagar -&gt; siguiente memoria.
+  - Se graban program-1.bin y data-1.bin. Al terminar la radio
+    queda exactamente como el dia que se hizo la copia: firmware,
+    canales, voces y calibracion originales.</pre>
+<p>Otra forma: mantener PTT + SK1 pulsados al encender (modo de</p>
+<p>actualizacion de fabrica) y usar el cargador del CPS original.</p>
+<p>Pero eso solo cambia la memoria de programa; para recuperar la</p>
+<p>calibracion y los canales hay que escribir tambien la copia de</p>
+<p>la memoria &quot;data&quot;.</p>
+<h2 id="s10">9. SI ALGO FALLA</h2>
+<p>&quot;No aparece el switch the radio on now / no responde&quot;</p>
+<pre>  - La radio tiene que empezar APAGADA. Ver el aviso y entonces
+    encenderla, sin pulsar ninguna tecla, en 30 s.
+  - Con OpenDMR arrancado el boton de encendido puede no apagar:
+    quita la bateria y vuelve a ponerla.
+  - Comprueba el puerto COM y que el conector este hasta el fondo.
+  - Prueba otro cable (los CH340 son mas delicados con el tiempo;
+    los FTDI van mejor). Tambien puedes probar mas lento:
+    añadir --baud 115200 al final del comando dm32_dump.py.</pre>
+<p>&quot;Acceso denegado / Access denied&quot;</p>
+<pre>  - Otro programa tiene el puerto abierto: cierra el CPS, el
+    monitor de OpenGD77 o cualquier terminal serie y repite.</pre>
+<p>&quot;Se corto la escritura&quot;</p>
+<pre>  - Repite el mismo comando: no reescribe lo que ya estaba bien.</pre>
+<p>&quot;Salen cuadros o no salen los caracteres chinos&quot;</p>
+<pre>  - Falta la tipografia: graba cjk.bin (paso 4) o, con la radio
+    encendida, usa upload_cjk.py (paso 7) y reinicia.</pre>
+<p>&quot;La radio no arranca despues de grabar&quot;</p>
+<pre>  - El bootloader no se ha tocado: vuelve a grabar opendmr.bin
+    con el metodo del paso 4 (apagada, comando, encender en 30 s).
+    Si quieres volver a fabrica, usa el paso 8.</pre>
+<p>&quot;No veo el puerto COM en el Administrador de dispositivos&quot;</p>
+<pre>  - Instala el driver CH340/CH341 (punto 4 de la parte 0) o
+    prueba otro cable USB.</pre>
+<h2 id="s11">10. COMANDOS A MANO (por si no quieres usar los .bat)</h2>
+<p>Sustituye COM3 por tu puerto. Ejecutar desde la carpeta del zip.</p>
+<p>COPIA (radio apagada, ejecutar, encender en 30 s sin teclas):</p>
+<pre>  mkdir backup
+  py -u tools\backup\dm32_dump.py COM3 program backup\program-1.bin
+  py -u tools\backup\dm32_dump.py COM3 program backup\program-2.bin
+  py -u tools\backup\dm32_dump.py COM3 data backup\data-1.bin
+  py -u tools\backup\dm32_dump.py COM3 data backup\data-2.bin
+  fc /b backup\program-1.bin backup\program-2.bin
+  fc /b backup\data-1.bin backup\data-2.bin
+  (las dos deben decir &quot;no differences encountered&quot;)</pre>
+<p>INSTALAR (radio apagada, ejecutar, encender en 30 s sin teclas):</p>
+<pre>  py -u tools\backup\dm32_dump.py COM3 program opendmr.bin --write --start 0xC000
+  py -u tools\backup\dm32_dump.py COM3 data cjk.bin --write --start 0x280000</pre>
+<p>ACTUALIZAR (radio ENCENDIDA con OpenDMR):</p>
+<pre>  py tools\debug\fw_update.py --port COM3 opendmr.bin</pre>
+<p>VOLVER AL ORIGINAL (radio apagada, ejecutar, encender en 30 s):</p>
+<pre>  py -u tools\backup\dm32_dump.py COM3 program backup\program-1.bin --write
+  py -u tools\backup\dm32_dump.py COM3 data backup\data-1.bin --write</pre>
+<p>BORRAR CONTRASENA OLVIDADA (radio apagada, ejecutar, encender en 30 s):</p>
+<pre>  py tools\debug\pin_wipe.py COM3</pre>
+<h2 id="s12">11. ANTES DE TRANSMITIR</h2>
+<p>Este firmware es para uso no comercial (ver LICENSE). Para emitir</p>
+<p>en banda amateur hace falta licencia de radioaficionado valida en</p>
+<p>tu pais y respetar frecuencias, potencias y identificacion.</p>
+<p>Suerte. Si algo no cuadra, para y pregunta antes de seguir.</p>
+</section>
+<section id="teclas">
+<h1>MANUAL DE TECLAS Y BOTONES</h1>
+<p>Estos son los valores <strong>de fábrica</strong>. Se pueden cambiar en la radio: <em>mantener MENÚ → Opciones → Opc. teclas</em>. El CPS NO cambia las teclas: solo muestra los tiempos <em>Key long</em> y <em>Key repeat</em> en <em>General → General</em> (0,1–9,0 s; por defecto 0,4 s y 0,2 s). No hay doble ni triple pulsación. Las combinaciones <code>SK1 + 2</code> y <code>SK2 + *</code> no se pueden leer en la matriz de esta radio; por eso la baliza es <code>SK1 + 3</code> y el desbloqueo <code>SK1 + *</code>.</p>
+<h2>Teclas reasignables (valores de fábrica)</h2>
+<table><thead><tr><th>Tecla</th><th>Qué hace</th><th>Nota</th></tr></thead><tbody><tr><td><code>#</code></td><td>TG / PC / ID propio (DMR); DTMF (FM)</td><td>Entrada de número</td></tr><tr><td><code>SK2 + #</code></td><td>Lista de contactos / DTMF</td><td>Pulsación corta</td></tr><tr><td><code># larga</code></td><td>Invertir repetidor</td><td>Solo pantalla de canal</td></tr><tr><td><code>*</code></td><td>Cambiar timeslot (DMR) o ancho de banda (FM)</td><td>TS1/TS2 · 12,5/25 kHz</td></tr><tr><td><code>* larga</code></td><td>Borrar el override de timeslot</td><td></td></tr><tr><td><code>SK1 + *</code></td><td>Ciclo de modo FM / AM / USB / LSB / DMR / P25</td><td></td></tr><tr><td><code>▶ / ◀</code></td><td>TG siguiente/anterior (DMR); subir/bajar squelch (FM)</td><td>Se repite al mantener</td></tr><tr><td><code>SK2 + ▶ / ◀</code></td><td>Subir / bajar potencia</td><td>Se repite al mantener</td></tr><tr><td><code>SK2 + ▶ larga</code></td><td>Potencia de usuario (+W-)</td><td></td></tr><tr><td><code>SK2 + ▲ / ▼</code></td><td>Zona +/- (canal); elegir RX/TX (VFO)</td><td>En VFO: ▲ = RX, ▼ = TX</td></tr><tr><td><code>SK2 corta</code></td><td>Repetir el TG del último que llamó</td><td>Callback</td></tr><tr><td><code>SK1</code></td><td>Radio FM de broadcast</td><td></td></tr><tr><td><code>SK1 + ▲ / ▼</code></td><td>Escanear arriba / abajo</td><td></td></tr><tr><td><code>SK1 + 1</code></td><td>Encender / apagar APRS</td><td>Pestana APRS del CPS</td></tr><tr><td><code>SK1 + 3</code></td><td>Enviar baliza APRS ahora</td><td></td></tr><tr><td><code>SK2 larga</code></td><td>Bloquear el teclado</td><td>Se suelta y bloquea</td></tr></tbody></table>
+<h2>Atajos fijos del firmware (no se pueden cambiar)</h2>
+<table><thead><tr><th>Tecla</th><th>Qué hace</th><th>Nota</th></tr></thead><tbody><tr><td><code>MENÚ corta / larga</code></td><td>Menú rápido de la pantalla / menú principal</td><td></td></tr><tr><td><code>BACK corta / larga</code></td><td>Volver (canal ↔ VFO) / salir de listas; en VFO cambia A-B</td><td></td></tr><tr><td><code>PTT</code></td><td>Transmitir; detiene el escaneo</td><td></td></tr><tr><td><code>SK2 + MENÚ</code></td><td>Detalles del canal / VFO</td><td></td></tr><tr><td><code>SK2 + 0..9</code></td><td>Tecla rápida: guardar en un menú, ejecutar desde la pantalla principal</td><td>Sin asignación de fábrica</td></tr><tr><td><code>En el menú principal: * / #</code></td><td>Bloquear teclado / bloquear PTT</td><td></td></tr><tr><td><code>Bloqueado: SK1 + *</code></td><td>Desbloquear</td><td></td></tr><tr><td><code>En VFO: SK1 + SK2</code></td><td>Intercambiar RX/TX mientras se mantienen</td><td></td></tr><tr><td><code>FM transmitiendo: SK2 / dígitos</code></td><td>Tono 1750 Hz / envío DTMF</td><td></td></tr><tr><td><code>Escaneando: ▲ / ◀ / * / PTT</code></td><td>Continuar / invertir / descartar canal / parar y transmitir</td><td></td></tr><tr><td><code>Últimas llamadas: # larga</code></td><td>Vaciar la lista</td><td></td></tr><tr><td><code>Contactos DMR: #</code></td><td>Cambiar tipo de llamada (grupo / privada / todas)</td><td></td></tr><tr><td><code>Editando nombres: SK2 + ◀ / ▶</code></td><td>Borrar / insertar carácter</td><td></td></tr></tbody></table>
+<h2>Botones de la radio</h2>
+<table><thead><tr><th>Botón</th><th>Uso</th></tr></thead><tbody>
+<tr><td><code>MENÚ</code> (izquierdo, debajo de la pantalla)</td><td>Pulsación corta: menú rápido de la pantalla actual. Mantenerlo: menú principal. Confirma una selección.</td></tr>
+<tr><td><code>BACK / ATRÁS</code> (derecho, debajo de la pantalla)</td><td>Volver, borrar un dígito al escribir y cambiar entre canal y VFO. Mantenerlo: salir de listas; en VFO cambia A/B.</td></tr>
+<tr><td><code>PTT</code></td><td>Transmitir. Durante un escaneo lo detiene y transmite.</td></tr>
+<tr><td><code>SK1</code> (tecla lateral 1)</td><td>Solo: radio FM. Con 1: APRS on/off. Con 3: baliza. Con ▲/▼: escaneo.</td></tr>
+<tr><td><code>SK2</code> (tecla lateral 2)</td><td>Corta: callback del último que llamó. Larga: bloqueo de teclado. Con MENÚ: detalles. Con número: tecla rápida.</td></tr>
+<tr><td><code>▲ / ▼</code> y <code>◀ / ▶</code></td><td>Navegar listas, cambiar canal/zona, subir/bajar valores. En VFO, <code>SK2 + ▲ / ▼</code> elige RX/TX.</td></tr>
+<tr><td><code>#</code> y <code>*</code></td><td>Entrada de números y cambios rápidos (ver tablas). En el menú principal: <code>*</code> bloquea el teclado y <code>#</code> bloquea PTT.</td></tr>
+</tbody></table>
+<h2>Dónde se cambia cada cosa</h2>
+<ul>
+<li><strong>Teclas:</strong> MANTENER MENÚ → Opciones → Opc. teclas (22 acciones reasignables).</li>
+<li><strong>Tiempos de pulsación:</strong> CPS → General → General (<code>Key long</code>, <code>Key repeat</code>).</li>
+<li><strong>Idioma español:</strong> MANTENER MENÚ → Opciones → Idioma → Español.</li>
+<li><strong>APRS:</strong> CPS → pestaña APRS y campo <em>APRS config</em> en cada canal; en la radio, MANTENER MENÚ → Opciones → Opc. APRS.</li>
+</ul>
+</section>
+<section id="ayuda"><h2>Enlaces</h2>
+<p><a href="https://github.com/va3bpf/OpenDMR" target="_blank" rel="noopener">Proyecto principal OpenDMR (va3bpf)</a> · <a href="https://github.com/Pablog5395/OpenDMR" target="_blank" rel="noopener">Fork con este paquete (Pablog5395)</a></p>
+<p>Guía en texto plano: <a href="LEEME-PRINCIPIANTE.txt">LEEME-PRINCIPIANTE.txt</a>. CPS: <a href="opendmr-cps.html">opendmr-cps.html</a>.</p>
+</section></main></body></html>
