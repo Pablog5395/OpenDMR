@@ -26,6 +26,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <stdio.h>
+#include <string.h>
 #include "draw.h"
 #include "framebuffer.h"
 
@@ -42,6 +44,30 @@ void draw_hline(int32_t x, int32_t y, int32_t w, theme_colour_t colour)
 void draw_text(int32_t x, int32_t y, const char *text, const font_t *font, font_align_t align, theme_colour_t colour)
 {
     font_draw_text(x, y, text, font, align, theme_colour(colour));
+}
+
+void draw_text_fitted(int32_t x, int32_t y, const char *text, const font_t *font, int32_t width, theme_colour_t colour)
+{
+    char shown[96];
+    size_t length;
+
+    snprintf(shown, sizeof(shown), "%s", text);
+    if (font_text_width(font, shown) > width) {
+        length = strlen(shown);
+        while (length > 0) {
+            do {
+                length--;
+            } while ((length > 0) && ((shown[length] & 0xC0) == 0x80));
+            while ((length > 0) && (shown[length - 1] == ' ')) {
+                length--;
+            }
+            snprintf(&shown[length], sizeof(shown) - length, "...");
+            if (font_text_width(font, shown) <= width) {
+                break;
+            }
+        }
+    }
+    draw_text(x, y, shown, font, FONT_ALIGN_LEFT, colour);
 }
 
 // Coverage (0 - 16) of the pixel at squared distance d2 (in quarter pixels squared) from the centre by a disc of

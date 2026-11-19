@@ -52,6 +52,7 @@
 #include "systime.h"
 #include "vocoder.h"
 #include "radio.h"
+#include "radio_hooks.h"
 #include "p25_phy.h"
 #include "nxdn_core.h"
 #include "nxdn_radio.h"
@@ -164,7 +165,7 @@ static void call_publish(void)
     }
     if (call.active && (call.src != 0) && ((call.src != published.src) || (tg_or_pc != published.tg_or_pc))) {
         dmr_ids_caller_text(call.src, text, sizeof(text));
-        last_heard_add(call.src, tg_or_pc, LAST_HEARD_TS_UNKNOWN, text[0] ? text : NULL);
+        last_heard_add(call.src, tg_or_pc, LAST_HEARD_TS_NXDN, text[0] ? text : NULL);
     }
     published.active = call.active;
     published.src = call.src;

@@ -38,11 +38,10 @@
 #include <stdio.h>
 #include <string.h>
 #include "widgets.h"
-#include "codeplug_text.h"
-#include "settings.h"
 #include "codeplug.h"
 #include "systime.h"
 #include "last_heard.h"
+#include "last_heard_format.h"
 #include "contacts.h"
 #include "position.h"
 #include "last_heard_screen.h"
@@ -51,7 +50,6 @@
 #define CALLER_SIZE     48
 #define SUB_SIZE        48
 #define ELAPSED_SIZE    16
-#define TA_PRIORITY_MIN 2 // settings.contact_display_priority from here: the talker alias first (TA_CC_DB, TA_DB_CC)
 
 static last_heard_entry_t entry; // 80 bytes: not on the UI task stack
 static uint32_t own_id;
@@ -137,52 +135,6 @@ static bool handle(const ui_event_t *ev)
     return false;
 }
 
-// "callsign first name" from "callsign name ..."; "callsign DMR ID: ..." gives the callsign (splitCaller())
-static void caller_title(const char *from, char *title, size_t size)
-{
-    const char *space = strchr(from, ' ');
-
-    if (!space || (space == from)) {
-        snprintf(title, size, "%s", from);
-        return;
-    }
-
-    int callsign_length = (int)(space - from);
-    const char *rest = space + 1;
-
-    if (strncmp(rest, "DMR ID:", 7) == 0) {
-        snprintf(title, size, "%.*s", callsign_length, from);
-        return;
-    }
-
-    const char *name_end = strchr(rest, ' ');
-    int name_length = name_end ? (int)(name_end - rest) : (int)strlen(rest);
-
-    snprintf(title, size, "%.*s %.*s", callsign_length, from, name_length, rest);
-}
-
-// Who the caller is: the talker alias or the text by the display priority, else a private contact, else the ID
-static void caller_text(const last_heard_entry_t *e, char *out, size_t size)
-{
-    bool unknown = (e->text[0] == 0) || (strncmp(e->text, "ID:", 3) == 0);
-    bool use_alias = (e->talker_alias[0] != 0) && ((settings.contact_display_priority >= TA_PRIORITY_MIN) || unknown);
-
-    if (use_alias) {
-        caller_title(e->talker_alias, out, size);
-    } else if (e->text[0] != 0) {
-        caller_title(e->text, out, size);
-    } else {
-        static codeplug_contact_t contact; // 28 bytes: not on the stack
-        int index = codeplug_contact_find(e->id, CODEPLUG_CALL_PRIVATE, 0);
-
-        if ((index > 0) && codeplug_get_contact(index, &contact)) {
-            codeplug_text_name(contact.name, CODEPLUG_NAME_LENGTH, out, size);
-        } else {
-            snprintf(out, size, "ID:%lu", (unsigned long)e->id);
-        }
-    }
-}
-
 static void draw_row(int row, const last_heard_entry_t *e, bool selected, uint32_t now)
 {
     char caller[CALLER_SIZE];
@@ -190,10 +142,9 @@ static void draw_row(int row, const last_heard_entry_t *e, bool selected, uint32
     char elapsed[ELAPSED_SIZE];
     char location[24];
     uint32_t called = e->tg_or_pc & CODEPLUG_CONTACT_ID_MAX;
-    uint32_t minutes = (now - e->time_ms) / 60000UL;
     int length;
 
-    caller_text(e, caller, sizeof(caller));
+    last_heard_format_caller(e, caller, sizeof(caller));
     if ((e->tg_or_pc >> 24) == LAST_HEARD_PC_FLAG) {
         if (called == own_id) {
             length = snprintf(sub, sizeof(sub), "%s %s", text(TEXT_PRIVATE_CALL), text(TEXT_UI_ME));
@@ -214,12 +165,7 @@ static void draw_row(int row, const last_heard_entry_t *e, bool selected, uint32
             snprintf(&sub[used], sizeof(sub) - used, "  %s", location);
         }
     }
-    if (minutes < 60) {
-        snprintf(elapsed, sizeof(elapsed), "%lu %s", (unsigned long)minutes, text(TEXT_UI_MINUTES_SHORT));
-    } else {
-        snprintf(elapsed, sizeof(elapsed), "%lu %s", (unsigned long)((minutes < (999 * 60)) ? (minutes / 60) : 999),
-                 text(TEXT_UI_HOURS_SHORT));
-    }
+    last_heard_format_elapsed(e, now, elapsed, sizeof(elapsed));
 
     list_view_row_t data = {
         .icon = ICONS_CONTACT,

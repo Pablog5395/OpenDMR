@@ -39,7 +39,8 @@
 #define LAST_HEARD_MAX        32 // as the main firmware (NUM_LASTHEARD_STORED)
 #define LAST_HEARD_TEXT_SIZE  32
 #define LAST_HEARD_PC_FLAG    0x03 // in the top byte of tg_or_pc: a private call (HR_C7000 PC_CALL_FLAG)
-#define LAST_HEARD_TS_UNKNOWN 0xFF
+#define LAST_HEARD_TS_UNKNOWN 0xFF // no timeslot: P25
+#define LAST_HEARD_TS_NXDN    0xFE // no timeslot: NXDN (told from P25 by the channel screen's recent callers)
 
 typedef struct {
     uint32_t id;                             // the caller's DMR ID
@@ -47,7 +48,7 @@ typedef struct {
     uint32_t time_ms;                        // systime when heard last
     int32_t latitude_e5;                     // the position of its last GPS Info LC, 1/100000 degree, + north
     int32_t longitude_e5;                    // ... + east
-    uint8_t timeslot;                        // 0: TS1, 1: TS2, LAST_HEARD_TS_UNKNOWN
+    uint8_t timeslot;                        // 0: TS1, 1: TS2, LAST_HEARD_TS_UNKNOWN (P25), LAST_HEARD_TS_NXDN
     bool has_location;                       // the position above was heard (position.h)
     char text[LAST_HEARD_TEXT_SIZE];         // "callsign name ..." from the contacts or the DMR IDs; "": not known
     char talker_alias[LAST_HEARD_TEXT_SIZE]; // "": none

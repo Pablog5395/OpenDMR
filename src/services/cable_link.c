@@ -109,7 +109,7 @@ static uint32_t fast_since = 0;
 #define SECTOR_IGNORED (-2)
 
 static int32_t write_sector = SECTOR_NONE;
-static uint8_t sector_buffer[FLASH_SECTOR_SIZE];
+static uint8_t sector_buffer[FLASH_SECTOR_SIZE]; // also the debug commands' (cable_link_sector_buffer())
 
 static StaticTask_t task_tcb;
 static StackType_t task_stack[512];
@@ -159,8 +159,21 @@ static uint32_t expected_length(uint32_t received)
     if ((request[0] == 'D') && (received >= 2) && (request[1] == 'F')) {
         return 9 + 1024; // font upload: a gap in the UART must not end it early
     }
-    if ((request[0] == 'D') && (received >= 2) && ((request[1] == 'k') || (request[1] == 'q'))) {
-        return (request[1] == 'k') ? 5 : 2; // the test interface (app/test_link.c): no wait for the line to go quiet
+    if ((request[0] == 'D') && (received >= 2)) {
+        // the test interface (app/test_link.c): its length known, no wait for the line to go quiet
+        switch (request[1]) {
+            case 'k': return 5; // a key
+            case 'q': return 2; // the state
+            case 'a': return 6; // a test APRS beacon
+            case 'd': return 5; // a test data burst
+            default: break;
+        }
+    }
+    if ((request[0] == 'D') && (received >= 2) && (request[1] == 'g')) {
+        return 5; // 'D' 'g' and a 3 byte DMR ID: the APRS-over-DMR gateway (test_link.c)
+    }
+    if ((request[0] == 'D') && (received >= 2) && (request[1] == 'w')) {
+        return 3; // 'D' 'w' and the AFSK / DMR / both selector (test_link.c)
     }
     if ((request[0] == 'D') && (received >= 2) && (request[1] == 'Z')) {
         return 8; // a packed read (debug.c)
@@ -251,6 +264,11 @@ static uint32_t request_u32(int at)
 {
     return ((uint32_t)request[at] << 24) | ((uint32_t)request[at + 1] << 16) | ((uint32_t)request[at + 2] << 8) |
            request[at + 3];
+}
+
+uint8_t *cable_link_sector_buffer(void)
+{
+    return (write_sector == SECTOR_NONE) ? sector_buffer : NULL;
 }
 
 // 'X': the CPS writes the codeplug a 4 KB sector at a time, in the window of the flash
