@@ -42,7 +42,8 @@
 #define APRS_VIA_MASK (3UL << 1)
 
 // Destination for APRS positions sent over DMR (LRRP to the APRS gateway). Stored in our own flash block, not in
-// settings_t, so the OpenGD77 CPS layout stays untouched. 222999 is the Italian gateway used as the default.
+// settings_t, so the OpenGD77 CPS layout stays untouched. 222999 (the Italian gateway) is the default; the APRS
+// options menu, the Dg cable command and tools/debug/radio.py change it (BrandMeister's common gateway is 5057).
 #define APRS_DMR_GATEWAY_DEFAULT 222999u // 0x036717
 
 void extra_options_load(void); // after flash_init()

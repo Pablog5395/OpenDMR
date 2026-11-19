@@ -267,6 +267,23 @@ bool dmr_aprs_busy(void)
     return !HRC7000DataBurstsDone();
 }
 
+bool dmr_aprs_failed(void)
+{
+    return HRC7000DataBurstsFailed();
+}
+
+void dmr_aprs_cancel(void)
+{
+    HRC7000AbortDataBursts();
+}
+
+// A signal on the channel (the engine's timeslot state machine, or any DMR sync): the radio task waits before a data
+// burst instead of keying on top of it, including another colour code's traffic that the filter would ignore.
+bool dmr_channel_busy(void)
+{
+    return (slotState != DMR_STATE_IDLE) || HRC7000HasGotSync();
+}
+
 /* The call: the LC of the engine to the last heard list and the UI (lastHeardListUpdate()) */
 
 #define TA_BLOCKS     4  // LC opcodes 0x04 - 0x07: the talker alias header and 3 blocks

@@ -222,6 +222,7 @@ static struct
 	uint8_t talkAliasLocation[7];
 	volatile bool dataTxActive;
 	volatile bool dataTxDone;
+	volatile bool dataTxFailed; // the burst didn't finish (repeater wake failure, engine reset, abort)
 	volatile uint8_t dataTxCount;
 	volatile uint8_t dataTxIndex;
 	volatile uint8_t dataTxType[DMR_DATA_BURSTS_MAX];
@@ -276,6 +277,7 @@ static struct
 		.talkAliasLocation = { 0, 0, 0, 0, 0, 0, 0},
 		.dataTxActive = false,
 		.dataTxDone = true,
+		.dataTxFailed = false,
 		.dataTxCount = 0,
 		.dataTxIndex = 0
 };
@@ -1352,7 +1354,8 @@ static void hrc7000TransitionToTx(void)
 	disableAudioAmp(AUDIO_AMP_MODE_RF);
 	LedWrite(LED_GREEN_R, 0);
 
-	if (settingsUsbMode != USB_MODE_HOTSPOT)
+	// Data bursts (APRS over DMR) don't use the microphone or the codec: no capture to start, nothing to reset later.
+	if (!hrc.dataTxActive && (settingsUsbMode != USB_MODE_HOTSPOT))
 	{
 		codecInit(false);
 		hrc7000StartMicCaptureEarly();
@@ -1366,6 +1369,8 @@ static void hrc7000TransitionToTx(void)
 
 // APRS over DMR: the next queued data burst goes into the HR_C7000's TX RAM. CSBK and data header payloads are 10
 // octets (the chip appends the CRC-16); Rate 1/2 blocks are 12 (their CRC-32 is already in the payload).
+// Ported from RadioFoundry (https://github.com/gzalo/RadioFoundry), Copyright (c) The RadioFoundry Authors, MIT
+// License: see the NOTICE file at the root of the project.
 static void hrc7000ArmDataBurst(void)
 {
 	uint8_t index = hrc.dataTxIndex;
@@ -1392,9 +1397,8 @@ void hrc7000TxBurstCallback(void)
 	hrc7000RxInterruptHandler();
 	hrc7000SetInIRQHandler(false);
 
-	// A data-burst transmission (APRS over DMR) never goes through the PTT path that clears this for voice (radio.c's
-	// dmr_transmit_check()). Without this the red LED stays on and looks like a stuck transmitter.
-	LedWrite(LED_RED_R, 0);
+	// The red LED of a data burst (APRS over DMR) is cleared by the radio task that started it (leds_red()), with the
+	// transmission state and the outcome, as the voice path does in dmr_transmit_check().
 }
 
 // Repeater receive, LAYER2_TXRX_CTRL for the next timeslot, as the stock firmware (its DMR task 0x2d604, 0x3022828) and
@@ -2354,7 +2358,8 @@ void hrc7000Tick(void)
 
 			if (currentRadioDevice->trxDMRModeTx == DMR_MODE_DMO)
 			{
-				if (settingsUsbMode != USB_MODE_HOTSPOT)
+				// A data burst: no microphone capture or codec reset (the data goes straight to the TX RAM).
+				if (!hrc.dataTxActive && (settingsUsbMode != USB_MODE_HOTSPOT))
 				{
 					codecInit(false);
 					hrc7000StartMicCaptureEarly();
@@ -2374,7 +2379,7 @@ void hrc7000Tick(void)
 			}
 			else
 			{
-				if (settingsUsbMode != USB_MODE_HOTSPOT)
+				if (!hrc.dataTxActive && (settingsUsbMode != USB_MODE_HOTSPOT))
 				{
 					codecInit(false);
 				}
@@ -2445,6 +2450,14 @@ void hrc7000Tick(void)
 				}
 				slotState = DMR_STATE_IDLE;
 				trxIsTransmitting = false;
+				if (hrc.dataTxActive)
+				{
+					// The engine stopped under a data burst (APRS over DMR): it won't finish, tell the radio task.
+					hrc.dataTxActive = false;
+					hrc.dataTxDone = true;
+					hrc.dataTxFailed = true;
+					trxTransmissionEnabled = false;
+				}
 				hrc.tickCount = 0;
 				hrc.tsLockedTS = -1;
 				hrc.tsAgreed = 0;
@@ -2481,6 +2494,17 @@ void hrc7000Tick(void)
 				if (hrc.wakeTriesCount > codeplugGetRepeaterWakeAttempts())
 				{
 					hrc.isWaking = WAKING_MODE_FAILED;// signal that the Wake process has failed.
+					if (hrc.dataTxActive)
+					{
+						// A data burst (APRS over DMR) can't wait for the PTT screen: end it here, the radio task
+						// sees the failure, clears the state and its LED, and reports it.
+						hrc.dataTxActive = false;
+						hrc.dataTxDone = true;
+						hrc.dataTxFailed = true;
+						trxTransmissionEnabled = false;
+						trxIsTransmitting = false;
+						slotState = DMR_STATE_IDLE;
+					}
 				}
 				else
 				{
@@ -2786,6 +2810,9 @@ int HRC7000GetIsWakingState(void)
 	return hrc.isWaking;
 }
 
+// The data-burst start of the RadioFoundry APRS-over-DMR port (MIT License, see the NOTICE file): the payloads are
+// built by services/aprs_dmr.c, the engine only queues them and moves them to the TX RAM in the timeslot state
+// machine above.
 bool HRC7000SendDataBursts(const uint8_t *types, const uint8_t *lengths, const uint8_t (*payloads)[12], uint8_t count)
 {
 	if ((count == 0) || (count > DMR_DATA_BURSTS_MAX) || (types == NULL) || (lengths == NULL) || (payloads == NULL) ||
@@ -2806,6 +2833,7 @@ bool HRC7000SendDataBursts(const uint8_t *types, const uint8_t *lengths, const u
 	hrc.dataTxCount = count;
 	hrc.dataTxIndex = 0;
 	hrc.dataTxDone = false;
+	hrc.dataTxFailed = false;
 	hrc.dataTxActive = true;
 	trxTransmissionEnabled = true; // the hrc7000 task takes it from here (including repeater wake-up)
 	return true;
@@ -2814,6 +2842,33 @@ bool HRC7000SendDataBursts(const uint8_t *types, const uint8_t *lengths, const u
 bool HRC7000DataBurstsDone(void)
 {
 	return hrc.dataTxDone;
+}
+
+bool HRC7000DataBurstsFailed(void)
+{
+	return hrc.dataTxFailed;
+}
+
+// The radio task gives up on a data burst (no timeslot, a repeater that didn't wake, a timeout): drop the queue and
+// leave the engine in receive, so the next voice transmission or beacon starts clean. The red LED is the radio
+// task's (leds_red()).
+void HRC7000AbortDataBursts(void)
+{
+	taskENTER_CRITICAL();
+
+	hrc.dataTxActive = false;
+	hrc.dataTxDone = true;
+	hrc.dataTxFailed = true;
+	hrc.dataTxCount = 0;
+	hrc.dataTxIndex = 0;
+	trxTransmissionEnabled = false;
+	trxIsTransmitting = false;
+	hrc.isWaking = WAKING_MODE_NONE;
+	hrc.repeaterWakeupResponseTimeout = 0;
+	*LAYER2_TXRX_CTRL = 0x00; // no transmit on the next timeslot
+	slotState = DMR_STATE_IDLE;
+
+	taskEXIT_CRITICAL();
 }
 
 void HRC7000ClearActiveDMRID(void)

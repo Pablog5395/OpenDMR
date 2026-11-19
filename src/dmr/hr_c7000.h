@@ -142,5 +142,7 @@ void HRC7000SetMic(bool isOn);
 // APRS over DMR: queue an unconfirmed data transmission (CSBK / data header / Rate 1/2, 10 or 12 octets per burst).
 bool HRC7000SendDataBursts(const uint8_t *types, const uint8_t *lengths, const uint8_t (*payloads)[12], uint8_t count);
 bool HRC7000DataBurstsDone(void);
+bool HRC7000DataBurstsFailed(void); // ended by a wake failure, an engine reset or HRC7000AbortDataBursts()
+void HRC7000AbortDataBursts(void);  // drop the queued bursts and leave the engine in receive
 
 #endif /* _OPENGD77_HR_C7000_H_ */

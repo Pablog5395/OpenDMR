@@ -55,7 +55,10 @@ bool dmr_repeater_failed(void); // the repeater didn't wake up
 // APRS over DMR: one LRRP position report to a gateway, reusing the current DMR channel. Coordinates are 1e-7 degrees.
 bool dmr_aprs_send_position(int32_t latitude_e7, int32_t longitude_e7, uint16_t speed_knots, uint16_t course,
                             uint32_t destination, uint32_t source);
-bool dmr_aprs_busy(void); // a queued report is still being transmitted
+bool dmr_aprs_busy(void);   // a queued report is still being transmitted
+bool dmr_aprs_failed(void); // it ended without transmitting (wake failure, engine reset, radio task abort)
+void dmr_aprs_cancel(void); // drop it and leave the engine in receive
+bool dmr_channel_busy(void); // a signal on the channel (timeslot state machine or DMR sync)
 
 typedef struct {
     uint32_t source;   // the caller's DMR ID

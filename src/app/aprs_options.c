@@ -30,7 +30,8 @@
  * OpenDMR, menu: the APRS beaconing options (menuAPRSOptions.c, without RATE_MESSAGE_FEATURE as the DM-32
  * build). The settings are packed into settings.aprs_beaconing_settings_part1[] / part2 as aprs.c
  * aprsBeaconingUpdateSystemSettingsFromConfiguration() does; each item unpacks, changes and packs its field; the
- * beaconing itself is services/aprs.c. SK2 held: bigger steps for the smart beaconing values.
+ * beaconing itself is services/aprs.c. SK2 held: bigger steps for the smart beaconing values. "Send via" and the
+ * gateway are ours (extra_options.c), not in the CPS settings.
  */
 
 #include <stdio.h>
@@ -38,6 +39,7 @@
 #include "settings.h"
 #include "text.h"
 #include "options.h"
+#include "number_entry.h"
 #include "aprs.h"
 #include "extra_options.h"
 
@@ -381,6 +383,23 @@ static const ui_custom_t via = {
     .change = via_change,
 };
 
+/* Gateway: the DMR ID of the APRS gateway the LRRP report goes to. Entered with the keypad (the number entry
+   screen); our own flash block, as "Send via". */
+static void gateway_format(char *buffer, size_t size)
+{
+    snprintf(buffer, size, "%lu", (unsigned long)extra_options_aprs_dmr_gateway());
+}
+
+static void gateway_select(void)
+{
+    ui_push(&number_entry_screen, NUMBER_ENTRY_APRS_GATEWAY);
+}
+
+static const ui_custom_t gateway = {
+    .format = gateway_format,
+    .select = gateway_select,
+};
+
 // "Send beacon now": not a setting, an action; the row shows OK and the select sends (aprs_send() sets the request, the
 // input task does the rest: in any mode but Off, and it beeps when it cannot)
 static void send_now_format(char *buffer, size_t size)
@@ -402,6 +421,7 @@ static const ui_item_t aprs_options_items[] = {
     {TEXT_MODE, ICONS_COUNT, UI_ITEM_CUSTOM, &mode, NULL},
     {TEXT_LOCATION, ICONS_COUNT, UI_ITEM_CUSTOM, &location, NULL},
     {TEXT_APRS_SEND_VIA, ICONS_COUNT, UI_ITEM_CUSTOM, &via, NULL},
+    {TEXT_APRS_GATEWAY, ICONS_COUNT, UI_ITEM_CUSTOM, &gateway, NULL},
     {TEXT_APRS_INTERVAL, ICONS_COUNT, UI_ITEM_CUSTOM, &interval, NULL},
     {TEXT_APRS_DECAY, ICONS_COUNT, UI_ITEM_CUSTOM, &decay, NULL},
     {TEXT_APRS_COMPRESS, ICONS_COUNT, UI_ITEM_CUSTOM, &compressed, NULL},

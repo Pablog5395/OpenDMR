@@ -69,11 +69,15 @@ bool radio_rf_on_air(void); // the PA is on (the RF task), including a DMR data 
 bool radio_aprs_send(const uint8_t *bits, uint16_t bit_count, bool baud300);
 bool radio_aprs_busy(void);
 bool radio_aprs_sent(void);
-// APRS over DMR (aprs.c): one LRRP position report, sent by the DMR engine on the current channel. Coordinates are
-// 1e-7 degrees; use APRS_DMR_SPEED_UNKNOWN / APRS_DMR_COURSE_UNKNOWN when speed/course aren't available.
+// APRS over DMR (aprs.c): one LRRP position report, sent by the radio task through the DMR engine on the current
+// channel only (DMR, not Rx-only, in band, not scanning / dual watch / hotspot). As the AFSK frame, it waits up to
+// 2 s for a busy channel; true: the radio task took it (the position stays in use until radio_aprs_dmr_busy() is
+// false, radio_aprs_dmr_sent() then tells if it went out). Coordinates are 1e-7 degrees; use APRS_DMR_SPEED_UNKNOWN /
+// APRS_DMR_COURSE_UNKNOWN when speed/course aren't available.
 bool radio_aprs_dmr_send(int32_t latitude_e7, int32_t longitude_e7, uint16_t speed_knots, uint16_t course,
                          uint32_t gateway, uint32_t own_id);
 bool radio_aprs_dmr_busy(void);
+bool radio_aprs_dmr_sent(void);
 // The VOX (an FM channel with VOX, settings.vox_threshold set) posts PTT presses and releases; a key (from the input
 // task) stops it and starts it again later
 void radio_vox_key(bool ptt_held);

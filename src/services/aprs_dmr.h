@@ -33,6 +33,10 @@
 #include <stdint.h>
 
 /*
+ * The LRRP report and the DMR data packet formats here are ported from RadioFoundry
+ * (https://github.com/gzalo/RadioFoundry), Copyright (c) The RadioFoundry Authors, used under the MIT License.
+ * See the NOTICE file at the root of the project.
+ *
  * APRS position over DMR, RadioFoundry style: an unsolicited Motorola LRRP triggered report carried in an
  * unconfirmed DMR IP packet (UDP port 4001). This file only builds the bursts; the HR_C7000 engine sends them.
  */

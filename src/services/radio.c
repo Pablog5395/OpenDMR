@@ -1010,15 +1010,170 @@ bool radio_aprs_sent(void)
     return aprs_sent;
 }
 
+// APRS over DMR: the report is handed to the radio task, which checks the channel, waits for it to be free, sets the
+// PA drive and keys the engine, then clears the state and the LED when it ends (or on a wake failure / timeout). As
+// the AFSK frame, aprs.c polls radio_aprs_dmr_busy() and then reads radio_aprs_dmr_sent().
+#define APRS_DMR_BUSY_MS    2000
+#define APRS_DMR_TIMEOUT_MS 5000
+
+static struct {
+    volatile bool pending; // with the radio task, not started yet
+    volatile bool active;  // the engine is sending it
+    volatile bool ok;      // the last one went out
+    uint32_t started_ms;
+    int32_t latitude_e7;
+    int32_t longitude_e7;
+    uint16_t speed_knots;
+    uint16_t course;
+    uint32_t gateway;
+    uint32_t own_id;
+} dmr_aprs;
+
 bool radio_aprs_dmr_send(int32_t latitude_e7, int32_t longitude_e7, uint16_t speed_knots, uint16_t course,
                          uint32_t gateway, uint32_t own_id)
 {
-    return dmr_aprs_send_position(latitude_e7, longitude_e7, speed_knots, course, gateway, own_id);
+    bool accepted = false;
+    uint32_t now = systime_get_ms();
+
+    if (!requested_valid || (requested.mode != CODEPLUG_MODE_DMR) || transmitting || tx_wanted || scanning ||
+        hotspot_active() || (radio_tx_check() != RADIO_TX_OK)) {
+        return false;
+    }
+    taskENTER_CRITICAL();
+    if (!dmr_aprs.pending && !dmr_aprs.active) {
+        dmr_aprs.latitude_e7 = latitude_e7;
+        dmr_aprs.longitude_e7 = longitude_e7;
+        dmr_aprs.speed_knots = speed_knots;
+        dmr_aprs.course = course;
+        dmr_aprs.gateway = gateway;
+        dmr_aprs.own_id = own_id;
+        dmr_aprs.started_ms = now;
+        dmr_aprs.ok = false;
+        dmr_aprs.pending = true;
+        accepted = true;
+    }
+    taskEXIT_CRITICAL();
+    if (accepted && task) {
+        xTaskNotifyGive(task);
+    }
+    return accepted;
 }
 
 bool radio_aprs_dmr_busy(void)
 {
-    return dmr_aprs_busy();
+    bool busy;
+
+    taskENTER_CRITICAL();
+    busy = dmr_aprs.pending || dmr_aprs.active;
+    taskEXIT_CRITICAL();
+    return busy;
+}
+
+bool radio_aprs_dmr_sent(void)
+{
+    bool ok;
+
+    taskENTER_CRITICAL();
+    ok = dmr_aprs.ok;
+    taskEXIT_CRITICAL();
+    return ok;
+}
+
+// The report ended: no state left, the LED off and the transmitting state free for the PTT again
+static void dmr_aprs_end(bool ok)
+{
+    taskENTER_CRITICAL();
+    dmr_aprs.pending = false;
+    dmr_aprs.active = false;
+    dmr_aprs.ok = ok;
+    taskEXIT_CRITICAL();
+    if (transmitting) {
+        transmitting = false;
+    }
+    leds_red(false);
+    post_signal();
+}
+
+// The radio task, every pass on a DMR channel: start the queued report when the channel is free, then watch it
+static void dmr_aprs_check(void)
+{
+    bool pending;
+    bool active;
+    uint32_t started;
+    uint32_t now = systime_get_ms();
+
+    taskENTER_CRITICAL();
+    pending = dmr_aprs.pending;
+    active = dmr_aprs.active;
+    started = dmr_aprs.started_ms;
+    taskEXIT_CRITICAL();
+    if (!pending && !active) {
+        return;
+    }
+    if (pending) {
+        // The PTT wins: drop the report (not sent, as the AFSK frame when the radio is busy).
+        if (tx_wanted || transmitting) {
+            taskENTER_CRITICAL();
+            dmr_aprs.pending = false;
+            dmr_aprs.ok = false;
+            taskEXIT_CRITICAL();
+            return;
+        }
+        // The channel changed under it (scan, dual watch, hotspot, a non-DMR or Rx-only channel): not now.
+        if (!dmr_on || !requested_valid || (requested.mode != CODEPLUG_MODE_DMR) || scanning || hotspot_active() ||
+            (radio_tx_check() != RADIO_TX_OK)) {
+            taskENTER_CRITICAL();
+            dmr_aprs.pending = false;
+            dmr_aprs.ok = false;
+            taskEXIT_CRITICAL();
+            return;
+        }
+        // A previous voice transmission may have left the engine in the failed wake state (the PTT screen stops by
+        // itself): reset it, or this report would never start.
+        if (dmr_repeater_failed()) {
+            dmr_aprs_cancel();
+        }
+        if (radio_is_receiving() || dmr_channel_busy()) {
+            if ((now - started) >= APRS_DMR_BUSY_MS) {
+                taskENTER_CRITICAL();
+                dmr_aprs.pending = false;
+                dmr_aprs.ok = false;
+                taskEXIT_CRITICAL();
+            }
+            return;
+        }
+        // The PA drive of this channel, as the PTT path sets it before dmr_transmit(true): the first burst after
+        // power on would otherwise go out at drive 0, and later ones at the drive of the last PTT.
+        dmr_drive = pa_drive(requested.tx_freq);
+        if (!dmr_aprs_send_position(dmr_aprs.latitude_e7, dmr_aprs.longitude_e7, dmr_aprs.speed_knots,
+                                    dmr_aprs.course, dmr_aprs.gateway, dmr_aprs.own_id)) {
+            taskENTER_CRITICAL();
+            dmr_aprs.pending = false;
+            dmr_aprs.ok = false;
+            taskEXIT_CRITICAL();
+            return;
+        }
+        taskENTER_CRITICAL();
+        dmr_aprs.pending = false;
+        dmr_aprs.active = true;
+        dmr_aprs.started_ms = now;
+        taskEXIT_CRITICAL();
+        transmitting = true;
+        dmr_stopping = false;
+        leds_red(true);
+        post_signal();
+        return;
+    }
+    // The engine failed (repeater not awake, engine reset) or it is taking too long (no timeslot): abort it, so the
+    // state and the LED don't stay on and the next transmission starts clean.
+    if (dmr_repeater_failed() || dmr_aprs_failed() || ((now - started) >= APRS_DMR_TIMEOUT_MS)) {
+        dmr_aprs_cancel();
+        dmr_aprs_end(false);
+        return;
+    }
+    if (!dmr_aprs_busy()) {
+        dmr_aprs_end(true);
+    }
 }
 
 /* VOX */
@@ -1193,7 +1348,7 @@ static void eco_tick(void)
     eco_activity = false;
     if (!has_channel || (level == 0) || (channel.libre_dmr_flag1 & ECO_FLAG1_NO_ECO) || transmitting || tx_wanted ||
         carrier || speaker || amp_for_audio || amp_for_beep || amp_for_broadcast || scanning || vox_on || aprs_bits ||
-        hotspot_active() ||
+        dmr_aprs.pending || dmr_aprs.active || hotspot_active() ||
         (dmr_on && dmr_has_sync()) || nxdn_on || active) { // NXDN: the recording needs the receiver on (for now)
         eco_stop();
         return;
@@ -1281,12 +1436,19 @@ static void RAM_CODE radio_task(void *arg)
         if (aprs_bits && !dmr_on && !transmitting) {
             aprs_transmit();
         }
+        // Not only on a DMR channel: a queued report must be dropped when the channel changed under it (scan, dual
+        // watch, FM ...), or radio_aprs_dmr_busy() would stay true and APRS would never send again.
+        dmr_aprs_check();
         if (nxdn_on) {
             nxdn_transmit_check(); // not the DMR engine underneath
         } else if (p25_on) {
             p25_transmit_check();
         } else if (dmr_on) {
-            dmr_transmit_check();
+            // A data burst holds the engine: the PTT waits for it (then starts the voice), and its release doesn't
+            // end the burst as if it were a voice transmission.
+            if (!dmr_aprs.active) {
+                dmr_transmit_check();
+            }
         } else if (tx_wanted != transmitting) {
             if (tx_wanted && is_fm()) {
                 transmit_on();

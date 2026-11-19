@@ -27,6 +27,12 @@
  */
 
 /*
+ * The LRRP report and the DMR data packet formats of this file are ported from RadioFoundry
+ * (https://github.com/gzalo/RadioFoundry), Copyright (c) The RadioFoundry Authors, and are used under the MIT
+ * License. The full notice is in the NOTICE file at the root of the project. Keep it with the ported code.
+ */
+
+/*
  * OpenDMR, service: APRS over DMR (aprs_dmr.h). The RadioFoundry LRRP report is an MBXML document inside an IPv4/UDP
  * packet (port 4001) in an unconfirmed DMR data transmission: two preamble CSBKs, a data header, then Rate 1/2 blocks
  * with the CRC-32. The HR-C7000 adds the FEC and the sync, so these are the 10 / 12 octets written to its TX RAM.
@@ -135,7 +141,8 @@ static void degrees_minutes(int32_t e7, uint8_t *degrees, uint32_t *minutes)
     *degrees = (uint8_t)(value / 10000000u);
     *minutes = (((value % 10000000u) * 60u) + 500u) / 1000u;
     if (*minutes >= 600000u) {
-        *minutes = 599999u;
+        // Rounded up to a whole degree: the minutes go back to 0, not 59.9999 with the degree added.
+        *minutes = 0;
         if (*degrees < 255u) {
             (*degrees)++;
         }

@@ -31,7 +31,8 @@
  * VK3KYY / F1RMB): the AX.25 encoder (NRZI, bit stuffing, CRC), the position (plain or compressed, ambiguity, course
  * and speed), aprsBeaconingTick() (each second: the position, then the auto interval with its decay or the smart
  * beaconing), aprsBeaconingSendBeacon(). The frame goes to the radio task (radio_aprs_send()), which waits for a busy
- * channel and sends the AFSK. The settings are the APRS options' (settings.aprs_beaconing_settings_part1 / 2); the
+ * channel and sends the AFSK; an APRS-over-DMR report takes the same path (radio_aprs_dmr_send()), only on a DMR
+ * channel. The settings are the APRS options' (settings.aprs_beaconing_settings_part1 / 2); the
  * keys and the PTT mode only ask (aprs_toggle(), aprs_send(), aprs_after_ptt()), the input task does the rest.
  */
 
@@ -117,8 +118,8 @@ static struct {
     bool trigger;
     bool waiting;       // an AFSK frame is with the radio task
     bool waiting_auto;  // ... sent by the auto modes (the trigger stays on a failure)
-    bool dmr_waiting;   // an LRRP report is with the DMR engine
-    bool dmr_ok;        // ... it was queued (the engine has no per-report failure signal)
+    bool dmr_waiting;   // an LRRP report is with the radio task (the DMR engine)
+    bool dmr_ok;        // ... it went out
     location_t sending; // the location of that frame
 } aprs = {.fixed_lat = NAN, .fixed_lon = NAN, .decay = DECAY_MULT_MIN};
 
@@ -607,7 +608,7 @@ static bool send_beacon(bool forced)
         afsk_sent = radio_aprs_send(ax25.buffer, bits, (aprs.config.flags & 0x01) != 0);
     }
 
-    if (want_dmr) {
+    if (want_dmr && (channel.mode == CODEPLUG_MODE_DMR)) {
         uint32_t own_id = codeplug_get_dmr_id();
         uint32_t gateway = extra_options_aprs_dmr_gateway();
         uint16_t speed = (aprs.current.speed > SPEED_MIN_CKN) ? (uint16_t)(aprs.current.speed / 100u)
@@ -627,7 +628,7 @@ static bool send_beacon(bool forced)
     }
     aprs.waiting = afsk_sent;
     aprs.dmr_waiting = dmr_sent;
-    aprs.dmr_ok = dmr_sent;
+    aprs.dmr_ok = false; // until the radio task reports the outcome
     aprs.waiting_auto = !manual;
     aprs.sending = aprs.current;
     if (aprs.s.mode == MODE_PTT) {
@@ -819,10 +820,14 @@ void aprs_tick(void)
         reset(index);
     }
     if ((aprs.waiting || aprs.dmr_waiting) && !radio_aprs_busy() && !radio_aprs_dmr_busy()) {
-        bool ok = aprs.dmr_waiting ? aprs.dmr_ok : radio_aprs_sent();
+        bool ok = true;
 
         if (aprs.waiting) {
             ok = ok && radio_aprs_sent();
+        }
+        if (aprs.dmr_waiting) {
+            aprs.dmr_ok = radio_aprs_dmr_sent();
+            ok = ok && aprs.dmr_ok;
         }
         sent(ok);
     }
