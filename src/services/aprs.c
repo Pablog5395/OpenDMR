@@ -121,6 +121,7 @@ static struct {
     uint8_t decay;
     bool trigger;
     bool waiting;       // a frame is with the radio task
+    radio_request_t request; // ... its request (radio_result())
     bool waiting_auto;  // ... sent by the auto modes (the trigger stays on a failure)
     location_t sending; // the location of that frame
 } aprs = {.fixed_lat = NAN, .fixed_lon = NAN, .decay = DECAY_MULT_MIN};
@@ -654,7 +655,8 @@ static bool send_beacon(bool forced)
     }
 
     bits = build_frame(&aprs.previous, &aprs.current);
-    if (!radio_aprs_send(ax25.buffer, bits, (aprs.config.flags & 0x01) != 0, frequency, &channel)) {
+    aprs.request = radio_aprs_send(ax25.buffer, bits, (aprs.config.flags & 0x01) != 0, frequency);
+    if (aprs.request == 0) {
         return false;
     }
     aprs.waiting = true;
@@ -845,8 +847,8 @@ void aprs_tick(void)
     if (radio_get_channel(&channel) && (channel.aprs_config_index != aprs.config_index)) {
         reset(channel.aprs_config_index);
     }
-    if (aprs.waiting && !radio_aprs_busy()) {
-        sent(radio_aprs_sent());
+    if (aprs.waiting && (radio_result(aprs.request) != RADIO_PENDING)) {
+        sent(radio_result(aprs.request) == RADIO_SENT);
     }
 
     if (toggle_asked) {
