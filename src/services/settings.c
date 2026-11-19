@@ -191,8 +191,8 @@ static bool check_ranges(void)
     CHECK(current_zone, 0, 255);
     CHECK(user_power, 0, 4100);           // radio_options.c USER_POWER_MAX
     CHECK(ts_manual_override, 0, TS_OVERRIDE_BITS);
-    CHECK(dual_watch_path[0], -2, 1024);  // dual_watch.c: a channel number, -1 VFO A, -2 VFO B
-    CHECK(dual_watch_path[1], -2, 1024);
+    CHECK(dual_watch_path[0], -16386, 1024); // dual_watch.h: a channel, VFO -1 / -2, or a packed zone -3 ..
+    CHECK(dual_watch_path[1], -16386, 1024);
     CHECK(tx_power_level, 0, 9);          // radio.c POWER_LEVELS
     CHECK(tx_timeout_beep_x5_secs, 0, 4); // sound_options.c
     CHECK(beep_volume_divider, 0, 10);

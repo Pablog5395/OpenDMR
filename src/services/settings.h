@@ -54,7 +54,7 @@ typedef struct {
     int16_t current_zone;
     uint16_t user_power;
     uint16_t ts_manual_override;
-    int16_t dual_watch_path[2]; // channel number (1 ..), -1 VFO A, -2 VFO B, 0 none
+    int16_t dual_watch_path[2]; // channel (1 ..), VFO A -1, VFO B -2, zone -3 .. -16386, 0 default
     uint16_t aprs_beaconing_settings_part2;
     uint8_t tx_power_level;
     uint8_t tx_timeout_beep_x5_secs;

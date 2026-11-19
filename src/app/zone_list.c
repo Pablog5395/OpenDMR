@@ -37,6 +37,7 @@
 #include "codeplug_text.h"
 #include "settings.h"
 #include "codeplug.h"
+#include "dual_watch.h"
 #include "menus.h"
 
 static int zone_count(void)
@@ -79,4 +80,50 @@ const ui_pick_list_t zone_list = {
     .current = zone_current,
     .name = zone_name,
     .pick = zone_pick,
+};
+
+// The dual watch's path picker: VFO A, VFO B, then the zones. Separate from zone_list so choosing one here does not
+// change the current zone of the channel screen.
+static int dw_target = 0;
+
+void zone_list_set_dual_watch_target(int path)
+{
+    dw_target = (path == 1) ? 1 : 0;
+}
+
+static int dw_count(void)
+{
+    return codeplug_zone_count() + 2;
+}
+
+static int dw_current(void)
+{
+    return dual_watch_path_option(dw_target);
+}
+
+static void dw_name(int index, char *buffer, size_t size)
+{
+    if (index == 0) {
+        snprintf(buffer, size, "VFO A");
+    } else if (index == 1) {
+        snprintf(buffer, size, "VFO B");
+    } else {
+        zone_name(index - 2, buffer, size);
+    }
+}
+
+static void dw_pick(int index)
+{
+    dual_watch_set_path_option(dw_target, index);
+    ui_pop(); // back to the dual watch menu
+}
+
+const ui_pick_list_t dw_zone_list = {
+    .title = TEXT_DUAL_WATCH,
+    .icon = ICONS_ZONE,
+    .count = dw_count,
+    .current = dw_current,
+    .name = dw_name,
+    .pick = dw_pick,
+    .action = TEXT_UI_OK,
 };

@@ -55,6 +55,7 @@
 #include "channel_details.h"
 #include "quick_menu.h"
 #include "scan.h"
+#include "dual_watch.h"
 
 // Bits of settings.bitfield_options (the main firmware's BIT_x)
 #define BIT_DUAL_WATCH    (1UL << 10) // BIT_DUAL_WATCH
@@ -177,23 +178,6 @@ static bool in_all_channels(void)
 static bool load_channel(void)
 {
     return (ref > 0) && codeplug_get_channel(ref, &channel);
-}
-
-// A dual watch path: 0 is the default, VFO A for the first path, VFO B for the second (uiDualWatch.c pathRef())
-static int16_t path_ref(int path)
-{
-    int16_t r = settings.dual_watch_path[path];
-
-    return (r == 0) ? (int16_t)(-1 - path) : r;
-}
-
-static void path_name(int16_t r, char *out, size_t size)
-{
-    if ((r > 0) && codeplug_channel_in_use(r) && codeplug_get_channel(r, &channel)) {
-        codeplug_text_name(channel.name, CODEPLUG_NAME_LENGTH, out, size);
-    } else {
-        snprintf(out, size, "VFO %c", ((r == -2) ? 'B' : 'A'));
-    }
 }
 
 static bool tone_scan_possible(void)
@@ -525,7 +509,7 @@ static const char *format_item(item_t item, char *name, size_t name_size, char *
             break;
         case QM_DUAL_ADD:
             // Only the path it replaces: the main firmware's "Replace VFO B" overlaps the name in English
-            path_name(path_ref(add_target), out, size);
+            dual_watch_path_name(dual_watch_path(add_target), out, size);
             value = out;
             break;
         case QM_TONE_SCAN:

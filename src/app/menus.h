@@ -36,7 +36,9 @@ extern const ui_list_t main_menu;
 // The quick keys: the item of a MENU_x number of the main firmware (NULL: none here), the number of an item (-1: none)
 const ui_item_t *menus_quick_item(int menu);
 int menus_quick_id(const ui_item_t *item);
-extern const ui_pick_list_t zone_list;         // zone_list.c
+extern const ui_pick_list_t zone_list;            // zone_list.c
+extern const ui_pick_list_t dw_zone_list;         // zone_list.c: VFO A, VFO B and the zones, for one dual watch path
+void zone_list_set_dual_watch_target(int path);    // 0 / 1: the path the next pick of dw_zone_list configures
 extern const ui_screen_t firmware_info_screen; // firmware_info.c
 extern const ui_screen_t radio_info_screen;    // radio_info.c
 

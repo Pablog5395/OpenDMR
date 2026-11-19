@@ -29,14 +29,14 @@
 /*
  * OpenDMR, screen: the dual watch (dual_watch.h). After OpenDM32 user_interface/uiDualWatch.c.
  *
- * Two paths, each any channel or VFO A / B (settings.dual_watch_path: a channel number, -1 VFO A, -2 VFO B; 0 is VFO A
- * for the first path, VFO B for the second), the same one twice allowed (one panel then). Watched in turn, a dwell on
- * each; a carrier (FM) or timeslot sync (DMR) is checked for audio, then it stays on that path while the signal lasts
- * and DW_HANG_MS after it (the answer). The transmit path: the one heard last (DW_FOLLOW_MS), or a fixed one (UP the
- * upper, DOWN the lower; "follow" again in the menu).
+ * Two paths, each a channel, a zone or VFO A / B (settings.dual_watch_path, see dual_watch.h), the same one twice
+ * allowed (one panel then). Watched in turn, a dwell on each; a carrier (FM) or timeslot sync (DMR) is checked for
+ * audio, then it stays on that path while the signal lasts and DW_HANG_MS after it (the answer). The transmit path:
+ * the one heard last (DW_FOLLOW_MS), or a fixed one (UP the upper, DOWN the lower; SK2 + knob, or the menu).
  *
- * Keys: the left key the main menu, held the dual watch menu (off, the transmit path); the right key back to the
- * single watch; the PTT transmits on the transmit path.
+ * The highlighted path is the one the knob steps through its zone (SK2 + knob switches the transmit path). The left
+ * key opens the main menu, held opens the dual watch menu (on/off, TX, a zone or VFO for each path); the right key
+ * goes back to the single watch; the PTT transmits on the transmit path.
  */
 
 #include <stdio.h>
@@ -93,8 +93,11 @@ typedef struct {
     bool vfo;
 } path_t;
 
+// One buffer for all the zone lookups: this firmware is close to the RAM limit (the update area starts at 0x44400)
+static codeplug_zone_t zone_scratch;
 static path_t paths[2];
 static int current = 0;
+static int selected_path = 0; // the panel the knob changes (the transmit path, unless changed in the menu)
 static state_t state = STATE_WATCHING;
 static uint32_t state_ms;  // when the path was tuned, or the state started
 static uint32_t signal_ms; // the last time the signal was there
@@ -107,6 +110,9 @@ static int menu_tx = 0; // 0 follow, 1 the first path, 2 the second
 static bool green_down = false;
 static bool red_down = false;
 static bool transmitted = false; // the transmit screen was pushed: back from it, stay on that path
+
+static void load_path(int i);
+static void tune_path(int i, uint32_t now);
 
 bool dual_watch_is_on(void)
 {
@@ -128,11 +134,133 @@ bool dual_watch_show(void)
     return true;
 }
 
+int16_t dual_watch_path(int path)
+{
+    int16_t ref = settings.dual_watch_path[path];
+
+    return (ref == 0) ? (int16_t)(-1 - path) : ref;
+}
+
+bool dual_watch_path_zone(int16_t ref, int *zone, int *position)
+{
+    if (ref > DW_PATH_ZONE_MIN) {
+        return false;
+    }
+    int packed = -ref + DW_PATH_ZONE_MIN; // -ref - 3, without relying on unary minus of INT16_MIN
+
+    if (zone) {
+        *zone = packed >> 7;
+    }
+    if (position) {
+        *position = packed & 0x7F;
+    }
+    return true;
+}
+
+static int zone_channel(int zone, int position)
+{
+    int number = 0;
+
+    if (!codeplug_get_zone(zone, &zone_scratch)) {
+        return 0;
+    }
+    if (zone_scratch.index >= 0) {
+        return (position >= 0) && (position < zone_scratch.channel_count) ? zone_scratch.channels[position] : 0;
+    }
+    for (int n = CODEPLUG_CHANNELS_MIN; (n <= CODEPLUG_CHANNELS_MAX) && (number == 0); n++) {
+        if (codeplug_channel_in_use(n) && (position-- == 0)) {
+            number = n;
+        }
+    }
+    return number;
+}
+
+static int zone_length(int zone)
+{
+    if (!codeplug_get_zone(zone, &zone_scratch)) {
+        return 0;
+    }
+    if (zone_scratch.index >= 0) {
+        return zone_scratch.channel_count;
+    }
+    int count = 0;
+
+    for (int n = CODEPLUG_CHANNELS_MIN; n <= CODEPLUG_CHANNELS_MAX; n++) {
+        count += codeplug_channel_in_use(n) ? 1 : 0;
+    }
+    return count;
+}
+
 static int16_t path_ref(int i)
 {
-    int16_t ref = settings.dual_watch_path[i];
+    return dual_watch_path(i);
+}
 
-    return (ref == 0) ? (int16_t)(-1 - i) : ref;
+void dual_watch_path_name(int16_t ref, char *out, size_t size)
+{
+    codeplug_channel_t channel; // 64 bytes: on the stack, there is no RAM for another static buffer
+    int zone, position;
+
+    if (dual_watch_path_zone(ref, &zone, &position)) {
+        if (codeplug_get_zone(zone, &zone_scratch)) {
+            codeplug_text_name(zone_scratch.name, CODEPLUG_NAME_LENGTH, out, size);
+        } else {
+            snprintf(out, size, "%s %d", text(TEXT_ZONE), zone + 1);
+        }
+    } else if (ref <= DW_PATH_VFO_B) {
+        snprintf(out, size, "VFO %c", (ref == DW_PATH_VFO_B) ? 'B' : 'A');
+    } else if (codeplug_channel_in_use(ref) && codeplug_get_channel((int)ref, &channel)) {
+        codeplug_text_name(channel.name, CODEPLUG_NAME_LENGTH, out, size);
+    } else {
+        snprintf(out, size, "%s %d", text(TEXT_APRS_CHANNEL), ref);
+    }
+}
+
+int dual_watch_path_option(int path)
+{
+    int16_t ref = path_ref(path);
+    int zone, position;
+
+    if (dual_watch_path_zone(ref, &zone, &position)) {
+        return 2 + zone;
+    }
+    if (ref == DW_PATH_VFO_B) {
+        return 1;
+    }
+    if ((ref != DW_PATH_VFO_A) && (ref > 0)) { // a channel, as the current zone
+        int limit = codeplug_zone_count();
+
+        if (settings.current_zone >= 0) {
+            int z = (limit > 0) ? (settings.current_zone % limit) : 0;
+
+            return 2 + z;
+        }
+    }
+    return 0;
+}
+
+void dual_watch_set_path_option(int path, int option)
+{
+    int count = codeplug_zone_count() + 2;
+
+    if ((path < 0) || (path > 1) || (count < 3)) {
+        return;
+    }
+    option = ((option % count) + count) % count;
+    settings.dual_watch_path[path] = (option < 2) ? (int16_t)(DW_PATH_VFO_A - option)
+                                                  : DW_PATH_ZONE_ENCODE(option - 2, 0);
+    settings_changed();
+    settings_save_if_changed();
+    selected_path = path;
+
+    uint32_t now = systime_get_ms();
+
+    load_path(0);
+    load_path(1);
+    state = STATE_WATCHING;
+    heard = -1;
+    tune_path(path, now);
+    signal_ms = state_ms;
 }
 
 static bool paths_same(void)
@@ -146,12 +274,19 @@ static void load_path(int i)
     path_t *p = &paths[i];
     codeplug_contact_t contact;
     codeplug_rx_group_t group;
+    int zone, position, number = 0;
 
-    if ((ref > 0) && codeplug_channel_in_use(ref) && codeplug_get_channel(ref, &p->channel)) {
+    if (dual_watch_path_zone(ref, &zone, &position)) {
+        number = zone_channel(zone, position);
+    }
+    if (number && codeplug_get_channel(number, &p->channel)) {
+        p->vfo = false;
+        codeplug_text_name(p->channel.name, CODEPLUG_NAME_LENGTH, p->name, sizeof(p->name));
+    } else if ((ref > 0) && codeplug_channel_in_use(ref) && codeplug_get_channel(ref, &p->channel)) {
         p->vfo = false;
         codeplug_text_name(p->channel.name, CODEPLUG_NAME_LENGTH, p->name, sizeof(p->name));
     } else {
-        int n = (ref == -2) ? 1 : 0;
+        int n = (ref == DW_PATH_VFO_B) ? 1 : 0;
 
         memcpy(&p->channel, vfo_screen_vfo(n), sizeof(p->channel));
         // the VFO's own power (0: the radio's), as the VFO screen
@@ -180,6 +315,53 @@ static void tune_path(int i, uint32_t now)
     if (paths[i].channel.mode == CODEPLUG_MODE_DMR) {
         dmr_set_tx_id(paths[i].talk_group);
     }
+}
+
+static void set_tx_path(int path)
+{
+    settings_set_option(BIT_DW_TX_1, (path == 0));
+    settings_set_option(BIT_DW_TX_2, (path == 1));
+    settings_save_if_changed();
+    selected_path = path;
+}
+
+// The knob steps the channels of the highlighted path's zone; a plain channel is treated as the current zone
+static bool step_path(int path, int steps)
+{
+    int16_t ref = path_ref(path);
+    int zone, position = 0, length, number;
+
+    if (dual_watch_path_zone(ref, &zone, &position)) {
+        // already a zone path
+    } else if (ref > 0) {
+        zone = (settings.current_zone >= 0) ? (settings.current_zone % codeplug_zone_count()) : 0;
+        if (codeplug_get_zone(zone, &zone_scratch)) {
+            for (int i = 0; i < zone_scratch.channel_count; i++) {
+                if (zone_scratch.channels[i] == ref) {
+                    position = i;
+                    break;
+                }
+            }
+        }
+    } else {
+        return false; // VFO A / B: its frequencies are edited on the VFO screen
+    }
+    length = zone_length(zone);
+    if (length <= 0) {
+        return false;
+    }
+    position = ((position + steps) % length + length) % length;
+    number = zone_channel(zone, position);
+    if (number == 0) {
+        return false;
+    }
+    settings.dual_watch_path[path] = DW_PATH_ZONE_ENCODE(zone, position);
+    settings_changed();
+    load_path(path);
+    if (path == current) {
+        tune_path(path, systime_get_ms());
+    }
+    return true;
 }
 
 static int tx_path(uint32_t now)
@@ -286,6 +468,7 @@ static void enter(void *arg)
         tune_path(0, now);
         state = STATE_WATCHING;
     }
+    selected_path = tx_path(now); // the knob follows the transmit path until SK2 + knob / UP / DOWN changes it
     radio_set_scanning(true); // no receive beeps at each path
     ui_timer_start(DW_TICK_MS);
 }
@@ -312,24 +495,61 @@ static void transmit(void)
     tx_screen_open(text(TEXT_DUAL_WATCH), paths[p].name, &paths[p].channel);
 }
 
+static void menu_change(int direction)
+{
+    if (menu_item == 1) {
+        menu_tx = (menu_tx + direction + 3) % 3;
+    } else if (menu_item >= 2) {
+        int path = menu_item - 2;
+
+        dual_watch_set_path_option(path, dual_watch_path_option(path) + direction);
+        menu_tx = (settings.bitfield_options & BIT_DW_TX_1) ? 1
+                  : (settings.bitfield_options & BIT_DW_TX_2) ? 2 : 0;
+    }
+}
+
 static bool handle_menu(const ui_event_t *ev)
 {
     if ((ev->type == UI_EVENT_KEY_RELEASE) && (ev->key == UI_KEY_RED)) {
         menu_open = false;
+    } else if (ev->type == UI_EVENT_ROTARY) {
+        int steps = (ev->steps < 0) ? -ev->steps : ev->steps;
+        int direction = (ev->steps > 0) ? 1 : -1;
+
+        for (int i = 0; i < steps; i++) {
+            if (ev->modifiers & UI_MODIFIER_SK2) {
+                menu_change(direction);
+            } else {
+                menu_item = (menu_item + direction + 4) % 4;
+            }
+        }
+        return true;
     } else if ((ev->type == UI_EVENT_KEY_PRESS) && ((ev->key == UI_KEY_UP) || (ev->key == UI_KEY_DOWN))) {
-        menu_item = 1 - menu_item;
-    } else if ((menu_item == 1) && (ev->type == UI_EVENT_KEY_PRESS) &&
+        menu_item = (menu_item + ((ev->key == UI_KEY_DOWN) ? 1 : 3)) % 4;
+    } else if ((ev->type == UI_EVENT_KEY_PRESS) &&
                ((ev->key == UI_KEY_RIGHT) || (ev->key == UI_KEY_LEFT))) {
-        menu_tx = (menu_tx + ((ev->key == UI_KEY_RIGHT) ? 1 : 2)) % 3;
+        menu_change((ev->key == UI_KEY_RIGHT) ? 1 : -1);
     } else if ((ev->type == UI_EVENT_KEY_RELEASE) && (ev->key == UI_KEY_GREEN) && !ev->long_press) {
         if (menu_item == 0) {
             dual_watch_set(false);
             ui_pop();
             return false;
         }
-        settings_set_option(BIT_DW_TX_1, menu_tx == 1);
-        settings_set_option(BIT_DW_TX_2, menu_tx == 2);
-        settings_save_if_changed();
+        if (menu_item == 1) {
+            if (menu_tx == 0) {
+                settings_set_option(BIT_DW_TX_1, false);
+                settings_set_option(BIT_DW_TX_2, false);
+                settings_save_if_changed();
+                selected_path = tx_path(systime_get_ms());
+            } else {
+                set_tx_path(menu_tx - 1);
+            }
+        } else {
+            int path = menu_item - 2;
+
+            zone_list_set_dual_watch_target(path);
+            ui_push(&pick_list_screen, (void *)&dw_zone_list);
+        }
         menu_open = false;
     } else {
         return false;
@@ -352,6 +572,7 @@ static bool handle(const ui_event_t *ev)
         case UI_EVENT_KEY_LONG:
         case UI_EVENT_KEY_REPEAT:
         case UI_EVENT_KEY_RELEASE:
+        case UI_EVENT_ROTARY:
             break;
         default:
             return false;
@@ -363,6 +584,21 @@ static bool handle(const ui_event_t *ev)
     }
     if (menu_open) {
         return handle_menu(ev);
+    }
+    if (ev->type == UI_EVENT_ROTARY) {
+        if (ev->modifiers & UI_MODIFIER_SK2) { // SK2 + knob: choose the path that transmits
+            set_tx_path(1 - tx_path(systime_get_ms()));
+        } else {
+            int steps = (ev->steps < 0) ? -ev->steps : ev->steps;
+            int direction = (ev->steps > 0) ? 1 : -1;
+            bool changed = false;
+
+            for (int i = 0; i < steps; i++) {
+                changed |= step_path(selected_path, direction);
+            }
+            return changed;
+        }
+        return true;
     }
     if (ev->type == UI_EVENT_KEY_PRESS) {
         green_down |= (ev->key == UI_KEY_GREEN);
@@ -387,11 +623,7 @@ static bool handle(const ui_event_t *ev)
         return false;
     }
     if ((ev->type == UI_EVENT_KEY_PRESS) && ((ev->key == UI_KEY_UP) || (ev->key == UI_KEY_DOWN)) && !paths_same()) {
-        bool upper = (ev->key == UI_KEY_UP); // the transmit path fixed; "follow" again in the menu
-
-        settings_set_option(BIT_DW_TX_1, upper);
-        settings_set_option(BIT_DW_TX_2, !upper);
-        settings_save_if_changed();
+        set_tx_path((ev->key == UI_KEY_UP) ? 0 : 1); // "follow" again in the menu
         return true;
     }
     return false;
@@ -400,6 +632,7 @@ static bool handle(const ui_event_t *ev)
 static void draw_menu(void)
 {
     list_view_row_t row = {.icon = ICONS_COUNT};
+    char buffer[48];
 
     list_view_draw_title(text(TEXT_DUAL_WATCH), NULL);
     row.name = text(TEXT_DUAL_WATCH);
@@ -410,6 +643,16 @@ static void draw_menu(void)
     row.value = (menu_tx == 0) ? text(TEXT_UI_DW_FOLLOW) : paths[menu_tx - 1].name;
     row.selected = (menu_item == 1);
     list_view_draw_row(1, &row);
+    row.name = text(TEXT_UI_DW_PATH_A);
+    dual_watch_path_name(path_ref(0), buffer, sizeof(buffer));
+    row.value = buffer;
+    row.selected = (menu_item == 2);
+    list_view_draw_row(2, &row);
+    row.name = text(TEXT_UI_DW_PATH_B);
+    dual_watch_path_name(path_ref(1), buffer, sizeof(buffer));
+    row.value = buffer;
+    row.selected = (menu_item == 3);
+    list_view_draw_row(3, &row);
     bottom_bar_draw_soft_keys(text(TEXT_UI_OK), text(TEXT_UI_BACK));
 }
 
@@ -426,17 +669,21 @@ static void draw_panel(int i, int tx)
     int power = (ch->libre_dmr_power != 0) ? (ch->libre_dmr_power - 1) : settings.tx_power_level;
     char buffer[48];
     char detail[24];
+    int zone, position;
     dmr_call_t call;
 
     if (paths_same() && (i == 1)) {
         return; // one path only
     }
-    // The path with a signal: a green bar on the left
+    // The path the knob changes: an accent bar; the path with a signal: a green one next to it
     if (i == 1) { // between the two paths, to be seen
         draw_fill_rect(WIDGET_MARGIN, top - 2, FB_WIDTH - (2 * WIDGET_MARGIN), 2, THEME_COLOUR_OFF);
     }
+    if (selected_path == i) {
+        draw_fill_rect(0, top + 4, 3, PANEL_HEIGHT - 8, THEME_COLOUR_ACCENT);
+    }
     if (receiving) {
-        draw_fill_rect(0, top + 4, 5, PANEL_HEIGHT - 8, THEME_COLOUR_RX);
+        draw_fill_rect(3, top + 4, 5, PANEL_HEIGHT - 8, THEME_COLOUR_RX);
     }
 
     // A DMR call heard on this path: who is talking takes the large line, the path's name goes to the header
@@ -456,8 +703,11 @@ static void draw_panel(int i, int tx)
     // Channel n or VFO (a call: the path's name); on the right "PTT" (the transmit path), the mode and the power
     if (caller) {
         draw_text(lx, top + 8, p->name, &font_roboto17, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);
+    } else if (dual_watch_path_zone(path_ref(i), &zone, &position)) {
+        dual_watch_path_name(path_ref(i), detail, sizeof(detail));
+        draw_text(lx, top + 8, detail, &font_roboto17, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);
     } else if (p->vfo) {
-        draw_text(lx, top + 8, "VFO", &font_roboto17, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);
+        draw_text(lx, top + 8, p->name, &font_roboto17, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);
     } else {
         snprintf(buffer, sizeof(buffer), "%s %d", text(TEXT_APRS_CHANNEL), path_ref(i));
         draw_text(lx, top + 8, buffer, &font_roboto17, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);

@@ -138,6 +138,9 @@ EXTRA = [
     ("theme", "Theme", "主题", "Tema"),
     # The language row of the options: English in every language, so it can be found from a language one cannot read
     ("language_menu", "Language", "Language", "Language"),
+    # Added to the generated tables by hand in feature branches; kept here so regeneration never drops them
+    ("aprs_send_via", "Send via", "发送方式", "Enviar por"),
+    ("nxdn_id", "NXDN ID", "NXDN ID", "ID NXDN"),
 ]
 
 english = read('english.h', 'cp1252') + [(name, en) for name, en, _, _ in EXTRA]
