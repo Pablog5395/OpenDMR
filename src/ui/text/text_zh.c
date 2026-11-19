@@ -437,6 +437,7 @@ const char *const text_zh[TEXT_COUNT] = {
     [TEXT_UI_PIN_WAIT] = "请等待 %u 秒",
     [TEXT_UI_ANY_KEY_UNLOCK] = "按任意键解锁",
     [TEXT_CALLER_PLACE] = "对方地址",
+    [TEXT_SHOW_RECENT_CALLERS] = "显示最近主叫",
     [TEXT_THEME] = "主题",
     [TEXT_LANGUAGE_MENU] = "Language",
 };

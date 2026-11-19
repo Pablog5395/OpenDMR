@@ -45,6 +45,7 @@
 #include "icons.h"
 #include "codeplug_text.h"
 #include "settings.h"
+#include "extra_options.h"
 #include "codeplug.h"
 #include "battery.h"
 #include "datetime.h"
@@ -59,6 +60,8 @@
 #include "tx_screen.h"
 #include "sound.h"
 #include "dmr.h"
+#include "last_heard.h"
+#include "last_heard_format.h"
 #include "systime.h"
 #include "scan.h"
 #include "dual_watch.h"
@@ -102,6 +105,10 @@ static bool reversed = false;      // RX and TX frequencies swapped (reverse rep
 static bool squelch_shown = false; // a squelch change is shown for a moment
 static int direct_channel = 0;     // a channel number being typed
 static uint32_t squelch_shown_until;
+static last_heard_entry_t recent_entry; // 80 bytes: not on the UI task stack
+static char recent_name[CHANNEL_PANEL_RECENT][LAST_HEARD_TEXT_SIZE];
+static char recent_detail[CHANNEL_PANEL_RECENT][16];
+static char recent_when[CHANNEL_PANEL_RECENT][16];
 
 /* The scan (scan.c; uiChannelMode.c scanSearchForNextChannel()): the zone's channels in turn, skipping the ones
    marked (zone skip, or all-channels skip in the all channels zone) and the ones skipped with * (scan_skipped_channels,
@@ -782,6 +789,7 @@ static void draw(void)
     char cc_text[16];
     char detail[24];
     char squelch[24];
+    uint32_t now = systime_get_ms();
     dmr_call_t call;
     p25_call_t p25;
     nxdn_call_t nxdn;
@@ -898,6 +906,37 @@ static void draw(void)
     }
     if (reversed && (bottom.right == NULL)) {
         bottom.right = text(TEXT_UI_REVERSED);
+    }
+
+    // The last heard callers, only on DMR and P25 channels and only of that protocol (a P25 entry has no timeslot).
+    // The line above is the channel's TX contact, so each row carries the caller's own TG (or PC).
+    if (!extra_option(EXTRA_OPTION_HIDE_RECENT_CALLERS) &&
+        ((channel.mode == CODEPLUG_MODE_DMR) || (channel.mode == CODEPLUG_MODE_P25))) {
+        bool p25 = (channel.mode == CODEPLUG_MODE_P25);
+
+        for (int i = 0; (i < last_heard_count()) && (panel.recent_count < CHANNEL_PANEL_RECENT); i++) {
+            if (!last_heard_get(i, &recent_entry)) {
+                break;
+            }
+            if (p25 ? (recent_entry.timeslot != LAST_HEARD_TS_UNKNOWN) : (recent_entry.timeslot > 1)) {
+                continue; // only the callers of the channel's protocol (DMR: a timeslot; not NXDN's)
+            }
+            last_heard_format_caller(&recent_entry, recent_name[panel.recent_count],
+                                     sizeof(recent_name[panel.recent_count]));
+            last_heard_format_elapsed(&recent_entry, now, recent_when[panel.recent_count],
+                                      sizeof(recent_when[panel.recent_count]));
+            if ((recent_entry.tg_or_pc >> 24) == LAST_HEARD_PC_FLAG) {
+                snprintf(recent_detail[panel.recent_count], sizeof(recent_detail[panel.recent_count]), "%s",
+                         text(TEXT_PC));
+            } else {
+                snprintf(recent_detail[panel.recent_count], sizeof(recent_detail[panel.recent_count]), "%s %lu",
+                         text(TEXT_TG), (unsigned long)(recent_entry.tg_or_pc & CODEPLUG_CONTACT_ID_MAX));
+            }
+            panel.recent[panel.recent_count] = recent_name[panel.recent_count];
+            panel.recent_detail[panel.recent_count] = recent_detail[panel.recent_count];
+            panel.recent_when[panel.recent_count] = recent_when[panel.recent_count];
+            panel.recent_count++;
+        }
     }
 
     bottom.item1 = power_text();

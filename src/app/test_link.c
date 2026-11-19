@@ -46,6 +46,7 @@
 #include "codeplug.h"
 #include "codeplug_text.h"
 #include "radio.h"
+#include "radio_hooks.h"
 #include "settings.h"
 #include "scan.h"
 #include "channel_screen.h"
@@ -55,6 +56,7 @@
 #include "extra_options.h"
 #include "aprs.h"
 #include "test_link.h"
+#include "systime.h"
 
 // The screens with a name in the state (the others: "other")
 extern const ui_screen_t channel_screen, vfo_screen, dual_watch_screen, channel_details_screen, fm_radio_screen,
@@ -193,6 +195,7 @@ static uint32_t state(char *text, uint32_t size)
     }
     put(&o, "receiving", "%d", radio_is_receiving() ? 1 : 0);
     put(&o, "transmitting", "%d", radio_is_transmitting() ? 1 : 0);
+    put(&o, "radio", "%s", radio_state_name());
     put(&o, "dbm", "%d", radio_signal_dbm());
     put(&o, "signal", "%u", (unsigned)radio_signal_raw()); // FD6818 0x67 bits 8:0 halved, the last reading
     put(&o, "noise", "%u", (unsigned)radio_noise());       // FD6818 0x65, the last reading
@@ -208,9 +211,54 @@ static uint32_t state(char *text, uint32_t size)
     put(&o, "aprs_flags", "%lu", (unsigned long)flags);
     put(&o, "aprs_lat", "%ld", (long)lat);
     put(&o, "aprs_lon", "%ld", (long)lon);
-    put(&o, "aprs_dmr_busy", "%d", radio_aprs_dmr_busy() ? 1 : 0);
     put(&o, "rf_on_air", "%d", radio_rf_on_air() ? 1 : 0);
     return (uint32_t)(o.at - text);
+}
+
+/* A data burst without the DMR engine, for the radio task's data path over the cable ('D' 'd', radio.py data()):
+   "sent" for ms, or failing at once; the LED and the transmitting state as a real one, no RF */
+
+static uint32_t test_data_ms;
+static uint32_t test_data_at;
+static bool test_data_fail;
+
+static bool test_data_start(void)
+{
+    test_data_at = systime_get_ms();
+    return true;
+}
+
+static bool test_data_sending(void)
+{
+    return (systime_get_ms() - test_data_at) < test_data_ms;
+}
+
+static bool test_data_failed(void)
+{
+    return test_data_fail;
+}
+
+static void test_data_cancel(void)
+{
+}
+
+static const radio_data_t TEST_DATA = {test_data_start, test_data_sending, test_data_failed, test_data_cancel};
+
+static bool test_data_send(uint32_t ms, bool fail)
+{
+    test_data_ms = ms;
+    test_data_fail = fail;
+    return radio_data_send(&TEST_DATA) != 0;
+}
+
+/* A test APRS beacon ('D' 'a', radio.py beacon()): 400 bits of HDLC flags at 1200 baud, on the channel asked for
+   (frequency 0) or on frequency (10 Hz units), as aprs.c sends one */
+
+static const uint8_t TEST_FRAME[50] = {[0 ... 49] = 0x7E};
+
+static bool test_beacon_send(uint32_t frequency)
+{
+    return radio_aprs_send(TEST_FRAME, 400, false, frequency) != 0;
 }
 
 uint32_t test_link_command(volatile uint8_t *request, volatile uint8_t *reply, uint32_t reply_size)
@@ -236,6 +284,13 @@ uint32_t test_link_command(volatile uint8_t *request, volatile uint8_t *reply, u
         case 'w': // 'v' is the debug memory read (debug.c)
             extra_options_set_aprs_via((uint8_t)request[2]);
             reply[2] = 1;
+            return 3;
+        case 'a': // a test APRS beacon: the frequency (32 bits, big endian; 0: on the channel)
+            reply[2] = test_beacon_send(((uint32_t)request[2] << 24) | ((uint32_t)request[3] << 16) |
+                                        ((uint32_t)request[4] << 8) | request[5]) ? 1 : 0;
+            return 3;
+        case 'd': // a test data burst: ms (16 bits, big endian), fail
+            reply[2] = test_data_send(((uint32_t)request[2] << 8) | request[3], request[4] != 0) ? 1 : 0;
             return 3;
         default:
             return 0; // not one of these

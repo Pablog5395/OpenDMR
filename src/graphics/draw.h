@@ -40,6 +40,9 @@ void draw_hline(int32_t x, int32_t y, int32_t w, theme_colour_t colour);
 void draw_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, theme_colour_t colour, bool thick); // thick: 2 x 2
 void draw_text(int32_t x, int32_t y, const char *text, const font_t *font, font_align_t align,
                theme_colour_t colour); // y: top of the line
+// draw_text() cut to width, "..." at its end (whole UTF-8 characters off): left aligned
+void draw_text_fitted(int32_t x, int32_t y, const char *text, const font_t *font, int32_t width,
+                      theme_colour_t colour);
 
 // Label on a filled box with slightly rounded corners, text left at x; returns its width
 // Anti-aliased circles, in quarter pixels (radius 4 * r): a disc, and a ring of the given width

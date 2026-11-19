@@ -233,6 +233,13 @@ bool dmr_has_sync(void)
     return HRC7000HasGotSync();
 }
 
+// The engine follows a call's timeslots (slotState): idle again some 0.7 s after it ends (measured). Not
+// HRC7000HasGotSync(): the timing found stays after the signal. A call of another colour code, filtered out, isn't seen
+bool dmr_channel_busy(void)
+{
+    return slotState != DMR_STATE_IDLE;
+}
+
 bool dmr_is_transmitting(void)
 {
     return trxTransmissionEnabled || trxIsTransmitting;
@@ -275,13 +282,6 @@ bool dmr_aprs_failed(void)
 void dmr_aprs_cancel(void)
 {
     HRC7000AbortDataBursts();
-}
-
-// A signal on the channel (the engine's timeslot state machine, or any DMR sync): the radio task waits before a data
-// burst instead of keying on top of it, including another colour code's traffic that the filter would ignore.
-bool dmr_channel_busy(void)
-{
-    return (slotState != DMR_STATE_IDLE) || HRC7000HasGotSync();
 }
 
 /* The call: the LC of the engine to the last heard list and the UI (lastHeardListUpdate()) */

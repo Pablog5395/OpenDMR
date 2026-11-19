@@ -215,6 +215,22 @@ static const ui_custom_t caller_place = {
     .change = caller_place_change,
 };
 
+static void recent_callers_format(char *buffer, size_t size)
+{
+    snprintf(buffer, size, "%s", text(extra_option(EXTRA_OPTION_HIDE_RECENT_CALLERS) ? TEXT_OFF : TEXT_ON));
+}
+
+static void recent_callers_change(int direction, uint8_t modifiers)
+{
+    (void)modifiers;
+    extra_option_set(EXTRA_OPTION_HIDE_RECENT_CALLERS, direction < 0);
+}
+
+static const ui_custom_t recent_callers = {
+    .format = recent_callers_format,
+    .change = recent_callers_change,
+};
+
 static const ui_item_t display_options_items[] = {
     {TEXT_BRIGHTNESS, ICONS_COUNT, UI_ITEM_NUMBER, &brightness_day, NULL},
     {TEXT_BRIGHTNESS_NIGHT, ICONS_COUNT, UI_ITEM_NUMBER, &brightness_night, NULL},
@@ -226,6 +242,7 @@ static const ui_item_t display_options_items[] = {
     {TEXT_TIMEZONE, ICONS_COUNT, UI_ITEM_CUSTOM, &timezone, NULL},
     {TEXT_TIME, ICONS_COUNT, UI_ITEM_CUSTOM, &time_shown, NULL},
     {TEXT_CALLER_PLACE, ICONS_COUNT, UI_ITEM_CUSTOM, &caller_place, NULL},
+    {TEXT_SHOW_RECENT_CALLERS, ICONS_COUNT, UI_ITEM_CUSTOM, &recent_callers, NULL},
     {TEXT_THEME, ICONS_COUNT, UI_ITEM_CUSTOM, &theme_item, NULL},
 };
 

@@ -1,6 +1,6 @@
 # OpenDMR user manual
 
-For the **Baofeng DM-32 / DM-32UV** running the OpenDMR firmware. 中文版：[manual.md](manual.md).
+For the **Baofeng DM-32 / DM-32UV** running the OpenDMR firmware. Español: [manual.es.md](manual.es.md) · 中文版：[manual.md](manual.md).
 
 Every picture is a real screenshot from the radio (`tools/debug/fshot.py`, 240×320). The location on the GPS and
 radio info screens is blurred.
@@ -240,6 +240,9 @@ frequency comes the target transmitted to (a group or an individual call), with 
   - the talk group (or whom a private call is for), the S meter, the bottom bar as on the screen under it.
   The caller shows within about 0.7 s. Names come from the contacts, the DMR ID database, or the caller's talker alias.
 - Calls go into Last heard. **SK2** calls back the talk group just heard (a private call: the caller).
+- On DMR and P25 channels, the channel screen shows the last two callers of Last heard of that same protocol (callsign
+  and name, how long ago, and the talk group or `PC` of each call). The caller shows there within about 0.7 s.
+  Display options → **Recent callers** turns the block off (it is on by default); FM, AM, USB, LSB and NXDN channels never show it.
 - FM: audio when the squelch opens; ▶ ◀ change the squelch, shown on the screen for a moment. 0 % is always open
   (the noise is heard); a receive tone still applies.
 
@@ -472,8 +475,9 @@ SK2 + ▶ ◀ changes the one in use, and it is kept.
 
 Brightness (day), Nite bright, Min bright (the backlight when "off"); Mode (Auto / Squelch / Manual / Buttons),
 Timeout; Auto night; LEDs; Timezone (an hour a step, a quarter with SK2 held); Time shown in UTC or local time;
-Caller's place (the city and state of a DMR caller on the receive screen; the country always shows); Theme (the
-whole look, colours and bands):
+Caller's place (the city and state of a DMR caller on the receive screen; the country always shows); Recent callers
+(the last two callers under the talk group line on a DMR or P25 channel, on by default); Theme (the whole look,
+colours and bands):
 
 | Theme | |
 |---|---|
@@ -536,6 +540,14 @@ Read only: the factory calibration table (oscillator tune, receive level, power 
 - Location: the fixed location of the channel's APRS configuration, or the GPS;
 - Interval, Decay, Compress; for Smart: Slow / Fast Rate, Low / Hi Speed, Turn Angle / Slope / Time.
 - SK1 + 1 switches APRS on / off at any time. Beacons are sent as AFSK (1200 baud) in FM.
+- The APRS configuration's "Beacon Tx frequency" (in the CPS) is the frequency the beacon is sent on, in every mode but
+  PTT (the beacon goes out on the channel after each transmission). A channel opts in by naming a configuration: one
+  without it never beacons, and a receive-only channel never beacons either. With no beacon frequency, an FM channel
+  beacons on its own frequency; a DMR, P25, NXDN, AM or USB channel never beacons. PTT mode beacons only on FM
+  channels. The radio's channel editor offers the APRS configuration only on FM channels; on a DMR, P25 or NXDN channel
+  it can only be set with the CPS. While the beacon goes out the radio tunes FM to that frequency for the frame and
+  comes back: the channel you had selected is left as it was, and a call being received holds the beacon for the next
+  round.
 - "Transmit QSY" (in the APRS configuration, in the CPS): the beacon's comment begins with the channel's voice
   frequency, its Tx tone and offset, e.g. "146.520MHz T100 +000" (Toff: no tone; lower case on a narrow channel),
   which aprs.fi and APRS radios read as the frequency to call you on.
@@ -646,5 +658,4 @@ firmware: see the README.
 - P25: simplex group calls in clear only; known issues in [docs/p25.md](p25.md), section 6.
 - NXDN: NXDN48 simplex in clear only (no NXDN96, trunking or encryption); a caller shows as its ID, there is no NXDN
   ID to callsign database yet.
-- Not fully tested on the air yet: APRS beacons received by an APRS decoder (their frames are checked; the radio itself
-  does not decode APRS), the hotspot's CW ID, satellite passes, talkaround, distance sort.
+- Not fully tested on the air yet: the hotspot's CW ID, satellite passes, talkaround, distance sort.
