@@ -48,6 +48,7 @@
 #include "ui.h"
 #include "dmr.h"
 #include "p25_radio.h"
+#include "nxdn_radio.h"
 #include "hotspot.h"
 #include "tones.h"
 #include "aprs.h"
@@ -571,19 +572,23 @@ static bool position_valid(void)
     return !isnan(lat) && !isnan(lon);
 }
 
-// The frequency the beacon is sent on (OpenGD77's "Transmit frequency", the CPS's "Frec TX"), 10 Hz units; 0: not set
+// The frequency the beacon is sent on (OpenGD77's "Transmit frequency", the CPS's "Frec TX"), 10 Hz units; 0: not set.
+// Codeplugs not written by our CPS may leave 0xFFFFFFFF there: take it as 0, the channel's frequency.
 static uint32_t config_frequency(const codeplug_aprs_config_t *c)
 {
-    return (uint32_t)c->beacon_freq[0] | ((uint32_t)c->beacon_freq[1] << 8) |
-           ((uint32_t)c->beacon_freq[2] << 16) | ((uint32_t)c->beacon_freq[3] << 24);
+    uint32_t frequency = (uint32_t)c->beacon_freq[0] | ((uint32_t)c->beacon_freq[1] << 8) |
+                         ((uint32_t)c->beacon_freq[2] << 16) | ((uint32_t)c->beacon_freq[3] << 24);
+
+    return (frequency == 0xFFFFFFFFu) ? 0 : frequency;
 }
 
-// A call being received on a DMR or P25 channel: the beacon waits (going to FM for it would cut the call)
+// A call being received on a DMR, P25 or NXDN channel: the beacon waits (going to FM for it would cut the call)
 static bool digital_call_active(void)
 {
     codeplug_channel_t channel;
     dmr_call_t call;
     p25_call_t p25;
+    nxdn_call_t nxdn;
 
     if (!radio_get_channel(&channel) || (channel.mode == CODEPLUG_MODE_FM)) {
         return false;
@@ -597,6 +602,9 @@ static bool digital_call_active(void)
     if (channel.mode == CODEPLUG_MODE_P25) {
         return p25_radio_call(&p25) && p25.active;
     }
+    if (channel.mode == CODEPLUG_MODE_NXDN) {
+        return nxdn_radio_call(&nxdn) && nxdn.active;
+    }
     return false;
 }
 
@@ -609,7 +617,7 @@ static bool send_beacon(bool forced)
     uint32_t frequency = 0;
     uint16_t bits;
 
-    if (radio_is_scanning() || !radio_get_channel(&channel) || radio_is_transmitting() ||
+    if (radio_is_scanning() || !radio_get_channel(&channel) || radio_is_transmitting() || hotspot_active() ||
         (aprs.s.mode == MODE_OFF) || !aprs.enabled || aprs.waiting) {
         return false;
     }

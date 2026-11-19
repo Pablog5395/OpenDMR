@@ -443,7 +443,7 @@ static bool in_band_limits(uint32_t frequency);
 // The channel the UI asked for (radio_set_channel())
 static void apply_channel(void)
 {
-    codeplug_channel_t next;
+    static codeplug_channel_t next; // not on the task's 1 KB stack
     bool valid;
 
     taskENTER_CRITICAL();
@@ -970,17 +970,32 @@ static volatile uint16_t aprs_bit_count;
 static volatile bool aprs_baud300;
 static volatile bool aprs_sent;
 static volatile uint32_t aprs_frequency; // 0: on the channel; else the beacon's own frequency
+static bool aprs_digital; // the user's channel was digital: a short busy wait, the engine is off meanwhile
 static codeplug_channel_t aprs_checked; // the channel aprs.c validated (the task sends only while it is current)
 static bool aprs_checked_valid;
 static codeplug_channel_t aprs_saved; // the channel the user had, while tuned for a beacon
 static bool aprs_tuned;
 
+// The carrier on the beacon's frequency, without opening the audio as squelch_check() would (on a digital channel the
+// user would hear seconds of packet noise). Level 1 (a fully open squelch) can't tell: don't hold the beacon for it.
+static bool aprs_carrier(void)
+{
+    uint8_t signal;
+    uint8_t noise;
+    int level = squelch_level();
+
+    fd6818_read_signal(&signal, &noise);
+    return (level < SQUELCH_OPEN) && (noise < level);
+}
+
 // The beacon's own frequency, when it has one: FM, the channel's width, without its tones or VOX, for that frame only. The
 // channel the user selected stays in requested (and stays the one the UI shows); this task tunes away and back.
 static bool aprs_tune(void)
 {
-    codeplug_channel_t beacon;
+    static codeplug_channel_t beacon; // not on the task's 1 KB stack
 
+    // Before the channel becomes FM below: a digital channel gets the short busy wait, or it is deaf for too long.
+    aprs_digital = !is_analog();
     if (aprs_frequency == 0) {
         return has_channel;
     }
@@ -1020,37 +1035,49 @@ static void aprs_restore(void)
     }
 }
 
+// The frame is done: free the request in one step, so the input task can't queue another one between the fields and
+// have it dropped. radio_aprs_busy() stays true (aprs_bits) until here, then the next request is accepted whole.
+static void aprs_clear_request(void)
+{
+    taskENTER_CRITICAL();
+    aprs_bits = NULL;
+    aprs_checked_valid = false;
+    aprs_frequency = 0;
+    taskEXIT_CRITICAL();
+}
+
 static void aprs_transmit(void)
 {
     uint32_t baud = aprs_baud300 ? 300 : 1200;
     uint16_t mark = aprs_baud300 ? 1600 : 1200;
     uint16_t space = aprs_baud300 ? 1800 : 2200;
-    uint32_t limit = !is_analog() ? APRS_COLLISION_DIGITAL_MS : APRS_COLLISION_MS;
+    uint32_t limit = aprs_digital ? APRS_COLLISION_DIGITAL_MS : APRS_COLLISION_MS;
     uint16_t last = 0;
     uint32_t start;
     TickType_t settled = xTaskGetTickCount();
 
-    // tune_channel() closed the squelch: read the new frequency for the settle time before trusting the busy check
-    do {
-        if (channel_pending || tx_wanted) {
-            aprs_sent = false;
-            aprs_bits = NULL;
-            return;
-        }
-        vTaskDelay(pdMS_TO_TICKS(SAMPLE_MS));
-        squelch_check();
-    } while ((int32_t)(xTaskGetTickCount() - settled) < pdMS_TO_TICKS(APRS_SETTLE_MS));
+    // tune_channel() closed the squelch: read the new frequency for the settle time before trusting the busy check.
+    // Only when tuned away: on the channel itself the squelch has been running all along.
+    if (aprs_tuned) {
+        do {
+            if (channel_pending || tx_wanted) {
+                aprs_sent = false;
+                return;
+            }
+            vTaskDelay(pdMS_TO_TICKS(SAMPLE_MS));
+        } while ((int32_t)(xTaskGetTickCount() - settled) < pdMS_TO_TICKS(APRS_SETTLE_MS));
+    }
 
-    for (uint32_t waited = 0; (carrier || speaker) && (waited < limit); waited += SAMPLE_MS) {
+    // The carrier, not the speaker: this is a temporary FM frequency, and opening the audio would be heard on a
+    // digital channel.
+    for (uint32_t waited = 0; aprs_carrier() && (waited < limit); waited += SAMPLE_MS) {
         if (channel_pending || tx_wanted) {
             break; // the user moved or pressed PTT: no beacon here
         }
         vTaskDelay(pdMS_TO_TICKS(SAMPLE_MS));
-        squelch_check();
     }
-    if (carrier || speaker || tx_wanted || channel_pending) {
+    if (aprs_carrier() || tx_wanted || channel_pending) {
         aprs_sent = false;
-        aprs_bits = NULL;
         return;
     }
     transmit_on();
@@ -1071,7 +1098,6 @@ static void aprs_transmit(void)
     fd6818_tx_tone_end();
     transmit_off();
     aprs_sent = true;
-    aprs_bits = NULL;
 }
 
 // frequency: 0 sends on the channel (FM); else the task tunes FM to it for the frame and comes back. The channel must
@@ -1081,7 +1107,7 @@ bool radio_aprs_send(const uint8_t *bits, uint16_t bit_count, bool baud300, uint
 {
     codeplug_channel_t c;
 
-    if (aprs_bits || transmitting || tx_wanted || channel_pending || scanning || hotspot_active() || !channel_checked ||
+    if (transmitting || tx_wanted || channel_pending || scanning || hotspot_active() || !channel_checked ||
         (memcmp(channel_checked, &requested, sizeof(requested)) != 0) || !radio_get_channel(&c) ||
         (c.flag4 & FLAG4_RX_ONLY)) {
         return false;
@@ -1095,12 +1121,19 @@ bool radio_aprs_send(const uint8_t *bits, uint16_t bit_count, bool baud300, uint
                !in_band_limits(c.tx_freq)) {
         return false;
     }
+    // One step with the radio task's aprs_clear_request(): a new request can't land between the fields and be lost.
+    taskENTER_CRITICAL();
+    if (aprs_bits != NULL) {
+        taskEXIT_CRITICAL();
+        return false;
+    }
     memcpy(&aprs_checked, channel_checked, sizeof(aprs_checked));
     aprs_checked_valid = true;
     aprs_bit_count = bit_count;
     aprs_baud300 = baud300;
     aprs_frequency = frequency;
     aprs_bits = bits;
+    taskEXIT_CRITICAL();
     if (task) {
         xTaskNotifyGive(task);
     }
@@ -1109,7 +1142,12 @@ bool radio_aprs_send(const uint8_t *bits, uint16_t bit_count, bool baud300, uint
 
 bool radio_aprs_busy(void)
 {
-    return aprs_bits != NULL;
+    bool busy;
+
+    taskENTER_CRITICAL();
+    busy = aprs_bits != NULL;
+    taskEXIT_CRITICAL();
+    return busy;
 }
 
 bool radio_aprs_sent(void)
@@ -1374,25 +1412,21 @@ static void RAM_CODE radio_task(void *arg)
             }
         }
         full_pass = xTaskGetTickCount();
-        // A frame was asked for: tune for it first (on DMR or P25 this leaves the digital engine), send it, and go
-        // back to the channel the user had
+        // A frame was asked for: tune for it first (on DMR, P25 or NXDN this leaves the digital engine), send it,
+        // and go back to the channel the user had
         if (aprs_bits && !transmitting && !scanning) {
             bool still_checked = aprs_checked_valid && !channel_pending && has_channel &&
                                  !(channel.flag4 & FLAG4_RX_ONLY) &&
                                  (memcmp(&aprs_checked, &channel, sizeof(channel)) == 0);
 
-            if (!still_checked) {
+            if (!still_checked || !aprs_tune()) {
                 aprs_sent = false;
-                aprs_bits = NULL;
-            } else if (aprs_tune()) {
-                aprs_transmit();
             } else {
-                aprs_sent = false;
-                aprs_bits = NULL;
+                aprs_transmit();
             }
+            // Free the request before the restore: a new one queued now starts from the restored channel.
+            aprs_clear_request();
             aprs_restore();
-            aprs_checked_valid = false;
-            aprs_frequency = 0;
             if (channel_pending) {
                 apply_channel(); // the user moved during the APRS block: don't key up on the beacon channel
                 continue;        // PTT is handled on the next pass, on the new channel
