@@ -36,7 +36,7 @@ ASFLAGS := $(CPU) $(addprefix -I,$(INCDIRS)) -MMD -MP
 # capture, transmit log and transmit test, the NXDN AF capture, the DMR transmit trace, the vocoder benches). Off by
 # default: their rings are 1 entry long and the functions only called over the cable are left out (some 26 KB of RAM)
 ifeq ($(DEBUG),1)
-CFLAGS  += -DOPENDMR_DEBUG
+CFLAGS  += -DOPENDMR_DEBUG -DC2DEC_PROFILE
 DEBUG_KEEP := -Wl,--undefined=vocoder_bench -Wl,--undefined=p25_phy_capture -Wl,--undefined=p25_phy_stop \
               -Wl,--undefined=p25_phy_tx_test -Wl,--undefined=nxdn_af_capture -Wl,--undefined=imbe_enc_test
 endif
@@ -53,6 +53,8 @@ OBJS    := $(addprefix $(BUILD)/,$(C_SRCS:.c=.o) $(S_SRCS:.S=.o))            $(p
 
 all: $(TARGET)_BFUV32.bin $(TARGET).elf.asm
 	$(SIZE) $(TARGET).elf
+
+$(BUILD)/services/timezone_data.o: services/timezone-data/tzdb.bin
 
 $(TARGET).elf: $(OBJS) ckcpu.ld
 	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)

@@ -52,7 +52,7 @@ Todos estos atajos pueden personalizarse en Opciones → Config. teclas (ver sec
 | # sostenido | Invertir frecuencias de repetidor (Reverse, solo en canal) | Misma función |
 | * | Alternar ranura de tiempo (Timeslot TS1 / TS2) | Alternar ancho de banda 12.5 / 25 kHz |
 | * sostenido | Volver al timeslot configurado en el canal | — |
-| SK1 + * | Cambiar modo: FM → AM → USB → LSB → DMR → P25 → NXDN | Misma función |
+| SK1 + * | Cambiar modo: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 | Misma función |
 | ▶ / ◀ | Talkgroup + / − (a través de la lista de grupos RX) | Nivel de squelch + / − |
 | SK2 + ▶ / ◀ | Nivel de potencia + / − | Misma función |
 | SK2 + ▶ sostenido | Acceso directo a potencia de usuario (+W-) | Misma función |
@@ -73,7 +73,7 @@ Además: **SK2 + tecla de menú** abre directamente los detalles del canal en us
 
 - **Barra de estado** (superior, sobre la franja del tema visual): nivel de señal (todas las barras visibles como en el medidor S, las activas en blanco), ranura de tiempo `TS1`/`TS2`, código de color `CC1` (en DMR), icono de escaneo, chincheta de GPS (apagada si el GPS está apagado, tenue mientras busca satélites, encendida con posición fijada), reloj y nivel de batería. Durante la recepción la barra completa pasa a color verde; en transmisión pasa a rojo con el icono de emisión en lugar de las barras de señal.
 - **Área principal**: en modo canal muestra la zona y posición, nombre del canal (en tamaño grande), frecuencia de operación, Talkgroup y el medidor S.
-- **Barra inferior**: en pantallas principales muestra el modo activo (`DMR`/`FM`/`AM`/`USB`/`LSB`/`P25`/`NXDN`), la potencia y el ancho de banda; en menús y listas describe las acciones de ambas teclas inferiores.
+- **Barra inferior**: en pantallas principales muestra el modo activo (`DMR`/`FM`/`AM`/`USB`/`LSB`/`P25`/`NXDN`/`M17`), la potencia y el ancho de banda; en menús y listas describe las acciones de ambas teclas inferiores.
 - **Listas y menús**: la barra de título muestra el nombre de la sección y la posición actual (`1/10`). La fila seleccionada utiliza el color de resalte del tema visual (azul cian en Deep sea). Cada página contiene 7 filas; al llegar al inicio o final de lista, ▲ ▼ giran cíclicamente.
 
 El esquema de colores transmite información clara: verde = recepción, rojo = transmisión, color de resalte = elemento seleccionado, ámbar = avisos preventivos (batería baja, escaneo, límite de tiempo de transmisión próximo). El tema visual puede cambiarse en Opciones de pantalla → Tema.
@@ -122,7 +122,7 @@ El radio arranca normalmente en modo canal (o en VFO si se apagó estando allí)
 
 <img src="manual/en/channel-details.png" alt="Detalles de canal 1"> <img src="manual/en/channel-details-2.png" alt="Detalles de canal 2"> <img src="manual/en/channel-details-3.png" alt="Detalles de canal 3"> <img src="manual/en/channel-details-4.png" alt="Detalles de canal 4">
 
-Nombre, frecuencias de recepción y transmisión, modo de modulación, ID de DMR, código de color (o código NAC en P25, RAN en NXDN), timeslot, lista de grupos TG, contacto TX, subtonos CTCSS/DCS de RX y TX, ancho de banda, salto de frecuencia (step), límite de tiempo de transmisión (TOT), solo recepción (Rx Only), omitir en escaneo de zona, omitir en escaneo total, VOX, potencia individual del canal, squelch, pitidos, modo de ahorro de energía (eco), transmisión de Talker Alias en TS1/TS2 y configuración de balizas APRS.
+Nombre, frecuencias de recepción y transmisión, modo de modulación, ID de DMR, código de color (o código NAC en P25, RAN en NXDN, CAN en M17), timeslot, lista de grupos TG, contacto TX, subtonos CTCSS/DCS de RX y TX, ancho de banda, salto de frecuencia (step), límite de tiempo de transmisión (TOT), solo recepción (Rx Only), omitir en escaneo de zona, omitir en escaneo total, VOX, potencia individual del canal, squelch, pitidos, modo de ahorro de energía (eco), transmisión de Talker Alias en TS1/TS2 y configuración de balizas APRS.
 
 - ▲ ▼ seleccionan el parámetro, ◀ ▶ o la perilla ajustan su valor;
 - Las frecuencias y el ID de DMR se ingresan numéricamente con el teclado (8 dígitos, ◀ borra el último número ingresado); al pulsar ◀ ▶ en Rx o Tx se aplica automáticamente el desplazamiento estándar de repetidor;
@@ -143,7 +143,7 @@ Pulsar la tecla de retorno en la pantalla de canal conmuta al modo VFO; pulsánd
 | Seleccionar si modificar RX o TX | SK2 + ▲ para RX / SK2 + ▼ para TX |
 | Digitar una frecuencia directamente | Teclado numérico (ej. `43500000`: se establece al octavo dígito o con la tecla de menú; tecla de retorno borra) |
 | Intercambiar momentáneamente RX y TX | SK1 + SK2 (mientras se mantengan presionadas) |
-| Alternar modo: FM → AM → USB → LSB → DMR → P25 → NXDN | SK1 + * |
+| Alternar modo: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 | SK1 + * |
 | Squelch (FM, AM, SSB) / Talkgroup (DMR, P25, NXDN) | ▶ ◀ |
 
 Ambas frecuencias se muestran en dígitos grandes: la de recepción identificada con `RX` en verde y la de transmisión con `TX` en rojo. La frecuencia seleccionada para edición aparece en color blanco con el dígito correspondiente al step subrayado. La línea superior indica el VFO en uso (A o B) y el tamaño del step seleccionado.
@@ -159,6 +159,12 @@ Ambas frecuencias se muestran en dígitos grandes: la de recepción identificada
 **NXDN** (NXDN48, canalización estrecha de 6.25 kHz, voz convencional simplex en abierto): la barra inferior muestra `NXDN` y `6.25K`; bajo la frecuencia aparece el destino de transmisión junto con el código RAN a la derecha (ej. `RAN 1`).
 - El **RAN** (número de acceso de radio, 0 al 63, 1 por defecto) actúa como el código de color: 0 recibe cualquier señal.
 - Configura tu **ID de NXDN** en Opciones generales → ID NXDN (1 a 65535).
+
+**M17** (4FSK, 12.5 kHz, voz simplex, Codec 2 3200): la barra inferior muestra `M17` y `12.5K`; bajo la frecuencia aparece el destino `ALL` con el código CAN a la derecha (ej. `CAN 0`).
+- El **CAN** (número de acceso al canal, 0 a 15) se ajusta en los detalles del canal; se transmite con cada llamada, y en recepción no se filtra por CAN.
+- Se transmite siempre a ALL, con el indicativo de la sección General del CPS; una llamada recibida muestra el indicativo de quien llama.
+- **La calidad de voz aún no es la deseada**: Codec 2 3200 suena más apagado que el AMBE+2 de DMR y NXDN, con menos agudos.
+- El CPS 0.10.0 o posterior admite canales M17 (modo, CAN).
 
 ### Menú rápido de VFO (tecla de menú)
 
@@ -363,13 +369,17 @@ Brillo diurno, brillo nocturno, brillo mínimo en reposo, modo de iluminación, 
 
 | Tema | Características |
 |---|---|
-| Auto (por defecto) | Aplica automáticamente Sunlight de 7:00 a 19:00 hora local y Deep sea de noche |
+| Auto (por defecto) | Tema claro del amanecer al atardecer y oscuro por la noche. Usa la posición GPS o la ubicación guardada. Sin ubicación, el horario diurno es de 07:00 a 19:00 en hora local. Sin un reloj válido, usa el tema oscuro. Noche auto usa el mismo horario nocturno para el brillo |
 | Deep sea | Modo oscuro: fondo azul marino oscuro con franja azul mar y selección en color cian |
 | Sunlight | Modo claro para exteriores: texto negro de alto contraste para visibilidad bajo luz solar directa |
 | Clear sky | Modo claro: fondo blanco con franja azul real y selección en naranja |
 | Graphite | Modo oscuro: grafito y naranja |
 | Night amber | Modo nocturno de bajo brillo: texto ámbar sobre negro para visión nocturna |
 | High contrast | Blanco y negro de máximo contraste con selección en amarillo |
+
+En las opciones de pantalla, activa Zona horaria auto y selecciona la hora local. La radio usa el GPS o la
+ubicación guardada para aplicar el horario de verano. La base incluida cubre 2026–2040. Si la ubicación no tiene
+coincidencia o la fecha queda fuera de ese intervalo, se usa la zona horaria manual.
 
 <img src="manual/themes.png" alt="Los seis temas visuales">
 
@@ -468,5 +478,5 @@ Actualiza el equipo en apenas 35 segundos sin perder tus canales ni ajustes.
 
 - No incluye avisos de voz por sintetizador (el hardware no dispone de muestras de voz en memoria).
 - La tabla de calibración es de solo lectura (la potencia y el oscilador se preservan intactos con los valores de fábrica).
-- Modos digitales P25 y NXDN operan exclusivamente en convencional simplex sin cifrado.
+- Modos digitales P25, NXDN y M17 operan exclusivamente en convencional simplex sin cifrado; M17 transmite siempre a ALL.
 - Funciones en fase final de verificación en el aire: decodificación interna de tramas APRS en pantalla (las balizas de transmisión están totalmente operativas), CW ID del modo hotspot y clasificación dinámica de canales por proximidad.
