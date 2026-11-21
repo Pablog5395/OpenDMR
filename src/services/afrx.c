@@ -91,7 +91,10 @@ static void receive_again(const afrx_ops_t *o)
     }
 }
 
-static void transmit(const afrx_ops_t *o)
+static volatile bool data_want;
+
+// the PTT's transmission (send: o->transmit) or a data transmission (o->data): the recording and the playback off
+static void transmit(const afrx_ops_t *o, void (*send)(void))
 {
     tx_busy = true;
     if (o->end_call) {
@@ -101,7 +104,7 @@ static void transmit(const afrx_ops_t *o)
     afrec_stop();
     afrx_debug[2]++;
     debug_state();
-    o->transmit();
+    send();
     stack_check();
     if (!afrec_start(o->bw)) {
         afrx_debug[1]++;
@@ -126,21 +129,30 @@ static void task_main(void *arg)
             continue;
         }
         if (tx_want && o->transmit) {
-            transmit(o);
+            transmit(o, o->transmit);
             last_half = 0;
         }
-        while (running && afrec_read(half)) {
+        if (data_want && o->data) {
+            data_want = false;
+            transmit(o, o->data);
+            last_half = 0;
+        }
+        int n;
+        bool half_end;
+        while (running && ((n = afrec_read(half, &half_end)) > 0)) {
             uint32_t t0 = systime_get_us();
             TickType_t now = xTaskGetTickCount();
             const afrx_stats_t *s = &o->stats;
-            if (s->missed && last_half && ((now - last_half) > pdMS_TO_TICKS(48))) {
-                *s->missed += (now - last_half) / pdMS_TO_TICKS(32) - 1;
+            if (half_end) {
+                if (s->missed && last_half && ((now - last_half) > pdMS_TO_TICKS(48))) {
+                    *s->missed += (now - last_half) / pdMS_TO_TICKS(32) - 1;
+                }
+                if (s->halves) {
+                    (*s->halves)++;
+                }
+                last_half = now;
             }
-            if (s->halves) {
-                (*s->halves)++;
-            }
-            last_half = now;
-            o->samples(half, 256);
+            o->samples(half, n);
             uint32_t took = systime_get_us() - t0;
             if (s->busy_us_sum) {
                 *s->busy_us_sum += took;
@@ -206,6 +218,11 @@ bool afrx_running(const afrx_ops_t *ops)
 void afrx_ptt(bool on)
 {
     tx_want = on;
+}
+
+void afrx_data(void)
+{
+    data_want = true;
 }
 
 bool afrx_ptt_held(void)

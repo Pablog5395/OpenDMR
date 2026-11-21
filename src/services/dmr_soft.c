@@ -46,9 +46,12 @@
  *
  * Transmit, direct mode (Rx == Tx: soft_transmit()): the recording off, the bursts made here (dmr_l2.c) and sent
  * through the P25 physical layer's FIFO, whose 30 ms blocks of 144 symbols are DMR's timeslots: ours the burst's 132
- * symbols centred in it (10.2.3.1: 6 symbols of guard each side), the other one empty. The voice LC headers, the voice
- * superframes (A the voice SYNC; B - E the LC embedded; F the null message), the last one finished with silence after
- * the PTT, then the terminator with LC. Repeater mode: the HR_C7000 engine transmits (dmr_engine_transmit()). The demodulator's state and the voice
+ * symbols centred in it (10.2.3.1: 6 symbols of guard each side), the other one empty. The voice LC header (one: the
+ * transmitter keyed once the first burst's first two AMBE frames are encoded, so the burst follows it at once), the
+ * voice superframes (A the voice SYNC; B - E the LC embedded; F the null message), the last one finished with silence
+ * after the PTT, then the terminator with LC. The FIFO run dry (zeros sent) an odd number of blocks: one more put in,
+ * the bursts kept in their timeslot. Repeater mode: the HR_C7000 engine transmits (dmr_engine_transmit()). The
+ * demodulator's state and the voice
  * queue live after the vocoder's RAM (ckcpu.ld .dmrs_rx, where NXDN's is when NXDN runs).
  */
 
@@ -60,6 +63,7 @@
 #include "modem.h"
 #include "vocoder.h"
 #include "p25_phy.h"
+#include "p25_radio.h"
 #include "dmr_compat.h"
 #include "hr_c7000.h"
 #include "dmr.h"
@@ -72,14 +76,19 @@
 #include "ambe.h"
 
 #define PCM_FRAMES    16  // 320 ms of decoded voice
-#define PLAY_START    5   // frames queued before the playback starts (they come 3 at a time every 60 ms)
+#define PLAY_START    3   // frames queued before the playback starts (they come 3 at a time every 60 ms, with a
+#define PLAY_START_MS 25  // jitter of the recording's 16 ms quarters): the first burst's frames, kept this long
 #define CALL_TIMEOUT  400 // ms without a voice burst on the call's timeslot: the call over
 #define LOST_TIMEOUT  150 // ... its voice superframe no longer followed (no terminator came)
 #define TAP_SAMPLES   2048 // the last samples recorded, for tools over the cable (256 ms)
 #define BURST_LOG     32   // the last bursts, for tools over the cable
 #define A_MSE_MAX     77   // an A without its SYNC taken (the sync missed) when its symbols fit under 0.30 level^2
                            // (Q8): noise is 0.31 - 0.45, a signal at -116 dBm 0.12 - 0.2
-#define TX_HEADERS    3    // voice LC headers before the voice (the encoder's first burst comes ~70 ms after the PTT)
+#define TX_HEADERS    1    // voice LC headers before the voice: one (ETSI TS 102 361-1 5.1.2.2, conventional: "a voice
+                           // LC header shall be sent", burst A immediately after it); three cost ~120 ms more delay
+#define TX_KEY_AFTER  2    // the transmitter keyed once this many AMBE frames of the first burst are encoded: the
+                           // header goes out while the third is, the burst ready ~50 ms before it is due. After the
+                           // first only, 1 call in 12 ran the FIFO dry between the header and the burst (2026-11-20)
 #define TX_GUARD      6    // symbols each side of a burst in its 144
 #define TX_END_MS     3000 // the engine's transmission ending (a repeater's hang time) at most, before receiving again
 
@@ -120,6 +129,10 @@ static int playing;    // the timeslot played (-1 none)
 
 /* ---- the calls ---- */
 
+volatile uint32_t dmr_soft_tx_realigned;  // the FIFO's timeslot pairs put back in step (put_burst())
+volatile uint32_t dmr_soft_log_all_voice; // tests over the cable: every voice burst received into the delay log
+static uint32_t rx_voice_logged; // voice bursts of the call in the delay log (p25_radio.c)
+
 static void call_end(int ts)
 {
     slot_t *s = &slots[ts];
@@ -155,10 +168,12 @@ static void call_lc(int ts, const uint8_t lc[9])
     s->last = xTaskGetTickCount();
     if (!s->active) {
         s->active = true;
+        rx_voice_logged = 0;
         dmr_soft_stats.calls++;
         if (playing < 0) {
             playing = ts;
             vocoderReset();
+            voice_play_prepare(); // the speaker on while the voice comes (the header is before it)
         }
     }
     if (playing == ts) {
@@ -253,6 +268,7 @@ static void on_burst(void *ctx, const dmr_burst_t *b)
         }
         if ((dt == DMR_DT_VOICE_LC_HEADER) && dmr_bptc196(b->bits, lc) && dmr_full_lc_check(lc, DMR_MASK_VOICE_LC_HEADER)) {
             dmr_soft_stats.headers++;
+            p25_ev_log(42, (uint16_t)ts); // the delay log (p25_radio.c): a voice LC header received
             call_lc(ts, lc);
         } else if ((dt == DMR_DT_TERMINATOR_LC) && dmr_bptc196(b->bits, lc) &&
                    dmr_full_lc_check(lc, DMR_MASK_TERMINATOR_LC)) {
@@ -307,6 +323,9 @@ static void on_burst(void *ctx, const dmr_burst_t *b)
     if (s->active) {
         s->last = xTaskGetTickCount();
         if (playing == ts) {
+            if ((rx_voice_logged < 3) || dmr_soft_log_all_voice) {
+                p25_ev_log(43, (uint16_t)rx_voice_logged++); // a voice burst received, before its decoding
+            }
             voice(b->bits);
         }
     }
@@ -318,6 +337,7 @@ static const voice_play_cfg_t play_cfg = {
     .frames = pcm,
     .count = PCM_FRAMES,
     .start = PLAY_START,
+    .start_ms = PLAY_START_MS,
     .underruns = &dmr_soft_stats.underruns,
 };
 
@@ -382,11 +402,22 @@ static struct {
     int16_t pcm[160];
 } txm OVERLAY_BSS;
 
-// a timeslot pair into the FIFO: ours (the guard, the burst, the guard), then the other one empty
+// a timeslot pair into the FIFO: ours (the guard, the burst, the guard), then the other one empty. The FIFO run dry
+// sends a block of zeros in its place: an odd number of them would move every burst after into the other timeslot (a
+// receiver following the first ones lost all the rest of the call, 2026-11-20): one more then, the pairs in step again
+static uint32_t tx_underruns_seen;
+
 static void put_burst(const uint8_t b[DMR_BURST_BYTES])
 {
     uint8_t *d = txm.d;
     memset(d, 0, sizeof(txm.d));
+    uint32_t u = p25_phy_tx_underrun;
+    if ((u - tx_underruns_seen) & 1) {
+        p25_phy_tx_put(d, sizeof(txm.d)); // zeros: the other timeslot's block
+        dmr_soft_tx_realigned++;
+        p25_ev_log(38, (uint16_t)u); // the delay log: the timeslots put back in step (arg underruns so far)
+    }
+    tx_underruns_seen = u;
     for (int k = 0; k < 132; k++) {
         d[TX_GUARD + k] = (uint8_t)((b[k >> 2] >> (6 - 2 * (k & 3))) & 3);
     }
@@ -414,21 +445,20 @@ static void soft_transmit(void)
     dmr_emb_lc_make(lc, frags);
     vocoderReset();
     afrx_fifo_prepare(MODEM_MOD_SCALE_ONE); // the modem's 4FSK level as calibrated: DMR's +-1944 Hz
+    tx_underruns_seen = 0; // the FIFO's count from 0 (p25_phy_tx_reset())
     dmr_soft_tx_stats[0]++;
     dmr_soft_tx_stats[1] = dmr_soft_tx_stats[2] = 0;
     dmr_full_lc_make(lc, DMR_MASK_VOICE_LC_HEADER, full);
     dmr_burst_data(b, full, cc, DMR_DT_VOICE_LC_HEADER, DMR_SYNC_MS_DATA);
     for (int i = 0; i < TX_HEADERS; i++) {
         put_burst(b);
+        p25_ev_log(33, (uint16_t)i); // the delay log (p25_radio.c): a voice LC header into the FIFO
     }
-    bool keyed = afrx_fifo_key(dmr_soft_tx_low_power != 0);
-    if (keyed && dmr_soft_tx_gate) {
-        radio_phy_tx_gate(true); // the PA on for our timeslot only
-    }
+    bool keyed = false;
     int16_t *pcm = txm.pcm;
-    int halves = 0, nf = 0, pos = 0;
+    int halves = 0, nf = 0, pos = 0, tx_voice_logged = 0;
     bool ending = false;
-    while (keyed) {
+    for (;;) {
         if (!afrx_ptt_held()) {
             ending = true;
         }
@@ -442,8 +472,22 @@ static void soft_transmit(void)
                 continue;
             }
             halves = 0;
+            uint32_t enc_t0 = systime_get_us();
             vocoderEncodeFrame(pcm, ambe[nf]);
+            if (dmr_soft_tx_stats[2] < 4) {
+                p25_ev_log(37, (uint16_t)((systime_get_us() - enc_t0) / 100)); // the delay log: a frame encoded (arg
+            }                                                                   // its time, 0.1 ms)
             dmr_soft_tx_stats[2]++;
+            if (!keyed && (nf + 1 >= TX_KEY_AFTER)) { // on the air now (the mic recording on meanwhile)
+                keyed = afrx_fifo_key(dmr_soft_tx_low_power != 0);
+                p25_ev_log(35, keyed); // the delay log: keyed
+                if (!keyed) {
+                    break;
+                }
+                if (dmr_soft_tx_gate) {
+                    radio_phy_tx_gate(true); // the PA on for our timeslot only
+                }
+            }
         } else {
             vTaskDelay(pdMS_TO_TICKS(2));
             continue;
@@ -459,6 +503,9 @@ static void soft_transmit(void)
                                 (pos < 5) ? frags[pos - 1] : null_frag);
         }
         put_burst(b);
+        if (tx_voice_logged < 3) {
+            p25_ev_log(34, (uint16_t)tx_voice_logged++); // a voice burst into the FIFO
+        }
         pos = (pos + 1) % 6;
     }
     if (keyed) {
@@ -494,6 +541,76 @@ static void transmit(void)
     }
 }
 
+/* ---- data (APRS over DMR) ----
+   The engine sends the data bursts (HRC7000SendDataBursts()), as it does the repeater mode's voice: the recording
+   off meanwhile (afrx.c), the engine resumed, then back to receiving in software. Sent with the recording on, the engine
+   standing aside, they never went out (#107: 0.7.0's DMR APRS beacons, 2026-11-21). */
+#define DATA_MS 5000 // the bursts sent at most (a repeater woken first)
+
+static const afrx_ops_t ops;
+
+static struct {
+    uint8_t types[DMR_DATA_BURSTS_MAX], lengths[DMR_DATA_BURSTS_MAX], payloads[DMR_DATA_BURSTS_MAX][12];
+    uint8_t count;
+} data_req;
+static volatile bool data_pending, data_failed, data_cancel;
+
+static void data(void)
+{
+    dmr_engine_resume();
+    bool ok = HRC7000SendDataBursts(data_req.types, data_req.lengths, (const uint8_t(*)[12])data_req.payloads,
+                                    data_req.count);
+    TickType_t t0 = xTaskGetTickCount();
+    while (ok && !HRC7000DataBurstsDone() && !data_cancel && ((xTaskGetTickCount() - t0) < pdMS_TO_TICKS(DATA_MS))) {
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+    if (ok && !HRC7000DataBurstsDone()) {
+        HRC7000AbortDataBursts(); // cancelled, or too long
+        ok = false;
+    }
+    data_failed = !ok || HRC7000DataBurstsFailed();
+    t0 = xTaskGetTickCount();
+    while (dmr_engine_transmitting() && ((xTaskGetTickCount() - t0) < pdMS_TO_TICKS(TX_END_MS))) {
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+    data_pending = false;
+}
+
+bool dmr_soft_send_data(const uint8_t *types, const uint8_t *lengths, const uint8_t (*payloads)[12], uint8_t count)
+{
+    if (data_pending) {
+        return false; // the last still going (the radio task sends one at a time)
+    }
+    data_failed = false; // also for the engine's own way (dmr.c, not received in software)
+    if (!afrx_running(&ops) || (count > DMR_DATA_BURSTS_MAX)) {
+        return false;
+    }
+    memcpy(data_req.types, types, count);
+    memcpy(data_req.lengths, lengths, count);
+    memcpy(data_req.payloads, payloads, (size_t)count * 12);
+    data_req.count = count;
+    data_failed = false;
+    data_cancel = false;
+    data_pending = true;
+    afrx_data();
+    return true;
+}
+
+bool dmr_soft_data_busy(void)
+{
+    return data_pending;
+}
+
+bool dmr_soft_data_failed(void)
+{
+    return data_failed;
+}
+
+void dmr_soft_data_cancel(void)
+{
+    data_cancel = true;
+}
+
 static const afrx_ops_t ops = {
     .bw = AFREC_BW_FLAT, // no band-pass, no de-emphasis (the RRC is ours)
     .overlay = OVERLAY_AMBE,
@@ -503,6 +620,7 @@ static const afrx_ops_t ops = {
     .poll = poll,
     .end_call = end_call,
     .transmit = transmit,
+    .data = data,
     .stats = {
         .halves = &dmr_soft_stats.halves,
         .missed = &dmr_soft_stats.missed_halves,
@@ -522,6 +640,10 @@ void dmr_soft_start(void)
 
 void dmr_soft_stop(void)
 {
+    if (data_pending) { // asked, not sent: failed
+        data_pending = false;
+        data_failed = true;
+    }
     if (afrx_running(&ops)) {
         afrx_stop();
         dmr_call_over();

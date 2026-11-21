@@ -257,7 +257,9 @@ comes the target, `ALL`, with the CAN on the right of its line (e.g. `CAN 0`).
   and name, how long ago, and the talk group or `PC` of each call). The caller shows there within about 0.7 s.
   Display options → **Recent callers** turns the block off (it is on by default); FM, AM, USB, LSB and NXDN channels never show it.
 - FM: audio when the squelch opens; ▶ ◀ change the squelch, shown on the screen for a moment. 0 % is always open
-  (the noise is heard); a receive tone still applies.
+  (the noise is heard); a receive tone still applies. The squelch and the power changed on a channel are that
+  channel's own (a VFO's likewise), written into the codeplug at power off; a channel without its own uses the
+  band's default squelch of Radio options.
 
 ---
 
@@ -543,7 +545,10 @@ See [12](#12-lock-quick-keys-key-settings).
 
 ### Language
 
-The menu key or ◀ ▶ on Options → Language switches English / 中文 / Español.
+The menu key or ◀ ▶ on Options → Language switches the language: English (built in) and the languages written to
+the radio with the OpenDMR CPS's Languages page (the zip has Chinese and Spanish, see section 5 of the installation
+guide). The row is called Language in every language, so it can be found from one you cannot read. When a
+language's font is not in the radio, its text shows as "??" and the menu gives its English name.
 
 ### Calibration
 

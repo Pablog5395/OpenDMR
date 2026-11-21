@@ -245,8 +245,23 @@ int nxdn_af_capture(int halves, uint32_t fm_bandwidth, int work_mode)
 #define NXDN_FM_DEV       (*(volatile uint32_t *)(MODEM_REG_BASE + 0x0504))
 static uint32_t nxdn_saved_wm, nxdn_saved_bw, nxdn_saved_dev, nxdn_saved_phy_wm;
 static uint32_t nxdn_last_sw;
+static uint32_t sw_seen_us;  // when the last change of FM_ADDR_SW was seen (late by up to the reader's poll: safe)
+static bool early_done;      // the first quarter of the half being written already read (afrec_read())
+static bool early_skip;      // that half not read early (the reader came too late)
+static uint32_t sw_changes;  // changes of FM_ADDR_SW seen since the start: early reads from the second on (after the
+                             // first, once after the power-on, a quarter read early still changed)
 static uint32_t nxdn_bw = NXDN_FM_BW_VALUE; // the recording's FM_BANDWIDTH (afrec_start())
 volatile uint32_t afrec_rewrites; // WORK_MODE / FM_BANDWIDTH found changed and put back
+volatile uint32_t afrec_early_late; // early reads given up: the reader came too late (a change of FM_ADDR_SW missed?)
+volatile uint32_t afrec_early = 1; // not 0: the first quarter of a half read while the modem writes the second (tests)
+#define EARLY_US 18000             // a quarter (128 samples) is 16 ms: read 2 ms after it should be written ...
+#define LATE_US  30000             // ... but not after 30 ms: a half is 32 ms, a change of FM_ADDR_SW not seen by then
+                                   // was missed (the reader held up): which half is written then is not known
+#ifdef OPENDMR_DEBUG
+// the check: a quarter read early, compared with the same samples once its half is finished (they must not change)
+static int16_t early_copy[128];
+volatile uint32_t afrec_early_checks, afrec_early_mismatch;
+#endif
 
 bool afrec_start(uint32_t bw)
 {
@@ -264,6 +279,9 @@ bool afrec_start(uint32_t bw)
     NXDN_FM_BW = bw;
     NXDN_FM_DEV = 0x40A25;
     nxdn_last_sw = NXDN_FM_ADDR_SW & 3;
+    early_done = false;
+    early_skip = false;
+    sw_changes = 0; // no early read before changes of FM_ADDR_SW are seen (their time unknown)
     return true;
 }
 
@@ -279,26 +297,71 @@ void afrec_stop(void)
     active = false;
 }
 
-// The half of the recording the modem finished since the last call (256 samples, 16 bit big endian in its RAM) into
-// out; false: none yet. *skipped: halves that went by unread (more than one change of FM_ADDR_SW cannot be seen: a
-// late reader loses whole halves, told by the caller's clock)
-bool afrec_read(int16_t out[256])
+static void af_copy(int16_t *out, const volatile uint8_t *src, int n)
 {
+    for (int i = 0; i < n; i++) {
+        out[i] = (int16_t)((src[2 * i] << 8) | src[2 * i + 1]);
+    }
+}
+
+// The recording since the last call (16 bit big endian in the modem's RAM, two halves of 256 samples, FM_ADDR_SW
+// naming the finished one) into out: the samples (0: none yet). A half finished: what of it was not read early (256, or
+// its second 128); the half being written, EARLY_US after its start was seen: its first 128 (the modem writes it in
+// order: checked, afrec_early_mismatch), so a receiver gets its samples 16 ms sooner. More than one change of
+// FM_ADDR_SW cannot be seen: a late reader loses whole halves, told by the caller's clock. *half_end: out ends a half.
+int afrec_read(int16_t out[256], bool *half_end)
+{
+    *half_end = false;
     if ((*WORK_MODE != NXDN_FM_WORK_MODE) || (NXDN_FM_BW != nxdn_bw)) { // something set them back
         *WORK_MODE = NXDN_FM_WORK_MODE;
         NXDN_FM_BW = nxdn_bw;
         afrec_rewrites++;
     }
     uint32_t sw = NXDN_FM_ADDR_SW & 3;
-    if (sw == nxdn_last_sw) {
-        return false;
+    uint32_t now = systime_get_us();
+    if (sw == nxdn_last_sw) { // the half being written (the other one): its first quarter once it is there
+        uint32_t since = now - sw_seen_us;
+        if ((sw_changes < 2) || early_done || early_skip || !afrec_early || (since < EARLY_US)) {
+            return 0;
+        }
+        if (since >= LATE_US) {
+            early_skip = true; // not this half: it comes whole once finished
+            afrec_early_late++;
+            return 0;
+        }
+        early_done = true;
+        af_copy(out, NXDN_AF_RAM + ((sw == 2) ? 0 : 512), 128);
+#ifdef OPENDMR_DEBUG
+        memcpy(early_copy, out, sizeof(early_copy));
+#endif
+        return 128;
     }
-    nxdn_last_sw = sw;
+    // a half finished: the rest of it
     const volatile uint8_t *src = NXDN_AF_RAM + ((sw == 2) ? 512 : 0);
-    for (int i = 0; i < 256; i++) {
-        out[i] = (int16_t)((src[2 * i] << 8) | src[2 * i + 1]);
+    int n = 256;
+    if (early_done) {
+#ifdef OPENDMR_DEBUG
+        int16_t check[128];
+        af_copy(check, src, 128);
+        afrec_early_checks++;
+        if (memcmp(check, early_copy, sizeof(check))) {
+            afrec_early_mismatch++;
+        }
+#endif
+        af_copy(out, src + 256, 128);
+        n = 128;
+    } else {
+        af_copy(out, src, 256);
     }
-    return true;
+    *half_end = true;
+    nxdn_last_sw = sw;
+    sw_seen_us = now;
+    if (sw_changes < 2) {
+        sw_changes++;
+    }
+    early_done = false;
+    early_skip = false;
+    return n;
 }
 
 void p25_phy_stop(void)

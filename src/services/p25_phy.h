@@ -130,13 +130,14 @@ extern p25_phy_txlog_t p25_phy_txlog[P25_PHY_TXLOG];
 extern volatile uint32_t p25_phy_txlog_n;
 
 // The software receivers (afrx.c): the modem in FM recording its AF input (8 kHz) all the time, the DMR handlers
-// standing aside; afrec_read(): the next half (256 samples) once the modem finished it (false: not yet). bw: the
-// recording's FM_BANDWIDTH
+// standing aside; afrec_read(): the samples recorded since (0: none yet; 256 a half, or 128 its quarters: the first
+// read while the modem writes the second), *half_end: they end a half. bw: the recording's FM_BANDWIDTH
 #define AFREC_BW_NXDN 0x1F // the de-emphasis on (undone in software), no band-pass
 #define AFREC_BW_FLAT 0x0F // neither (M17, DMR)
 bool afrec_start(uint32_t bw);
 void afrec_stop(void);
-bool afrec_read(int16_t out[256]);
+int afrec_read(int16_t out[256], bool *half_end);
+extern volatile uint32_t afrec_early;
 extern volatile uint32_t afrec_rewrites;
 
 // NXDN experiments: the FM receive recording (the AF input at 8 kHz) into p25_phy_buf (p25_phy.c)

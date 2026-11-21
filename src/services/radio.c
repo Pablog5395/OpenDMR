@@ -48,6 +48,7 @@
 #include "dmr.h"
 #include "radio_fsm.h"
 #include "radio_internal.h"
+#include "p25_radio.h"
 
 #define RADIO_TASK_PRIORITY 4
 #define SCAN_SAMPLE_MS      5 // scanning a digital channel: the signal read this often (radio_scan_peak())
@@ -114,6 +115,7 @@ static uint32_t fsm_listen_ms(rfsm_tx_kind_t kind)
 static void fsm_tx_begin(rfsm_tx_kind_t kind)
 {
     tx_on = rs.tx[kind];
+    p25_ev_log(29, (uint16_t)kind); // the delay log (p25_radio.c): a transmission begins, any mode
     tx_on->start();
 }
 

@@ -198,7 +198,7 @@ Ambas frecuencias se muestran en dígitos grandes: la de recepción identificada
   - Talkgroup de la llamada (o receptor en llamadas privadas) y medidor S.
 - Todas las llamadas recibidas se registran en **Últ. escuchado**. Pulsar **SK2** permite responder de inmediato al Talkgroup recién escuchado (o al autor en una llamada privada).
 - En canales DMR y P25, la pantalla muestra los dos últimos corresponsales recibidos (indicativo, nombre, tiempo transcurrido y Talkgroup o `PC`). Puede desactivarse en Opciones de pantalla → **Últ. llamadas**.
-- En FM: el audio se reproduce al abrirse el squelch; pulsa ▶ ◀ para ajustar el umbral en pantalla. 0% mantiene el silenciador permanentemente abierto.
+- En FM: el audio se reproduce al abrirse el squelch; pulsa ▶ ◀ para ajustar el umbral en pantalla. 0% mantiene el silenciador permanentemente abierto. El squelch y la potencia ajustados en un canal son de ese canal (igual en cada VFO) y se guardan en el codeplug al apagar; un canal sin valor propio usa el squelch por defecto de su banda (Opciones de radio).
 
 ---
 
@@ -391,7 +391,10 @@ Aviso de fin de tiempo TOT, volumen de pitidos de teclado, pitidos de inicio/fin
 
 ### Idioma (Language)
 
-En Opciones → Idioma (Language), pulsa la tecla de menú o ◀ ▶ para alternar entre **Español**, **English** y **中文**.
+En Opciones → Language, pulsa la tecla de menú o ◀ ▶ para cambiar de idioma: **English** (incluido en el firmware) y los
+idiomas escritos en el radio desde la página Idiomas de OpenDMR CPS (el zip trae español y chino, ver la sección 5 de la
+guía de instalación). La fila se llama Language en todos los idiomas, para encontrarla aunque no entiendas el actual.
+Si la fuente de un idioma no está en el radio, sus textos se ven como "??" y el menú muestra su nombre en inglés.
 
 ### Calibración
 

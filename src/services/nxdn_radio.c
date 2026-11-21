@@ -54,6 +54,7 @@
 #include "radio.h"
 #include "radio_hooks.h"
 #include "p25_phy.h"
+#include "p25_radio.h"
 #include "nxdn_core.h"
 #include "nxdn_radio.h"
 #include "ui.h"
@@ -65,8 +66,8 @@
 #include "afrx.h"
 
 #define PCM_FRAMES     16   // 320 ms of decoded voice
-#define PLAY_START     6    // frames queued before the playback starts: they come 4 at a time every 80 ms, a frame
-                            // decoded once its last half (32 ms) is read
+#define PLAY_START     4    // frames queued before the playback starts: they come 4 at a time every 80 ms (an NXDN
+#define PLAY_START_MS  10   // frame, decoded once its last quarter, 16 ms, is read): one frame's, kept this long
 #define CALL_TIMEOUT   320  // ms without a voice frame: the call ended (a frame is 80 ms)
 #define TAP_SAMPLES    2048 // the last samples as recorded, for tools over the cable (256 ms)
 #define VCH_LOG        256  // the last voice frames received, for tools over the cable (5 s)
@@ -160,12 +161,19 @@ static void call_publish(void)
     ui_post(&ev);
 }
 
+static uint32_t rx_voice_logged; // voice frames of the call in the delay log (p25_radio.c)
+
 static void call_begin(void)
 {
     if (!call.active) {
+        rx_voice_logged = 0;
         memset(&call, 0, sizeof(call));
         call.active = true;
+        last_voice = xTaskGetTickCount(); // the timeout from now: a VCALL comes a frame before the voice (else poll()
+                                          // ended the call at once with the last call's time, 2026-11-20)
         vocoderReset();
+        voice_play_prepare(); // the speaker on while the voice comes (the VCALL frame is before it)
+        p25_ev_log(44, 0);    // the delay log (p25_radio.c): a call begins
         nxdn_radio_stats.calls++;
     }
 }
@@ -194,6 +202,9 @@ static void message(const uint8_t *msg, int len, uint8_t ran)
         return;
     }
     if ((type == NXDN_CALL_INDIVIDUAL) && (dst != tx_src)) { // a unit called, not us
+        if (call.active) { // begun on its SACCH (on_frame()) before its VCALL was read
+            call_end();
+        }
         ignored = true;
         return;
     }
@@ -265,6 +276,12 @@ static void on_frame(void *ctx, const nxdn_frame_t *f)
         }
         return;
     }
+    // a frame whose SACCH holds, of our RAN (above): the call begins now (the speaker starting, voice_play.c), not only
+    // once its VCALL is read (the first frame's FACCH1s, missed now and then: a frame, 80 ms, later otherwise). An
+    // individual call to another unit is told by the VCALL: ignored from then on (message())
+    if (!call.active && f->sacch_ok && !nxdn_play_frames) {
+        call_begin();
+    }
     uint8_t msg[9];
     if (nxdn_sacch_add(&super, f, msg)) {
         message(msg, 9, (uint8_t)(f->sacch_sr & 0x3F));
@@ -280,6 +297,9 @@ static void on_frame(void *ctx, const nxdn_frame_t *f)
     if (f->halves && !ignored && (call.active || f->sacch_ok || f->facch_ok) && !nxdn_play_frames) {
         call_begin();
         last_voice = xTaskGetTickCount();
+        if (rx_voice_logged < 3) {
+            p25_ev_log(45, (uint16_t)rx_voice_logged++); // a voice frame received, before its decoding
+        }
         for (int k = 0; k < 4; k++) {
             if (f->halves & (1u << (k / 2))) {
                 voice(f->vch[k]);
@@ -303,6 +323,7 @@ static const voice_play_cfg_t play_cfg = {
     .frames = pcm,
     .count = PCM_FRAMES,
     .start = PLAY_START,
+    .start_ms = PLAY_START_MS,
     .underruns = &nxdn_radio_stats.underruns,
     .writes = &nxdn_radio_stats.feed_writes,
     .tap = play_tap,
@@ -345,7 +366,7 @@ static void transmit(void)
     bool started = afrx_fifo_key(nxdn_tx_low_power != 0);
     int16_t pcm[160];
     int halves = 0, nf = 0;
-    uint32_t play = 0;
+    uint32_t play = 0, voice_frames_logged = 0;
     bool ending = false;
     while (started) {
         if (!afrx_ptt_held()) {
@@ -383,6 +404,9 @@ static void transmit(void)
         nf = 0;
         put(tx_syms, nxdn_tx_voice(&tx, (const uint8_t(*)[9])tx_ambe, tx_syms));
         nxdn_tx_stats[1]++;
+        if (voice_frames_logged < 3) {
+            p25_ev_log(36, (uint16_t)voice_frames_logged++); // the delay log (p25_radio.c): a voice frame into the FIFO
+        }
     }
     if (started) {
         put(tx_syms, nxdn_tx_end(&tx, tx_syms));
@@ -429,7 +453,17 @@ static void samples(int16_t *x, int n)
     if (nxdn_tap_source == 0) {
         tap_put(x, n);
     }
+    uint32_t h0 = rx.hunts, f0 = rx.false_locks, l0 = rx.lost_sync;
     nxdn_rx_samples(&rx, x, n);
+    if (rx.hunts != h0) {
+        p25_ev_log(46, (uint16_t)rx.ncand); // the delay log (p25_radio.c): a hunt's candidates to try
+    }
+    if (rx.false_locks != f0) {
+        p25_ev_log(47, (uint16_t)(rx.false_locks - f0)); // none of them decoded
+    }
+    if (rx.lost_sync != l0) {
+        p25_ev_log(48, (uint16_t)(rx.lost_sync - l0)); // the lock lost
+    }
     nxdn_radio_stats.hunts = rx.hunts;
     nxdn_radio_stats.lost_sync = rx.lost_sync;
     nxdn_radio_stats.demod_us_sum += systime_get_us() - t0;

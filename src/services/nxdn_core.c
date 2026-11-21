@@ -55,8 +55,13 @@
 #define HUNT_THRESH   3482                   // 0.85 (Q12): the correlation to take an FSW while hunting
 #define TRACK_THRESH  2458                   // 0.60: ... and while locked (near where it is due)
 #define HUNT_APART    (3 * SPS_NOMINAL)      // candidates this far apart are different peaks
-#define HUNT_SPAN     (NXDN_FRAME_SYMS * SPS_NOMINAL) // looked at after the first over it, for the best
+#define HUNT_SPAN     (NXDN_FRAME_SYMS * SPS_NOMINAL) // looked at after the first over it, for the best ...
+#define HUNT_FAST     3891                   // ... but one of 0.95 or more: only its peak (4 symbols), its frame tried
+#define FAST_SPAN     (4 * SPS_NOMINAL)      // at once. A whole frame cost the call's first frame now and then; that
+                                             // only, a frame's content looking like an FSW (0.88) was taken in a weak
+                                             // signal (-115 dBm) where the FSW was 0.99 (2026-11-21)
 #define MAX_MISSES    3      // frames in a row without their FSW: hunting again
+#define MAX_UNCHECKED 2      // frames in a row with their FSW but no CRC holding (frame_decode()): hunting again
 #define PAYLOAD       182
 #define LICH_SYMS     8
 #define SACCH_SYMS    30
@@ -77,16 +82,23 @@ static int16_t lp[NXDN_LP_TAPS]; // Q13
 static uint8_t pn[PAYLOAD]; // the scrambler's bits: 1 inverts the symbol
 static bool tables_ready;
 
+// tests (nxdn/c/test_core.c from the environment): 1 the levels from each frame's decisions (fsk4_relevel(): the FM's
+// non-linearity and DC; DMR's and M17's 3-tap equaliser made it worse here); the input low-pass's cut-off
+volatile int nxdn_rx_opt = 1;
+int nxdn_rx_lp_hz = 2000;
+
 static void tables(void)
 {
     if (tables_ready) {
         return;
     }
-    // a Hamming-windowed sinc at 1440 Hz (0.6 x 2400) for 8 kHz, unit gain at DC
+    // a Hamming-windowed sinc at 2000 Hz for 8 kHz, unit gain at DC (1440 Hz before: the symbols' intersymbol
+    // interference cost more than the noise let in, 2026-11-21: -110 dBm 0.67 % -> 0.06 %, -115 dBm 0.82 % -> 0.29 %
+    // with the levels from the decisions, nxdn/py/tap_ber.py)
     float h[NXDN_LP_TAPS], sum = 0.0f;
     for (int i = 0; i < NXDN_LP_TAPS; i++) {
         float t = (float)i - (NXDN_LP_TAPS - 1) / 2.0f;
-        float fc = 1440.0f / 8000.0f;
+        float fc = (float)nxdn_rx_lp_hz / 8000.0f;
         h[i] = (t == 0.0f) ? 2.0f * fc : sinf(2.0f * (float)M_PI * fc * t) / ((float)M_PI * t);
         h[i] *= 0.54f - 0.46f * cosf(2.0f * (float)M_PI * (float)i / (NXDN_LP_TAPS - 1));
         sum += h[i];
@@ -342,8 +354,15 @@ static bool frame_decode(const nxdn_rx *r, int32_t t0, int polarity, int32_t c, 
     if (a <= 0) {
         return false;
     }
+    int32_t z[NXDN_FRAME_SYMS];
+    for (int k = 0; k < NXDN_FRAME_SYMS; k++) {
+        z[k] = ((v[k] - b) * 256) / a; // Q8 levels (+3: 768)
+    }
+    if (nxdn_rx_opt & 1) { // the four levels from the frame's own decisions, thresholds at their midpoints
+        fsk4_relevel(z, NXDN_FRAME_SYMS);
+    }
     for (int k = 0; k < PAYLOAD; k++) {
-        int32_t s = ((v[10 + k] - b) * 256) / a; // Q8
+        int32_t s = z[10 + k];
         s = (s > 2047) ? 2047 : ((s < -2047) ? -2047 : s);
         p[k] = (int16_t)(pn[k] ? -s : s);
     }
@@ -379,7 +398,10 @@ static bool frame_decode(const nxdn_rx *r, int32_t t0, int polarity, int32_t c, 
         }
     }
     *out = f;
-    return f.lich_ok && (((rf != 1) && (rf != 2)) || f.sacch_ok);
+    // a frame: a traffic one whose SACCH or a FACCH1 CRC holds (the LICH's parity alone passes noise one time in two,
+    // and a control channel's had no check: idle noise taken for frames held the lock on it when a call began, its
+    // first frames then lost while the lock ran out, 2026-11-20)
+    return f.lich_ok && ((rf == 1) || (rf == 2)) && (f.sacch_ok || f.facch_ok);
 }
 
 static void deliver(nxdn_rx *r, const nxdn_frame_t *f)
@@ -425,28 +447,32 @@ static void process(nxdn_rx *r)
 
     for (;;) {
         if (r->state == 0) {
-            // hunting: every 1/3 sample, the best over a whole frame after the first over the threshold (a frame's
-            // content can look like an FSW: the test signal's last 10 symbols did, 10 symbols before the real one).
-            // It goes on from where it stopped when more samples come.
+            // hunting: every 1/3 sample, the best within HUNT_SPAN of the first over the threshold (a frame's content
+            // can look like an FSW: the test signal's last 10 symbols did, 10 symbols before the real one; its frame
+            // does not decode, and the hunt goes on). It goes on from where it stopped when more samples come.
             if (r->hunt_t < oldest) {
                 r->hunt_t = oldest;
                 r->hunt_first = -1;
             }
             while ((r->hunt_t + span + 2 * SPS_NOMINAL) < have) {
-                if ((r->hunt_first >= 0) && (r->hunt_t > r->hunt_first + HUNT_SPAN)) {
+                if ((r->hunt_first >= 0) && (r->hunt_t > r->hunt_end)) {
                     break;
                 }
                 int32_t c = corr(r, r->hunt_t, SPS_NOMINAL, HUNT_THRESH);
                 if (iabs(c) >= HUNT_THRESH) {
                     if (r->hunt_first < 0) {
                         r->hunt_first = r->hunt_t;
+                        r->hunt_end = r->hunt_t + HUNT_SPAN;
                         r->ncand = 0;
+                    }
+                    if ((iabs(c) >= HUNT_FAST) && (r->hunt_end > r->hunt_t + FAST_SPAN)) {
+                        r->hunt_end = r->hunt_t + FAST_SPAN;
                     }
                     candidate(r, r->hunt_t, c);
                 }
                 r->hunt_t += HUNT_STEP;
             }
-            if ((r->hunt_first < 0) || (r->hunt_t <= r->hunt_first + HUNT_SPAN)) {
+            if ((r->hunt_first < 0) || (r->hunt_t <= r->hunt_end)) {
                 return; // more samples first
             }
             // the candidates refined to 1/24 sample; which one is the frame: told by decoding (state 2)
@@ -509,6 +535,7 @@ static void process(nxdn_rx *r)
             r->polarity = (r->cand_c[pick] > 0) ? 1 : -1;
             r->t0 = r->cand_t[pick];
             r->state = 1;
+            r->unchecked = 0;
             deliver(r, &f);
             r->t0 += NXDN_FRAME_SYMS * r->period;
             continue;
@@ -544,7 +571,16 @@ static void process(nxdn_rx *r)
             r->t0 = bt;
             r->misses = 0;
             nxdn_frame_t f;
-            frame_decode(r, r->t0, r->polarity, bc, &f);
+            if (frame_decode(r, r->t0, r->polarity, bc, &f)) {
+                r->unchecked = 0;
+            } else if (++r->unchecked >= MAX_UNCHECKED) { // an FSW, nothing in the frame checked: noise
+                r->state = 0;
+                r->hunt_t = r->t0 + NXDN_FRAME_SYMS * r->period;
+                r->hunt_first = -1;
+                r->lost_sync++;
+                deliver(r, &f);
+                continue;
+            }
             deliver(r, &f);
         } else if (++r->misses >= MAX_MISSES) {
             r->state = 0;
@@ -577,6 +613,7 @@ void nxdn_rx_samples(nxdn_rx *r, const int16_t *x, int count)
         r->hunt_t -= (int32_t)(REBASE_BY << Q);
         if (r->hunt_first >= 0) {
             r->hunt_first -= (int32_t)(REBASE_BY << Q);
+            r->hunt_end -= (int32_t)(REBASE_BY << Q);
         }
         for (int i = 0; i < r->ncand; i++) {
             r->cand_t[i] -= (int32_t)(REBASE_BY << Q);

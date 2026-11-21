@@ -57,6 +57,7 @@
 #include "radio.h"
 #include "radio_hooks.h"
 #include "p25_phy.h"
+#include "p25_radio.h"
 #include "c2dec.h"
 #include "c2enc.h"
 #include "codeplug.h"
@@ -69,7 +70,8 @@
 #include "afrx.h"
 
 #define PCM_FRAMES    16   // 320 ms of decoded voice
-#define PLAY_START    4    // frames queued before the playback starts (they come two at a time every 40 ms)
+#define PLAY_START    2    // frames queued before the playback starts (they come two at a time every 40 ms, with a
+#define PLAY_START_MS 25   // jitter of the recording's 16 ms quarters): the first stream frame's, kept this long
 #define CALL_TIMEOUT  400  // ms without a stream frame: the call ended
 #ifdef M17_HARD_VITERBI    // the hard decision build (comparisons): as before
 #define VOICE_METRIC  24
@@ -143,12 +145,16 @@ static void call_publish(void)
     ui_post(&ev);
 }
 
+static uint32_t call_streams; // stream frames this call (the delay log)
+
 static void call_begin(void)
 {
     if (!call.active) {
+        call_streams = 0;
         memset(&call, 0, sizeof(call));
         call.active = true;
         c2dec_init(&mem.rx.dec);
+        voice_play_prepare(); // the speaker on while the voice comes (the LSF is before it)
         m17_radio_stats.calls++;
         if (m17_raw_source == 1) { // the played audio from the call's start
             m17_raw_hold = 1;
@@ -236,6 +242,7 @@ static void on_dibit(void *ctx, int d)
     switch (m17_rx_symbol(&rx, (int8_t)d)) {
     case M17_RX_LSF:
         m17_radio_stats.lsfs++;
+        p25_ev_log(40, 0); // the delay log (p25_radio.c): an LSF received
         call_begin();
         last_frame = xTaskGetTickCount();
         lsf();
@@ -256,6 +263,9 @@ static void on_dibit(void *ctx, int d)
         call_begin();
         if (rx.lsf_valid) {
             lsf();
+        }
+        if (call_streams++ < 3) {
+            p25_ev_log(41, rx.fn); // a stream frame received (arg: its number), before its decoding
         }
         voice(rx.stream, rx.metric <= VOICE_METRIC);
         if (rx.eos) {
@@ -288,6 +298,7 @@ static const voice_play_cfg_t play_cfg = {
     .frames = mem.rx.pcm,
     .count = PCM_FRAMES,
     .start = PLAY_START,
+    .start_ms = PLAY_START_MS,
     .underruns = &m17_radio_stats.underruns,
     .tap = play_tap,
 };
@@ -338,6 +349,7 @@ static void mic_filter(int16_t *x, mic_hp_t *hp)
 static void transmit(void)
 {
     // the playback is off (afrx.c): the encoder takes its queue's RAM (mem)
+    p25_ev_log(30, 0); // the delay log (p25_radio.c): M17 transmit() begins (the mic on)
     afrx_fifo_prepare(m17_tx_dev);
     c2enc_init(&mem.enc);
     m17_tx_stats[0]++;
@@ -352,6 +364,7 @@ static void transmit(void)
     m17_tx_lsf(tx_lsf, tx_dibits);
     p25_phy_tx_put(tx_dibits, M17_FRAME_DIBITS);
     bool started = afrx_fifo_key(m17_tx_low_power != 0);
+    p25_ev_log(31, started);
     int16_t pcm_tx[C2DEC_SAMPLES];
     uint8_t data[M17_STREAM_BYTES];
     uint32_t tone = 0, step = SWEEP_LO; // the test sweep's phase and its step a sample (2^32: 2 pi)
@@ -399,6 +412,9 @@ static void transmit(void)
         nc = 0;
         m17_tx_stream(tx_lsf, fn, ending, data, tx_dibits);
         p25_phy_tx_put(tx_dibits, M17_FRAME_DIBITS);
+        if (fn < 3) {
+            p25_ev_log(32, fn); // a stream frame into the FIFO
+        }
         fn = (uint16_t)((fn + 1) & 0x7FFF);
         m17_tx_stats[1]++;
         if (ending) {
