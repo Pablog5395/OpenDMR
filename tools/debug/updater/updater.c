@@ -23,7 +23,7 @@
  *                                            within about 0.4 s, else the old divisor is back (a speed the cable
  *                                            can't carry: over the mic jack about 375000 is the most)
  *   'B'                                   -> 'B', then the restart
- * addr: a program flash address, 4 KB aligned, in the firmware area [0xC000, 0xDE000) only (the bootloader below
+ * addr: a program flash address, 4 KB aligned, in the firmware area [0xC000, 0x100000) only (the bootloader below
  * stays as it is: the upgrade mode still works whatever happens here).
  */
 
@@ -71,7 +71,7 @@
 #define USR_BUSY      0x01
 
 #define FLASH_AREA_START 0xC000
-#define FLASH_AREA_END   0xDE000
+#define FLASH_AREA_END   0x100000 // the end of the 1 MB program flash
 #define SECTOR           4096
 #define PAGE             256
 #define BUSY_POLLS       2000000  // flash status reads before giving up (a sector erase takes up to 0.4 s)

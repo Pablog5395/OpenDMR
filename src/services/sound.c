@@ -30,8 +30,8 @@
  * OpenDMR, service: beeps and melodies. After OpenDM32 functions/sound.c (the melodies,
  * soundSetMelody(), soundTickMelody(), soundBeepTaskFunction()), on the baseband's prompt path (modem.c).
  *
- * A melody is pairs of (Hz, ms), 0 Hz a pause, ended by -1, -1. The sound task plays it as the main firmware: for each
- * millisecond a block of 16 samples (2 ms at 8 kHz) when the last was taken, from the 2048 point sine stepped by
+ * A melody is pairs of (Hz, ms), 0 Hz a pause, ended by -1, -1. The sound task plays it as the main firmware: a note
+ * ms / 2 blocks of 16 samples (2 ms at 8 kHz), queued in voice_play.c as it takes them, from the 2048 point sine stepped by
  * Hz / 3.915, the volume a shift by settings.beep_volume_divider. The blocks go to voice_play.c, the prompt FIFO's one
  * writer: it turns the speaker on (the path, the amplifier and its start) and off, and adds them to a receiver's voice
  * when one plays (a key beep during a DMR call broke it up and silenced the rest of it when the beep wrote into the FIFO
@@ -246,41 +246,39 @@ static volatile bool stop = false;
 static volatile bool playing = false;
 
 // Plays one note (0 Hz: a pause) for ms milliseconds, as soundBeepTaskFunction(); with hz2 the two tones summed at
-// half each (DTMF); false: stopped
+// half each (DTMF); false: stopped. Its length in blocks (2 ms each), not in ticks: voice_play.c queues them ahead
 static bool note(int32_t hz, int32_t hz2, uint32_t ms, int32_t *index, int32_t *index2, int shift)
 {
     int16_t x[MODEM_BEEP_BLOCK / 2];
-    bool have = false; // a block made, not taken yet
 
-    for (uint32_t t = 0; t < ms; t++) {
+    for (uint32_t n = 0; n < ((ms + 1) / 2); n++) {
         if (stop || next) {
             return false;
         }
-        if (!have) {
-            for (int i = 0; i < (MODEM_BEEP_BLOCK / 2); i++) {
-                int16_t sample = (hz != 0) ? (int16_t)(sine[*index] >> shift) : 0; // a pause: silence, not a level
+        for (int i = 0; i < (MODEM_BEEP_BLOCK / 2); i++) {
+            int16_t sample = (hz != 0) ? (int16_t)(sine[*index] >> shift) : 0; // a pause: silence, not a level
 
-                if (hz2 != 0) {
-                    sample = (int16_t)((sine[*index] + sine[*index2]) >> (shift + 1));
-                    *index2 += (int32_t)(hz2 / 3.915f);
-                    while (*index2 >= 2048) {
-                        *index2 -= 2048;
-                    }
-                }
-                x[i] = sample;
-                if (hz != 0) {
-                    *index += (int32_t)(hz / 3.915f);
-                    while (*index >= 2048) {
-                        *index -= 2048;
-                    }
+            if (hz2 != 0) {
+                sample = (int16_t)((sine[*index] + sine[*index2]) >> (shift + 1));
+                *index2 += (int32_t)(hz2 / 3.915f);
+                while (*index2 >= 2048) {
+                    *index2 -= 2048;
                 }
             }
-            have = true;
+            x[i] = sample;
+            if (hz != 0) {
+                *index += (int32_t)(hz / 3.915f);
+                while (*index >= 2048) {
+                    *index -= 2048;
+                }
+            }
         }
-        if (voice_play_beep_put(x)) {
-            have = false;
+        while (!voice_play_beep_put(x)) {
+            if (stop || next) {
+                return false;
+            }
+            vTaskDelay(1);
         }
-        vTaskDelay(1);
     }
     return true;
 }

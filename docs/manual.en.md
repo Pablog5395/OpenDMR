@@ -1,6 +1,6 @@
 # OpenDMR user manual
 
-For the **Baofeng DM-32 / DM-32UV** running the OpenDMR firmware. Español: [manual.es.md](manual.es.md) · 中文版：[manual.md](manual.md).
+For the **Baofeng DM-32 / DM-32UV** running the OpenDMR firmware. Español: [manual.es.md](https://github.com/va3bpf/opendmr-languages/blob/main/docs/manual.es.md) · 中文版：[manual.md](manual.md).
 
 Every picture is a real screenshot from the radio (`tools/debug/fshot.py`, 240×320). The location on the GPS and
 radio info screens is blurred.
@@ -546,8 +546,7 @@ See [12](#12-lock-quick-keys-key-settings).
 ### Language
 
 The menu key or ◀ ▶ on Options → Language switches the language: English (built in) and the languages written to
-the radio with the OpenDMR CPS's Languages page (the zip has Chinese and Spanish, see section 5 of the installation
-guide). The row is called Language in every language, so it can be found from one you cannot read. When a
+the radio with the OpenDMR CPS's Languages page (from [opendmr-languages](https://github.com/va3bpf/opendmr-languages), see section 5 of the installation guide). The row is called Language in every language, so it can be found from one you cannot read. When a
 language's font is not in the radio, its text shows as "??" and the menu gives its English name.
 
 ### Calibration

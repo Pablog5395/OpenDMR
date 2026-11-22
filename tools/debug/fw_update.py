@@ -32,7 +32,7 @@ UPDATER = os.path.join(HERE, 'updater', 'updater.bin')
 LOADER_MARKER = b'DM32-SERIAL-UPDATE-LOADER-1'  # src/services/serial_update.c
 DEFAULT_BIN = os.path.join(HERE, '..', '..', 'src', 'build', 'opendmr.bin')
 FLASH_BASE = 0xC000     # the firmware area of the program flash (opendmr.bin starts there)
-FLASH_END = 0xDE000
+FLASH_END = 0x100000    # the end of the 1 MB program flash (the stock firmware ended at 0xDE000)
 SECTOR = 4096
 ERRORS = {1: 'the sector came in damaged', 2: 'address outside the firmware area', 3: 'read back different',
           4: 'the flash stayed busy', 5: 'the request was cut short'}

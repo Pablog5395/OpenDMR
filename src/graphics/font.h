@@ -64,6 +64,7 @@ typedef enum {
 uint32_t font_utf8_next(const char **text);
 
 bool font_has_char(const font_t *font, uint32_t code);
+bool font_has_text(const font_t *font, const char *text); // every character drawn (from the font or a font file)
 int32_t font_text_width(const font_t *font, const char *text);
 
 // Draws text with the top of its line at y, in LCD pixels; x is the left, centre or right edge depending on align.

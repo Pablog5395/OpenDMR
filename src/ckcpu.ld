@@ -35,7 +35,8 @@ ENTRY(__start)
 
 MEMORY
 {
-	MEM0 : ORIGIN = 0x0300C000 , LENGTH = 0xD2000   /* flash, app area */
+	MEM0 : ORIGIN = 0x0300C000 , LENGTH = 0xF4000   /* flash, app area: to the end of the 1 MB program flash (the stock
+	                                                   firmware ended at 0x030DE000, nothing above it) */
 	MEM1 : ORIGIN = 0x00010000 , LENGTH = 0x48000   /* RAM */
 }
 

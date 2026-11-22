@@ -91,6 +91,16 @@ static void caller_text(uint32_t id, char *out, size_t size)
 }
 
 // "callsign rest": the callsign alone, then the rest (uiUtilitySplitCallsign())
+// The large line: 44 px bold (ASCII only, tools/fonts/regen_fonts.py), 32 px bold when the callsign doesn't fit or has
+// a letter beyond ASCII (a talker alias with a name: 32 px has Latin-1 and Latin Extended-A, and a font file's glyphs)
+static const font_t *callsign_font(const char *callsign, int32_t width)
+{
+    if (!font_has_text(&font_roboto44_bold, callsign) || (font_text_width(&font_roboto44_bold, callsign) > width)) {
+        return &font_roboto32_bold;
+    }
+    return &font_roboto44_bold;
+}
+
 static void split_callsign(const char *text, char *callsign, size_t callsign_size, char *rest, size_t rest_size)
 {
     const char *space = strchr(text, ' ');
@@ -127,7 +137,7 @@ static void draw(const dmr_call_t *call, const char *mode, const char *status_it
     const int32_t width = FB_WIDTH - (2 * WIDGET_MARGIN);
     bool private_call = ((call->tg_or_pc >> 24) == LAST_HEARD_PC_FLAG);
     uint32_t called = call->tg_or_pc & 0xFFFFFF;
-    const font_t *call_font = &font_roboto44_bold;
+    const font_t *call_font; // callsign_font()
     status_bar_data_t status = {.state = STATUS_BAR_RECEIVING};
     s_meter_data_t meter = {.active = true, .open = true, .compact = true};
     bottom_bar_data_t bottom = {.mode = mode, .item1 = power, // as the screen's (NXDN48: 6.25 kHz)
@@ -183,9 +193,7 @@ static void draw(const dmr_call_t *call, const char *mode, const char *status_it
         draw_text_fitted(x, TOP_Y, channel_name, &font_roboto17_bold, width - lx, THEME_COLOUR_TEXT);
     }
 
-    if (font_text_width(call_font, callsign) > width) {
-        call_font = &font_roboto32_bold;
-    }
+    call_font = callsign_font(callsign, width);
     draw_text(x, CALLSIGN_Y + (font_roboto44_bold.ascent - call_font->ascent), callsign, call_font, FONT_ALIGN_LEFT,
               THEME_COLOUR_TEXT);
 
@@ -259,7 +267,7 @@ void qso_panel_draw_m17(const m17_call_t *call, const char *channel_name, const 
 {
     const int32_t x = WIDGET_MARGIN;
     const int32_t width = FB_WIDTH - (2 * WIDGET_MARGIN);
-    const font_t *call_font = &font_roboto44_bold;
+    const font_t *call_font; // callsign_font()
     status_bar_data_t status = {.state = STATUS_BAR_RECEIVING};
     s_meter_data_t meter = {.active = true, .open = true, .compact = true};
     bottom_bar_data_t bottom = {.mode = "M17", .item1 = power, .item2 = "12.5K"};
@@ -275,9 +283,7 @@ void qso_panel_draw_m17(const m17_call_t *call, const char *channel_name, const 
     if (channel_name && channel_name[0]) {
         draw_text_fitted(x, TOP_Y, channel_name, &font_roboto17_bold, width, THEME_COLOUR_TEXT);
     }
-    if (font_text_width(call_font, callsign) > width) {
-        call_font = &font_roboto32_bold;
-    }
+    call_font = callsign_font(callsign, width);
     draw_text(x, CALLSIGN_Y + (font_roboto44_bold.ascent - call_font->ascent), callsign, call_font, FONT_ALIGN_LEFT,
               call->src[0] ? THEME_COLOUR_TEXT : THEME_COLOUR_TEXT_LABEL);
 

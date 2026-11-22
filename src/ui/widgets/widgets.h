@@ -71,7 +71,7 @@ typedef struct {
     const char *zone; // e.g. "All Channels  12"
     const char *name;
     const char *frequency; // e.g. "438.5000 MHz"
-    icons_id_t line_icon;  // ICONS_COUNT: no line
+    icons_id_t line_icon;  // ICONS_COUNT: none (no line either, unless line_right)
     const char *line_text;
     const char *line_detail; // after line_text, in the label colour; NULL: none
     const char *line_right;  // right aligned on the line, in the label colour (P25: the NAC); NULL: none

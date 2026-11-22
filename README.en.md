@@ -50,7 +50,7 @@ Users: download the package from [Releases](../../releases) and follow the
 | `docs/` | [Installation guide](docs/installation.en.md), [user manual](docs/manual.en.md) (screenshots in `docs/manual/`); developer documents: [architecture.md](docs/architecture.md) (architecture, Chinese), [ui-design.en.md](docs/ui-design.en.md) (user interface), [coding-style.md](docs/coding-style.md), [fd6818-registers.md](docs/fd6818-registers.md) (RF chip registers), [i18n.en.md](docs/i18n.en.md) (languages: the design, read it to add one) |
 | `tools/backup/` | `dm32_dump.py`: backup / write tool through the chip's bootloader (and `dumper/`, which it uploads to the radio) |
 | `tools/debug/` | Cable update `fw_update.py` (and `updater/`), debug commands `dm32dbg.py`, screenshots `fshot.py`, simulated keys `fkey.py`, mic level `miclevel.py`, ... |
-| `tools/fonts/` | Font conversion (`mkfont.py`), the font files (`mkfont_pack.py` → `build/cjk.bin`, written by the CPS) |
+| `tools/fonts/` | Font conversion (`mkfont.py`), the font files (`mkfont_pack.py` → `build/cjk.bin`, written by the CPS; published in [opendmr-languages](https://github.com/va3bpf/opendmr-languages) with the languages) |
 | `tools/text/` | The generator of the interface text tables and the original language files (from OpenGD77) |
 | `tools/satellite/` | Writes the satellite keps (`write_keps.py`) |
 | `tools/ids/` | The DMR ID database with places (`id_db.py`: build it from RadioID's list, write it over the cable; the countries built into the firmware) |

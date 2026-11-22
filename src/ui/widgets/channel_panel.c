@@ -60,15 +60,17 @@ void channel_panel_draw(const channel_panel_data_t *data)
         draw_text(x, FREQUENCY_Y, data->frequency, &font_roboto22, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_SECOND);
     }
 
-    if (data->line_icon < ICONS_COUNT) {
+    if ((data->line_icon < ICONS_COUNT) || data->line_right) { // an FM channel without a tone: its squelch only
         const font_t *font = &font_roboto20;
         int32_t lx = x;
 
         draw_hline(x, SEPARATOR_Y, FB_WIDTH - (2 * WIDGET_MARGIN), THEME_COLOUR_LINE);
 
-        lx += icons_draw(lx, LINE_Y + ((font->line_height - ICONS_SIZE) / 2) + 2, data->line_icon,
-                         THEME_COLOUR_TEXT_LABEL) +
-              8;
+        if (data->line_icon < ICONS_COUNT) {
+            lx += icons_draw(lx, LINE_Y + ((font->line_height - ICONS_SIZE) / 2) + 2, data->line_icon,
+                             THEME_COLOUR_TEXT_LABEL) +
+                  8;
+        }
 
         if (data->line_text) {
             lx = font_draw_text(lx, LINE_Y, data->line_text, font, FONT_ALIGN_LEFT, theme_colour(THEME_COLOUR_TEXT)) +

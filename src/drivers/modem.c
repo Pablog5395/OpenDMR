@@ -179,11 +179,20 @@ static void set_bandwidth(bool wide)
     FM_DEV_COEF = wide ? 0x40A20 : 0x40A25;
 }
 
+static bool fm_audio_before_beep = false; // modem_beep()
+
 void modem_fm_receive(bool wide, uint8_t dac_gain)
 {
     set_bandwidth(wide);
     FM_PTT = 0x00;
-    AUDIO_CONTROL = 0x40;
+    // A beep playing (a key beep as a DMR channel changes to FM): the prompt path kept, the FM audio path on after it
+    // (modem_beep()). 0x40 cleared the prompt path mid-beep: the beep cut off, the speaker on the FM path's noise
+    if (AUDIO_CONTROL & BITSET(7)) {
+        fm_audio_before_beep = true;
+        AUDIO_CONTROL = BITSET(7);
+    } else {
+        AUDIO_CONTROL = 0x40;
+    }
     GCR_DACL = dac_gain;
     DAC_PD_CTRL |= BITSET(1);
     WORK_MODE = WORK_MODE_FM;
@@ -215,8 +224,6 @@ void RAM_CODE modem_fm_audio(bool on)
 // The prompt path (beeps): PCM samples, 8 kHz, 16 bits little endian, into the FIFO at SOUND_FIFO, 32 bytes at a time
 // (sound.c soundBeepTaskFunction()). The FM audio path is left off while it plays and put back as it was.
 #define SOUND_FIFO ((volatile uint8_t *)0x16000980)
-
-static bool fm_audio_before_beep = false;
 
 void modem_beep(bool on)
 {

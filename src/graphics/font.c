@@ -87,6 +87,18 @@ bool font_has_char(const font_t *font, uint32_t code)
     return ((get_glyph(font, code) != NULL) || ((code >= 0x80) && font_cjk_get_glyph(code, font->line_height, &ext)));
 }
 
+bool font_has_text(const font_t *font, const char *text)
+{
+    uint32_t code;
+
+    while ((code = font_utf8_next(&text)) != 0) {
+        if (!font_has_char(font, code)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Advance of a character: from the font, else from the Chinese font in the SPI flash; 0 when neither has it
 static int32_t char_advance(const font_t *font, uint32_t code)
 {

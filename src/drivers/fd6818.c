@@ -76,7 +76,8 @@
 
 // The demodulator (BK4819: 0x47 bits 11:8 the AF output), as RADIO_SetModulation() of the UV-K5 firmware (egzumer):
 // FM 1, AM 7, USB 5 ("baseband 2") with the IF at 0, the chip then a product detector. LSB is the same setting: with
-// the IF at 0 both sidebands come through, the tuning picks one (fagci's firmware does the same). AFC off but in FM.
+// the IF at 0 both sidebands come through, the tuning picks one (fagci's firmware does the same). The AFC off in every
+// mode (fd6818_set_demod()).
 #define AF_MUTED  0x6042
 #define AF_FM     0x1
 #define AF_AM     0x7
@@ -306,7 +307,13 @@ void fd6818_set_demod(fd6818_demod_t new_demod)
     af_on = (uint16_t)(AF_MUTED | ((am ? AF_AM : ((new_demod == FD6818_DEMOD_SSB) ? AF_SSB : AF_FM)) << 8));
     fd6818_write(REG_AF, AF_MUTED);
     fd6818_write(REG_IF, (new_demod == FD6818_DEMOD_SSB) ? 0 : if_default);
-    fd6818_write(REG_AFC, (uint16_t)((fd6818_read(REG_AFC) & ~AFC_OFF) | ((new_demod == FD6818_DEMOD_FM) ? 0 : AFC_OFF)));
+    // The AFC off in every mode, as the FD6818 manual says with a TCXO ("AFC 设置"; the radio's is calibrated). On, with
+    // the transmitter a little off frequency, its loop hunted at 15 - 30 Hz (0x0C bit 8 afc_rail stayed 0), heard in FM
+    // as a low "du du du" (the discriminator: that tone and its harmonics 20 - 34 dB over the noise; none with it off).
+    // Its speed can't be set, only its range (bits 13:11, 2.2 kHz here); a weak M17 signal 800 Hz off lost whole
+    // transmissions with it on. Off, DMR, P25, NXDN and M17 at -116 dBm and 0 / +-300 Hz received as well or better
+    // (2026-11-21).
+    fd6818_write(REG_AFC, (uint16_t)(fd6818_read(REG_AFC) | AFC_OFF));
     fd6818_write(0x31, (uint16_t)((fd6818_read(0x31) & ~1u) | (am ? 1u : 0u)));
     fd6818_write(0x42, am ? 0x6F5C : 0x6F5A);
     fd6818_write(0x2A, am ? 0x7434 : 0x7400);
@@ -319,9 +326,10 @@ void fd6818_set_demod(fd6818_demod_t new_demod)
 // AT1846sSetMode(RADIO_MODE_DIGITAL)
 void fd6818_set_dmr(void)
 {
-    // the demodulator's registers back as FM has them (as after the power on): AM or SSB left the IF (0x3D) at 0 and the
-    // AFC off, which the DMR table doesn't write; both so, a weak (-116 dBm) transmission's first DMR burst (a direct
-    // call's only voice LC header) was never received, after any visit to USB / LSB until a restart (2026-11-21)
+    // the demodulator's registers back as FM has them (as after the power on): SSB left the IF (0x3D) at 0, which the
+    // DMR table doesn't write; so (with the AFC off, as it was in SSB then), a weak (-116 dBm) transmission's first DMR
+    // burst (a direct call's only voice LC header) was never received, after any visit to USB / LSB until a restart
+    // (2026-11-21)
     fd6818_set_demod(FD6818_DEMOD_FM);
     dmr = true;
     WRITE_TABLE(dmr_settings);

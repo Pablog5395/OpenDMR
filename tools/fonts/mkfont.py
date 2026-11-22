@@ -29,6 +29,8 @@ HEADER = '''/*
 
 # Characters of Latin-1 Supplement (accented letters for Spanish, Portuguese, French, German, etc.)
 LATIN1_CHARS = ''.join(chr(c) for c in range(0x20, 0x100) if c < 0x7F or c >= 0xA0)
+# Latin Extended-A (0x100-0x17F): Turkish, Polish, Czech, Slovak, Romanian, Hungarian, Croatian, Latvian, Lithuanian...
+LATIN_EXT_A_CHARS = ''.join(chr(c) for c in range(0x100, 0x180))
 
 
 def main():
@@ -39,6 +41,7 @@ def main():
     ap.add_argument('--weight', default='Regular', help='variation name of a variable font')
     ap.add_argument('--chars', help='characters to include (default: printable ASCII)')
     ap.add_argument('--latin1', action='store_true', help='include Latin-1 Supplement (0xA0-0xFF, accented characters)')
+    ap.add_argument('--latin-ext', action='store_true', help='Latin-1 and Latin Extended-A (0x100-0x17F) too')
     ap.add_argument('--out-file', help='output file name without .c extension (defaults to name stripped of font_ prefix)')
     ap.add_argument('--licence', default='OFL-RobotoCondensed.txt')
     args = ap.parse_args()
@@ -52,6 +55,8 @@ def main():
 
     if args.chars:
         chars = sorted(set(args.chars))
+    elif args.latin_ext:
+        chars = sorted(set(LATIN1_CHARS + LATIN_EXT_A_CHARS))
     elif args.latin1:
         chars = sorted(set(LATIN1_CHARS))
     else:
@@ -91,7 +96,7 @@ def main():
     out.append('};\n\n')
     out.append('static const font_glyph_t glyphs[] FLASH_CONST = {\n')
     for code, (w, h, xo, yo, adv, off) in zip(range(first, last + 1), glyphs):
-        label = chr(code) if ((0x20 < code < 0x7F) or (0xA0 <= code <= 0xFF)) and chr(code) not in '\\\'' else 'U+%04X' % code
+        label = chr(code) if ((0x20 < code < 0x7F) or (0xA0 <= code <= 0x17F)) and chr(code) not in '\\\'' else 'U+%04X' % code
         out.append('\t{ %d, %d, %d, %d, %d, %s }, // %s\n' % (w, h, xo, yo, adv, ('FONT_GLYPH_NONE' if off == 0xFFFFFFFF else str(off)), label))
     out.append('};\n\n')
     out.append('const font_t %s FLASH_CONST = { %d, %d, 0x%04X, %d, glyphs, bitmap };\n'

@@ -44,7 +44,7 @@ DMR 热点（MMDVM）、VOX、可自定义的按键……见 [使用说明书](d
 | `docs/` | [安装手册](docs/installation.md)、[使用说明书](docs/manual.md)（截图在 `docs/manual/`）；开发文档：[architecture.md](docs/architecture.md)（架构）、[ui-design.md](docs/ui-design.md)（界面设计和界面框架）、[coding-style.md](docs/coding-style.md)、[fd6818-registers.md](docs/fd6818-registers.md)（射频芯片寄存器）、[i18n.md](docs/i18n.md)（多语言设计，想加语言的看这里） |
 | `tools/backup/` | `dm32_dump.py`：走芯片引导程序的备份 / 写入工具（和它上传到电台的 `dumper/`） |
 | `tools/debug/` | 数据线升级 `fw_update.py`（和 `updater/`）、调试命令 `dm32dbg.py`、截屏 `fshot.py`、模拟按键 `fkey.py`、话筒电平 `miclevel.py` 等 |
-| `tools/fonts/` | 字体转换（`mkfont.py`）、字库文件（`mkfont_pack.py` → `build/cjk.bin`，由 CPS 写入电台） |
+| `tools/fonts/` | 字体转换（`mkfont.py`）、字库文件（`mkfont_pack.py` → `build/cjk.bin`，由 CPS 写入电台；和各语言一起发布在 [opendmr-languages](https://github.com/va3bpf/opendmr-languages)） |
 | `tools/text/` | 界面文字表的生成脚本和原始语言文件（来自 OpenGD77） |
 | `tools/satellite/` | 业余卫星轨道根数写入（`write_keps.py`） |
 | `tools/ids/` | 带地址的 DMR ID 数据库（`id_db.py`：从 RadioID 名单生成、经编程线写入；固件内置的国家表） |

@@ -1,6 +1,6 @@
 # OpenDMR 安装手册
 
-把 **Baofeng DM-32 / DM-32UV** 从原厂固件换成 OpenDMR，以及以后的升级和恢复原厂。English: [installation.en.md](installation.en.md) · Español: [installation.es.md](installation.es.md)。
+把 **Baofeng DM-32 / DM-32UV** 从原厂固件换成 OpenDMR，以及以后的升级和恢复原厂。English: [installation.en.md](installation.en.md) · Español: [installation.es.md](https://github.com/va3bpf/opendmr-languages/blob/main/docs/installation.es.md)。
 装好以后怎么用见 [使用说明书](manual.md)。
 
 > ⚠️ **刷机有变砖风险，后果自负。**
@@ -30,13 +30,12 @@
 |---|---|
 | `opendmr.bin` | 固件 |
 | `opendmr_BFUV32.bin` | 同一个固件，带原厂升级模式的文件头（只在 [7](#7-恢复原厂固件) 之类的特殊情况用） |
-| `languages/` | 界面语言（`zh.json` 中文、`es.json` 西班牙文）和中文字库 `cjk.bin`，用 OpenDMR CPS 的「界面语言」页写进电台，见 [5](#5-写码表) |
 | `tools/backup/dm32_dump.py`、`tools/backup/dumper/dumper.bin` | 备份 / 写入工具（走芯片的引导程序） |
 | `tools/fonts/ttf/RobotoCondensed-VF.ttf` | 上面这个工具在电台屏幕上显示文字用的字体 |
 | `tools/debug/fw_update.py`、`tools/debug/updater/updater.bin` | 平时升级用（电台跑着 OpenDMR 时） |
 | `tools/debug/pin_wipe.py` | 忘了开机 / 锁屏密码时清除密码（关机、运行、30 秒内开机；码表和设置保留） |
 | `tools/ids/id_db.py` | 生成并写入带地址的 DMR ID 数据库（使用说明书第 13 节） |
-| `docs/manual.md`、`docs/manual.en.md`、`docs/manual.es.md`、`docs/manual/` | 使用说明书 |
+| `docs/manual.md`、`docs/manual.en.md`、`docs/manual/` | 使用说明书 |
 | `opendmr-cps.html` | 我们的写频软件（OpenDMR CPS），Chrome / Edge 双击打开，见 [5](#5-写码表) |
 | `docs/installation.md`、`docs/installation.en.md`、`README.md`、`README.en.md` | 本手册、项目说明 |
 | `licences/` | 字体（Roboto Condensed、Noto Sans SC）的 OFL 许可 |
@@ -171,8 +170,9 @@ py -u tools\backup\dm32_dump.py COM6 program opendmr.bin --write --start 0xC000
 
 ### 界面语言
 
-固件只带英文。要用中文或西班牙文界面：在 OpenDMR CPS 里连接电台，打开「界面语言」页，点「选择文件夹」选发布包里的
-`languages` 文件夹，中文和西班牙文默认勾选，点「写入电台」（中文连同字库约 2 分钟）。然后在电台的「选项 → Language」里
+固件只带英文。其他语言（中文、西班牙文等）和中文字库 `cjk.bin` 由各自的译者在 [opendmr-languages](https://github.com/va3bpf/opendmr-languages)
+维护：下载（Code → Download ZIP）并解压。在 OpenDMR CPS 里连接电台，打开「界面语言」页，点「选择文件夹」选它的
+`languages` 文件夹，勾选要的语言，点「写入电台」（中文连同字库约 2 分钟）。然后在电台的「选项 → Language」里
 选择。界面用英文也建议写中文：信道名、联系人名里的汉字要用它的字库。
 
 ---

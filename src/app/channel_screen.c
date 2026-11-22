@@ -82,7 +82,6 @@
 #define SQUELCH_MIN          1 // codeplug sql: 0 the band default, 1 .. 21: 0 .. 100 %
 #define SQUELCH_MAX          21
 #define SQUELCH_PERCENT_STEP 5
-#define SQUELCH_SHOWN_MS     2000
 #define FLAG2_TIMESLOT_2     0x40
 #define FLAG4_BANDWIDTH_25K  0x02
 #define FLAG1_FORCE_DMO      0x04 // libre_dmr_flag1
@@ -102,9 +101,7 @@ static int position = 0;
 static bool green_down = false; // the left / right key went down on this screen: a release from a list isn't ours
 static bool red_down = false;
 static bool reversed = false;      // RX and TX frequencies swapped (reverse repeater)
-static bool squelch_shown = false; // a squelch change is shown for a moment
 static int direct_channel = 0;     // a channel number being typed
-static uint32_t squelch_shown_until;
 static last_heard_entry_t recent_entry; // 80 bytes: not on the UI task stack
 static char recent_name[CHANNEL_PANEL_RECENT][LAST_HEARD_TEXT_SIZE];
 static char recent_detail[CHANNEL_PANEL_RECENT][16];
@@ -372,7 +369,6 @@ static bool scan_step(void)
         return true;
     }
     position = at;
-    squelch_shown = false;
     load();
     scan_moved(&scan, scan_dwell());
     return true;
@@ -428,7 +424,6 @@ static void channel_changed(int new_position)
         ui_key_beep(SOUND_KEY_FIRST_ITEM);
     }
     reversed = false;
-    squelch_shown = false;
     load();
 }
 
@@ -473,11 +468,6 @@ static void squelch_step(int direction)
     codeplug_set_channel_squelch(channel_screen_channel, channel.sql);
     if (channel.sql == SQUELCH_MIN) {
         ui_key_beep(SOUND_KEY_FIRST_ITEM);
-    }
-    squelch_shown = true;
-    squelch_shown_until = systime_get_ms() + SQUELCH_SHOWN_MS;
-    if (!scan.active) {
-        ui_timer_start(SQUELCH_SHOWN_MS);
     }
 }
 
@@ -738,16 +728,10 @@ static bool handle(const ui_event_t *ev)
         case UI_EVENT_TIMER: {
             bool redraw = false;
 
-            if (squelch_shown && ((int32_t)(systime_get_ms() - squelch_shown_until) >= 0)) {
-                squelch_shown = false;
-                redraw = true;
-            }
             if (scan.active) {
-                redraw |= scan_step();
+                redraw = scan_step();
                 if (scan.active) {
                     ui_timer_start(SCAN_TICK_MS);
-                } else if (squelch_shown) {
-                    ui_timer_start(squelch_shown_until - systime_get_ms());
                 }
             }
             return redraw;
@@ -908,13 +892,11 @@ static void draw(void)
         if (codeplug_mode_is_ssb(channel.mode)) {
             bottom.item2 = "3K";
         }
-        if (squelch_shown) {
-            int sql = (channel.sql != 0) ? channel.sql : settings.squelch_defaults[radio_band_of(channel.rx_freq)];
+        // the squelch always on the line, right, as the VFO screen shows it
+        int sql = (channel.sql != 0) ? channel.sql : settings.squelch_defaults[radio_band_of(channel.rx_freq)];
 
-            snprintf(squelch, sizeof(squelch), "%s %d%%", text(TEXT_SQUELCH),
-                     (sql - SQUELCH_MIN) * SQUELCH_PERCENT_STEP);
-            bottom.right = squelch;
-        }
+        snprintf(squelch, sizeof(squelch), "%s %d%%", text(TEXT_SQUELCH), (sql - SQUELCH_MIN) * SQUELCH_PERCENT_STEP);
+        panel.line_right = squelch;
     }
     if (reversed && (bottom.right == NULL)) {
         bottom.right = text(TEXT_UI_REVERSED);

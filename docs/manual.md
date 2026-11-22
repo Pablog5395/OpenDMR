@@ -1,6 +1,6 @@
 # OpenDMR 使用说明书
 
-适用于装了 OpenDMR 固件的 **Baofeng DM-32 / DM-32UV**。English: [manual.en.md](manual.en.md) · Español: [manual.es.md](manual.es.md)。
+适用于装了 OpenDMR 固件的 **Baofeng DM-32 / DM-32UV**。English: [manual.en.md](manual.en.md) · Español: [manual.es.md](https://github.com/va3bpf/opendmr-languages/blob/main/docs/manual.es.md)。
 
 图中都是电台上的真实截屏（`tools/debug/fshot.py`，240×320）。GPS 和电台信息里的位置做了模糊处理。
 
@@ -454,7 +454,7 @@ CAN 在这一行的右边（如 `CAN 0`）。
 ### 语言
 
 在「选项 → Language」上按菜单键或 ◀ ▶ 切换语言：English（固件自带），加上用 OpenDMR CPS「界面语言」页写进电台的语言
-（发布包里有中文和西班牙文，见安装手册第 5 节）。这一行在每种语言里都叫 Language，看不懂当前语言时也找得到。语言需要的字库
+（在 [opendmr-languages](https://github.com/va3bpf/opendmr-languages)，见安装手册第 5 节）。这一行在每种语言里都叫 Language，看不懂当前语言时也找得到。语言需要的字库
 没写进电台时，界面文字显示“??”，菜单里这种语言显示英文名。
 
 ### 校准

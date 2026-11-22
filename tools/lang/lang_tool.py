@@ -2,8 +2,8 @@
 """Languages and fonts in the radio over the cable, as the CPS's Languages page does it (docs/i18n.en.md):
 
     py tools/lang/lang_tool.py COM23 list
-    py tools/lang/lang_tool.py COM23 add-lang tools/text/languages/zh.json
-    py tools/lang/lang_tool.py COM23 add-font tools/fonts/build/cjk.bin
+    py tools/lang/lang_tool.py COM23 add-lang zh.json
+    py tools/lang/lang_tool.py COM23 add-font cjk.bin
     py tools/lang/lang_tool.py COM23 del-lang zh
     py tools/lang/lang_tool.py COM23 del-font cjk
 

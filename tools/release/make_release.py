@@ -30,7 +30,6 @@ DIST = os.path.join(ROOT, 'dist')
 DEFAULT_REPO = 'va3bpf/OpenDMR'
 CPS_REPO = 'va3bpf/opendmr-cps'
 CPS_FILE = 'opendmr-cps.html'
-FONT = 'tools/fonts/build/cjk.bin'
 TIMEZONE_DATA = 'src/services/timezone-data'
 
 # In the zip -> from the repository. Keep in step with the table of docs/installation.md
@@ -38,9 +37,6 @@ FILES = {
     'opendmr.bin': 'src/build/opendmr.bin',
     'opendmr_BFUV32.bin': 'src/build/opendmr_BFUV32.bin',
     # The languages folder: the CPS's Languages page writes these to the radio (docs/i18n.md), the user choosing it
-    'languages/zh.json': 'tools/text/languages/zh.json',
-    'languages/es.json': 'tools/text/languages/es.json',
-    'languages/cjk.bin': FONT,
     'timezone-data/tzdb.bin': TIMEZONE_DATA + '/tzdb.bin',
     'timezone-data/README.md': TIMEZONE_DATA + '/README.md',
     'tools/backup/dm32_dump.py': 'tools/backup/dm32_dump.py',
@@ -61,10 +57,8 @@ FILES = {
     'README.en.md': 'README.en.md',
     'docs/installation.md': 'docs/installation.md',
     'docs/installation.en.md': 'docs/installation.en.md',
-    'docs/installation.es.md': 'docs/installation.es.md',
     'docs/manual.md': 'docs/manual.md',
     'docs/manual.en.md': 'docs/manual.en.md',
-    'docs/manual.es.md': 'docs/manual.es.md',
 }
 FOLDERS = {'docs/manual': 'docs/manual'}  # the screenshots of the manual
 
@@ -86,12 +80,6 @@ def build():
     if r.returncode != 0:
         sys.exit(r.stdout[-3000:] + r.stderr[-3000:] + '\nthe build failed')
     print(r.stdout.strip().splitlines()[-1])
-
-
-def font():
-    if not os.path.exists(os.path.join(ROOT, FONT)):
-        print('making the Chinese font file ...')
-        subprocess.run([sys.executable, os.path.join(ROOT, 'tools', 'fonts', 'mkfont_pack.py')], cwd=ROOT, check=True)
 
 
 def gh_path():
@@ -171,8 +159,7 @@ def notes_since_last_tag(version):
     log = git('log', '--no-merges', '--format=- %s', span).splitlines()
     head = 'Since %s:' % tags[0] if tags else 'Changes:'
     return '\n'.join(['OpenDMR %s (commit %s).' % (version, git('rev-parse', '--short', 'HEAD')), '',
-                      'Installing: docs/installation.md (中文) / docs/installation.en.md (English) / docs/installation.es.md '
-                      '(Español), in the zip too.',
+                      'Installing: docs/installation.md (中文) / docs/installation.en.md (English), in the zip too.',
                       '', head] + log[:100])
 
 
@@ -223,7 +210,6 @@ def main():
                                          git('rev-parse', '--short=7', 'HEAD'))
     if not args.no_build:
         build()
-    font()
     cps_path, cps_version = cps(args)
     assets = pack(version, cps_path, cps_version)
     if args.publish:

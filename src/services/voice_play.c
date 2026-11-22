@@ -80,9 +80,13 @@ static bool voice_out;                    // the voice playing: its queue played
 static bool in_underrun;                  // the delay log: an underrun going on
 static bool first_block;                  // the delay log (p25_radio.c): the first voice block not yet written
 
-// a beep (sound.c): on from voice_play_beep_begin() to _end(), one block of it at a time in the slot
-static volatile bool beep_on, beep_full;
-static int16_t beep[BLOCK];
+// a beep (sound.c): on from voice_play_beep_begin() to _end(), its blocks queued ahead. One slot only, the beep had
+// 2 ms holes of silence (heard as noise at its edges) whenever the sound task came late: in DMR the software receiver's
+// task has its priority (2026-11-21, 0.8.0). Writing into the FIFO itself (0.7.0) the FIFO's 4-8 ms covered that.
+#define BEEP_BLOCKS 8 // 16 ms
+static volatile bool beep_on;
+static int16_t beep[BEEP_BLOCKS][BLOCK];
+static volatile uint32_t beep_in, beep_out; // blocks put / taken
 
 static volatile uint32_t loops; // the task's rounds (voice_play_stop() waits for them)
 static volatile int state;      // OFF ... STOP
@@ -177,16 +181,17 @@ static void write_block(bool play)
     }
     int16_t x[BLOCK];
     bool voice = play && voice_block(x);
-    bool b = play && beep_full;
+    bool b = play && (beep_in != beep_out);
+    const int16_t *bx = beep[beep_out % BEEP_BLOCKS];
     uint8_t block[MODEM_BEEP_BLOCK];
     for (int i = 0; i < BLOCK; i++) {
-        int32_t v = (voice ? x[i] : 0) + (b ? beep[i] : 0);
+        int32_t v = (voice ? x[i] : 0) + (b ? bx[i] : 0);
         int16_t s = (int16_t)((v > 32767) ? 32767 : (v < -32768) ? -32768 : v);
         block[2 * i] = (uint8_t)s; // low byte first
         block[2 * i + 1] = (uint8_t)((uint16_t)s >> 8);
     }
     if (b) {
-        beep_full = false;
+        beep_out++;
     }
     modem_beep_write(block);
 }
@@ -207,7 +212,7 @@ static void feed_task(void *arg)
         }
         // the sources wanting the speaker: the voice (a call on, its queue to play out), a beep
         bool want_voice = enabled && (wanted || call_on || (voice_out && (pcm_in != pcm_out)));
-        bool want_beep = beep_on || beep_full;
+        bool want_beep = beep_on || (beep_in != beep_out);
         switch (state) {
         case OFF:
             if (want_voice || want_beep) {
@@ -341,11 +346,11 @@ bool voice_play_beep_ready(void)
 
 bool voice_play_beep_put(const int16_t x[16])
 {
-    if (beep_full || (state != PLAY)) {
+    if (((beep_in - beep_out) >= BEEP_BLOCKS) || (state != PLAY)) {
         return false;
     }
-    memcpy(beep, x, sizeof(beep));
-    beep_full = true;
+    memcpy(beep[beep_in % BEEP_BLOCKS], x, sizeof(beep[0]));
+    beep_in++;
     return true;
 }
 
