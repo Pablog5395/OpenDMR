@@ -197,7 +197,7 @@ y=320 └───────────────────────�
 | 电台信息 | ![](manual/zh/radio-info.png) | 电池、时间、日期、位置、电池曲线；时间/日期/位置用数字输入控件 |
 | 信号强度 | ![](manual/zh/rssi.png) | dBm 大字、S 表、频率和模式 |
 | 最近通话 | ![](manual/zh/last-heard.png) | 两行一项：ID/呼号、通话组和时隙、多久以前 |
-| 数字输入 | ![](manual/zh/number-entry.png) | `#` 在 TG / PC / 联系人 / 本机 ID 之间切换；本机 ID 按 OK 永久保存 |
+| 数字输入 | ![](manual/zh/number-entry.png) | `#` 在 TG / PC / 全呼 / 联系人之间切换 |
 | 固件信息 | ![](manual/zh/firmware-info.png) | 版本、编译时间、芯片、机型、致谢 |
 | GPS | ![](manual/zh/gps.png) | 天空图（GPS 蓝、北斗黄，收到的实心）、经纬度、卫星数、海拔、UTC 和本地时间；OK 开关 GPS |
 | 业余卫星 | ![](manual/zh/satellite.png) | 没设位置时先输入位置；之后是过境列表、过境详情（极坐标轨迹、多普勒修正频率） |
@@ -226,7 +226,8 @@ UI 任务 ui/ui.c                 阻塞在事件队列上；把事件交给界�
         │
         ├── 界面栈               ui_push() / ui_pop() / ui_replace() / ui_home()，最深 8 层
         ├── 列表界面 ui/list.c   菜单和设置：由 ui_list_t 表描述
-        ├── 覆盖层               提示（toast）、消息框：画在界面之上
+        ├── 提示气泡 ui/notice.c ui_notify()：任何任务都能发，画在栈顶界面之上，到时或按任意键关闭
+        ├── 消息框 ui/message_box.c 要回答的问题、操作结果：作为一个界面压栈
         └── 文字 ui/text.c       字符串 ID → 当前语言的文字（中文、英文）
 
 数据变化（电量、时间的分钟、信号……）由各服务发 UI_EVENT_DATA 事件，界面据此决定要不要重画。
@@ -243,6 +244,7 @@ typedef enum {
     UI_EVENT_ROTARY,      // steps: 正数顺时针
     UI_EVENT_DATA,        // what: 哪类数据变了（电量、时间、信号、接收状态……）
     UI_EVENT_TIMER,       // 界面自己申请的定时器到了
+    UI_EVENT_NOTICE,      // ui_notify() 的提示气泡：UI 任务自己处理，界面收不到
 } ui_event_type_t;
 
 typedef struct {

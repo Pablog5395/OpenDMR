@@ -29,11 +29,12 @@
 /*
  * OpenDMR, screen: the number entry of the main firmware (uiTxTgPcContactOwnId.c, DM-32 drawScreen(),
  * docs/manual "号码输入"): what is entered and "# 换类型", the digits large, the contact of the number when the
- * codeplug has it; the contact selection is the menu list. # goes TG, PC, contact, own ID, TG ...
+ * codeplug has it; the contact selection is the menu list. # goes TG, PC, all call, contact, TG ... (#106: not the own
+ * ID, which the channel's keys should not change; it has its own entry from the general options)
  *
- * The left key takes it: a TG or PC overrides the channel's contact (tx_target.c), a contact also sets its timeslot,
- * the own ID is written to the codeplug (kept after power off, as the DM-32 main firmware). Then back home (the own ID
- * from the general options: back there). On FM it is the DTMF entry: the digits, * and # type the code, LEFT deletes,
+ * The left key takes it: a TG, PC or the all call overrides the channel's contact (tx_target.c), a contact also sets
+ * its timeslot. Then back home. The own ID from the general options is written to the codeplug (kept after power off),
+ * then back there. On FM it is the DTMF entry: the digits, * and # type the code, LEFT deletes,
  * the left key sends it (tx_screen_send_dtmf()).
  */
 
@@ -65,10 +66,11 @@
 enum {
     ENTRY_TG,
     ENTRY_PC,
+    ENTRY_ALL,               // the all call: 16777215, no digits typed
     ENTRY_CONTACT,
-    ENTRY_OWN_ID,
-    ENTRIES,
-    ENTRY_DTMF = ENTRIES,    // its own, # does not change it
+    ENTRIES,                 // the ones # goes through
+    ENTRY_OWN_ID = ENTRIES,  // from the general options only
+    ENTRY_DTMF,              // its own, # does not change it
     ENTRY_GATEWAY,           // the APRS-over-DMR gateway, its own too
 };
 
@@ -125,11 +127,11 @@ static void next_type(void)
     if (entry.type == ENTRY_CONTACT) {
         entry.contact = 0;
         if (codeplug_contact_count(-1) == 0) {
-            entry.type++; // none to select
+            entry.type = ENTRY_TG; // none to select
         }
     }
-    if (entry.type == ENTRY_OWN_ID) {
-        set_digits(codeplug_get_dmr_id());
+    if (entry.type == ENTRY_ALL) {
+        set_digits(CODEPLUG_CONTACT_ID_MAX);
     }
 }
 
@@ -277,13 +279,13 @@ static bool handle(const ui_event_t *ev)
         next_type();
         return true;
     }
-    if (repeat && ((ev->key == UI_KEY_UP) || (ev->key == UI_KEY_DOWN))) {
+    if (repeat && ((ev->key == UI_KEY_UP) || (ev->key == UI_KEY_DOWN)) && (entry.type != ENTRY_ALL)) {
         // the contacts as the menu lists (down: the next one), the numbers up: + 1
         step(((ev->key == UI_KEY_UP) != (entry.type == ENTRY_CONTACT)) ? 1 : -1);
         return true;
     }
-    if (entry.type == ENTRY_CONTACT) {
-        return false;
+    if ((entry.type == ENTRY_CONTACT) || (entry.type == ENTRY_ALL)) {
+        return false; // nothing typed
     }
     if (repeat && (ev->key == UI_KEY_LEFT) && (entry.length > 0)) {
         entry.digits[--entry.length] = '\0';
@@ -333,7 +335,8 @@ static void draw_contacts(void)
 
 static void draw(void)
 {
-    static const text_id_t labels[ENTRIES] = {TEXT_TG_ENTRY, TEXT_PC_ENTRY, TEXT_CONTACT, TEXT_USER_DMR_ID};
+    static const text_id_t labels[ENTRY_OWN_ID + 1] = {TEXT_TG_ENTRY, TEXT_PC_ENTRY, TEXT_ALL_CALL, TEXT_CONTACT,
+                                                       TEXT_USER_DMR_ID};
     status_bar_data_t status = {0};
     digit_entry_t shown = {.max = DIGITS};
     char buffer[NAME_SIZE + 16];
@@ -376,7 +379,7 @@ static void draw(void)
         draw_hline(x, LINE_Y, FB_WIDTH - (2 * WIDGET_MARGIN), THEME_COLOUR_LINE);
         draw_text(x, LINE_Y + 10, text(TEXT_UI_OK_SAVE_ID), &font_roboto17, FONT_ALIGN_LEFT,
                   THEME_COLOUR_TEXT_SECOND);
-    } else {
+    } else if (entry.type != ENTRY_ALL) {
         draw_text(x, HINT_Y, text(TEXT_UI_UP_DOWN_STEP), &font_roboto17, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);
 
         // The name of the number when it is a contact of the codeplug

@@ -39,6 +39,7 @@ that folder). It holds:
 | `tools/debug/fw_update.py`, `tools/debug/updater/updater.bin` | Updates (while the radio runs OpenDMR) |
 | `tools/debug/pin_wipe.py` | Clears a forgotten power-on / lock PIN (radio off, run, switch on within 30 s; codeplug and settings kept) |
 | `tools/ids/id_db.py` | Builds and writes the DMR ID database with places (user manual, section 13) |
+| `tools/common/cable_speed.py` | The cable speed setting (`--baud`) these tools share |
 | `docs/manual.md`, `docs/manual.en.md`, `docs/manual/` | User manual |
 | `opendmr-cps.html` | Our codeplug software (OpenDMR CPS): double-click it, in Chrome / Edge; see [5](#5-writing-the-codeplug) |
 | `docs/installation.md`, `docs/installation.en.md`, `README.md`, `README.en.md` | This guide, the project's README |
@@ -204,6 +205,10 @@ py tools\debug\fw_update.py opendmr.bin --port COM6
 
 Only the changed sectors are written (about 35 s for all of them), the screen shows the progress, the radio restarts
 at the end. Settings and codeplug stay.
+
+The cable speed is chosen by itself (the fastest that worked on this port last time). With a cable that isn't
+reliable, give one, e.g. `--baud 250000`; `--baud 115200` is the slowest and safest. `id_db.py write` and
+`tools/lang/lang_tool.py` take the same `--baud`.
 
 Coming from 0.7.0 or earlier: languages and fonts have a new format, so after the update the interface is in English
 and Chinese names cannot be shown: write them once with the CPS (section 5, Interface languages). Do the same when

@@ -57,6 +57,8 @@
 #include "extra_options.h"
 
 #define DESTINATION        "APOG77"
+#define NOTICE_SENDING_MS  6000 // the busy channel's wait (2 s) and the frame: the result replaces it
+#define NOTICE_RESULT_MS   2500
 #define BUFFER_SIZE        256
 #define CHECK_MS           1000
 #define SPEED_MIN_CKN      54  // SMART_BEACONING_SPEED_MIN: more than 1 km/h
@@ -647,6 +649,12 @@ static bool dmr_report_failed(void)
 
 static const radio_data_t DMR_REPORT = {dmr_report_start, dmr_aprs_busy, dmr_report_failed, dmr_aprs_cancel};
 
+// What the user sees of a beacon (#105): a bubble over any screen (ui_notify())
+static void notice(text_id_t line2, ui_notice_kind_t kind, uint32_t ms)
+{
+    ui_notify(TEXT_APRS, line2, kind, ms);
+}
+
 // aprsBeaconingSendBeacon(): true when the frame went to the radio task. forced: SK1 + 3 (or the menu item): it sends
 // in any mode but OFF, not only in Manual / PTT, and the caller gives the error tone (once)
 static bool send_beacon(bool forced)
@@ -736,6 +744,7 @@ static bool send_beacon(bool forced)
     }
     if (manual) {
         aprs.previous = aprs.current;
+        notice(TEXT_NOTICE_SENDING, UI_NOTICE_TX, NOTICE_SENDING_MS); // auto beacons: only when sent
     }
     return true;
 }
@@ -845,6 +854,7 @@ static bool send_satellite_beacon(void)
         aprs.waiting = true;
         aprs.waiting_auto = false; // as a manual beacon: an error tone if it doesn't go out
         aprs.sending = here;
+        notice(TEXT_NOTICE_SENDING, UI_NOTICE_TX, NOTICE_SENDING_MS);
     }
     return ok;
 }
@@ -913,18 +923,22 @@ static void decay(bool reset_it)
     }
 }
 
-// The frame that was with the radio task: done
-static void sent(bool ok)
+// The frame that was with the radio task: done. busy: the channel stayed busy
+static void sent(bool ok, bool busy)
 {
     aprs.waiting = false;
     aprs.dmr_waiting = false;
+    if (ok) {
+        notice(TEXT_NOTICE_SENT, UI_NOTICE_OK, NOTICE_RESULT_MS);
+    }
     if (!aprs.waiting_auto) {
         if (!ok) {
             sound_play(SOUND_ERROR); // the radio task could not send it: busy channel, Rx only, out of band
+            notice(busy ? TEXT_NOTICE_BUSY : TEXT_NOTICE_NOT_SENT, UI_NOTICE_ERROR, NOTICE_RESULT_MS);
         }
         return;
     }
-    if (!ok) {
+    if (!ok) { // tried again at each check while the channel is busy: no notice each time
         aprs.trigger = true; // again at the next check (the main firmware's busy channel)
         return;
     }
@@ -1031,15 +1045,17 @@ void aprs_tick(void)
 
     if ((aprs.waiting || aprs.dmr_waiting) && afsk_done && dmr_done) {
         bool ok = true;
+        bool busy = false;
 
         if (aprs.waiting) {
             ok = ok && (radio_result(aprs.request) == RADIO_SENT);
+            busy = (radio_result(aprs.request) == RADIO_BUSY);
         }
         if (aprs.dmr_waiting) {
             aprs.dmr_ok = (radio_result(aprs.dmr_request) == RADIO_SENT);
             ok = ok && aprs.dmr_ok;
         }
-        sent(ok);
+        sent(ok, busy);
     }
 
     if (toggle_asked) {
@@ -1059,12 +1075,14 @@ void aprs_tick(void)
         send_asked = false;
         if ((aprs.s.mode == MODE_OFF) || !send_beacon(true)) {
             sound_play(SOUND_ERROR);
+            notice(position_valid() ? TEXT_NOTICE_NOT_SENT : TEXT_UI_NO_FIX, UI_NOTICE_ERROR, NOTICE_RESULT_MS);
         }
     }
     if (satellite_asked) {
         satellite_asked = false;
         if (!send_satellite_beacon()) {
             sound_play(SOUND_ERROR);
+            notice(TEXT_NOTICE_NOT_SENT, UI_NOTICE_ERROR, NOTICE_RESULT_MS);
         }
     }
     if (ptt_asked && !radio_is_transmitting()) {

@@ -62,7 +62,8 @@
 #include "font_cjk.h"
 
 #define CPS_REQUEST_IDLE_MS   5   // a request without a known length is complete after this silence
-#define CPS_REQUEST_LOST_MS   200 // a debug request with a known length that stopped short is handled anyway
+#define CPS_REQUEST_LOST_MS   200 // a request with a known length that stopped short: a debug one is handled anyway, any
+                                  // other dropped (refused), else it would take the next request's bytes as its own
 #define CPS_LINK_BUSY_MS      1000
 #define CPS_ACCESS_FLASH      1 // the window of the data flash (flash.h), as the CPS sees it
 #define CPS_ACCESS_EEPROM     2 // the same window on the DM-32 (the emulated EEPROM is at its start)
@@ -158,7 +159,11 @@ static uint32_t expected_length(uint32_t received)
     }
     if (((request[0] == 'X') || (request[0] == 'W')) && (received >= 8) &&
         ((request[1] == CPS_WRITE_DATA) || (request[1] == CPS_WRITE_EEPROM))) {
-        return 8 + ((request[6] << 8) | request[7]);
+        uint32_t length = 8 + ((request[6] << 8) | request[7]);
+
+        // more than the buffer holds (a length byte garbled on the cable): taken now and refused (handle_write()),
+        // else it never completes and the link stays deaf until a power cycle (#125)
+        return (length > CABLE_LINK_BUFFER_SIZE) ? 8 : length;
     }
     if ((request[0] == 'D') && (received >= 2) && (request[1] == 'U')) {
         return 6; // 'D' 'U' "UPD!": the firmware update
@@ -170,6 +175,7 @@ static uint32_t expected_length(uint32_t received)
             case 'q': return 2; // the state
             case 'a': return 6; // a test APRS beacon
             case 'd': return 5; // a test data burst
+            case 'n': return 9; // a notice
             default: break;
         }
     }
@@ -317,7 +323,7 @@ static uint32_t handle_write(void)
             uint32_t length = (request[6] << 8) | request[7];
 
             if (length > (CABLE_LINK_BUFFER_SIZE - 8)) {
-                length = CABLE_LINK_BUFFER_SIZE - 8;
+                break; // a garbled length (expected_length()): refused, the CPS starts the sector again
             }
             cps_screen_transfer(CPS_ACCESS_FLASH, address, length, true);
             if (write_sector == SECTOR_IGNORED) {
@@ -482,6 +488,11 @@ static void speed_check(void)
                  (fast_confirmed && ((now - used_ms) >= SPEED_IDLE_MS)))) {
         fast = false;
         uart0_set_divisor(uart0_divisor(115200));
+        if (!handling) { // a request cut short at the old speed: not completed by the bytes at the new one
+            handling = true;
+            request_length = 0;
+            handling = false;
+        }
     }
 }
 
@@ -506,6 +517,16 @@ void cable_link_handle_pending(bool from_monitor)
 
     uint32_t expected = expected_length(received);
 
+    if ((expected != 0) && (received < expected) && (request[0] != 'D') && silent_for(CPS_REQUEST_LOST_MS)) {
+        // bytes lost on the cable (#125): dropped and refused; a sector being written stays prepared (the CPS sends
+        // the same 'X' 2 again, and checks the sector's CRC at the end)
+        handling = true;
+        reply[0] = '-';
+        uart0_write((const uint8_t *)reply, 1);
+        request_length = 0;
+        handling = false;
+        return;
+    }
     if (!(((expected != 0) && (received >= expected)) ||
           ((expected == 0) && silent_for(CPS_REQUEST_IDLE_MS)) ||
           ((request[0] == 'D') && silent_for(CPS_REQUEST_LOST_MS)))) {

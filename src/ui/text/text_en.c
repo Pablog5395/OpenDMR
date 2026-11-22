@@ -447,4 +447,8 @@ const char *const text_en[TEXT_COUNT] = {
     [TEXT_THEME_HIGH_CONTRAST] = "High contrast",
     [TEXT_THEME_NIGHT_AMBER] = "Night amber",
     [TEXT_THEME_SUNLIGHT] = "Sunlight",
+    [TEXT_NOTICE_SENDING] = "Sending...",
+    [TEXT_NOTICE_SENT] = "Sent",
+    [TEXT_NOTICE_BUSY] = "Channel busy, not sent",
+    [TEXT_NOTICE_NOT_SENT] = "Not sent",
 };

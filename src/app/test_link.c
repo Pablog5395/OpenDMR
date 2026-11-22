@@ -292,6 +292,11 @@ uint32_t test_link_command(volatile uint8_t *request, volatile uint8_t *reply, u
         case 'd': // a test data burst: ms (16 bits, big endian), fail
             reply[2] = test_data_send(((uint32_t)request[2] << 8) | request[3], request[4] != 0) ? 1 : 0;
             return 3;
+        case 'n': // a notice (ui_notify()): line1, line2 (16 bits each, big endian), kind, 100 ms steps (16 bits)
+            reply[2] = ui_notify((text_id_t)((request[2] << 8) | request[3]), (text_id_t)((request[4] << 8) | request[5]),
+                                 (ui_notice_kind_t)request[6], 100u * (((uint32_t)request[7] << 8) | request[8]))
+                           ? 1 : 0;
+            return 3;
         default:
             return 0; // not one of these
     }

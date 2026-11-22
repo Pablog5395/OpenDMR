@@ -35,6 +35,7 @@
 | `tools/debug/fw_update.py`、`tools/debug/updater/updater.bin` | 平时升级用（电台跑着 OpenDMR 时） |
 | `tools/debug/pin_wipe.py` | 忘了开机 / 锁屏密码时清除密码（关机、运行、30 秒内开机；码表和设置保留） |
 | `tools/ids/id_db.py` | 生成并写入带地址的 DMR ID 数据库（使用说明书第 13 节） |
+| `tools/common/cable_speed.py` | 上面这些工具共用的数据线速率设置（`--baud`） |
 | `docs/manual.md`、`docs/manual.en.md`、`docs/manual/` | 使用说明书 |
 | `opendmr-cps.html` | 我们的写频软件（OpenDMR CPS），Chrome / Edge 双击打开，见 [5](#5-写码表) |
 | `docs/installation.md`、`docs/installation.en.md`、`README.md`、`README.en.md` | 本手册、项目说明 |
@@ -186,6 +187,8 @@ py tools\debug\fw_update.py opendmr.bin --port COM6
 ```
 
 只写变了的扇区（全部重写约 35 秒），电台屏幕显示进度，写完自动重启。设置和码表都保留。
+
+数据线速率默认自动选择（这个端口上次能用的最快速率）。数据线不稳定时可以指定一个速率，例如 `--baud 250000`；`--baud 115200` 最慢最稳。`id_db.py write`、`tools/lang/lang_tool.py` 也有同样的 `--baud`。
 
 从 0.7.0 或更早的版本升级上来：语言和字库换了新格式，升级后界面是英文、中文名字显示不出来，按第 5 节「界面语言」用 CPS
 写一次。以后的版本语言有变化时也一样，电台里相同的不会重写。

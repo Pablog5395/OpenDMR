@@ -104,6 +104,8 @@ void tx_target_get(const codeplug_channel_t *channel, tx_target_t *target)
         target->overridden = true;
         if ((index != 0) && codeplug_get_contact(index, &contact)) {
             codeplug_text_name(contact.name, CODEPLUG_NAME_LENGTH, target->name, sizeof(target->name));
+        } else if (!pc && (number == CODEPLUG_CONTACT_ID_MAX)) {
+            snprintf(target->name, sizeof(target->name), "%s", text(TEXT_ALL_CALL)); // the number entry's all call
         } else {
             snprintf(target->name, sizeof(target->name), "%s %lu", text(pc ? TEXT_PC : TEXT_TG),
                      (unsigned long)number);

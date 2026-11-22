@@ -50,6 +50,7 @@ FILES = {
     'tools/debug/updater/updater.bin': 'tools/debug/updater/updater.bin',
     'tools/debug/pin_wipe.py': 'tools/debug/pin_wipe.py',  # a forgotten PIN (manual, the PIN section)
     'tools/ids/id_db.py': 'tools/ids/id_db.py',  # the DMR ID database with places (manual, 13)
+    'tools/common/cable_speed.py': 'tools/common/cable_speed.py',  # the cable's speed (lang_tool, id_db)
     'licences/OFL-RobotoCondensed.txt': 'tools/fonts/ttf/OFL-RobotoCondensed.txt',  # the fonts are OFL: their
     'licences/OFL-NotoSansSC.txt': 'tools/fonts/ttf/OFL-NotoSansSC.txt',            # licence goes with them
     'LICENSE': 'LICENSE',

@@ -65,6 +65,15 @@ static const int16_t *key_beep = SOUND_KEY; // the next key beep (nextKeyBeepMel
 static bool timer_running = false;
 static uint32_t timer_due_ms;
 
+static struct {
+    bool showing;
+    text_id_t line1;
+    text_id_t line2;
+    ui_notice_kind_t kind;
+    uint32_t due_ms;
+    int swallowed_key; // the key that closed it: its long, repeat and release are taken too; -1: none
+} notice = {.swallowed_key = -1};
+
 int ui_key_digit(uint8_t key)
 {
     // The keypad bits aren't in digit order (keys.h)
@@ -216,11 +225,59 @@ void ui_timer_stop(void)
     timer_running = false;
 }
 
+bool ui_notify(text_id_t line1, text_id_t line2, ui_notice_kind_t kind, uint32_t ms)
+{
+    ui_event_t ev = {.type = UI_EVENT_NOTICE, .key = (uint8_t)kind, .what = (uint16_t)line1, .steps = (int16_t)line2};
+
+    ms = (ms > UI_NOTICE_MS_MAX) ? UI_NOTICE_MS_MAX : ms;
+    ev.modifiers = (uint8_t)((ms + 99) / 100);
+    return ui_post(&ev);
+}
+
+// The notice's own events (true: taken): it shows one, or the user's key, knob step or PTT closes it (the PTT goes on
+// to the screen, the others are taken with the rest of that press)
+static bool notice_event(const ui_event_t *ev)
+{
+    bool key = (ev->type == UI_EVENT_KEY_PRESS) || (ev->type == UI_EVENT_KEY_LONG) ||
+               (ev->type == UI_EVENT_KEY_REPEAT) || (ev->type == UI_EVENT_KEY_RELEASE);
+
+    if (ev->type == UI_EVENT_NOTICE) {
+        notice.showing = true;
+        notice.line1 = (text_id_t)ev->what;
+        notice.line2 = (text_id_t)(uint16_t)ev->steps; // TEXT_COUNT and up: none
+        notice.kind = (ui_notice_kind_t)ev->key;
+        notice.due_ms = systime_get_ms() + (ev->modifiers * 100u);
+        redraw = true;
+        return true;
+    }
+    if (key && (ev->key == notice.swallowed_key)) {
+        if (ev->type == UI_EVENT_KEY_RELEASE) {
+            notice.swallowed_key = -1;
+        }
+        return true;
+    }
+    if (notice.showing && ((ev->type == UI_EVENT_KEY_PRESS) || (ev->type == UI_EVENT_ROTARY))) {
+        notice.showing = false;
+        redraw = true;
+        if (ev->type == UI_EVENT_ROTARY) {
+            return true;
+        }
+        if ((ev->key != UI_KEY_PTT) && (ev->what == 0)) { // not the VOX's PTT either
+            notice.swallowed_key = ev->key;
+            return true;
+        }
+    }
+    return false;
+}
+
 static void draw(void)
 {
     fb_clear(theme_colour(THEME_COLOUR_BACKGROUND));
     if (top() && top()->draw) {
         top()->draw();
+    }
+    if (notice.showing) {
+        ui_notice_draw(notice.line1, notice.line2, notice.kind);
     }
     fb_flush();
 }
@@ -252,19 +309,34 @@ static void ui_task(void *arg)
         }
 
         TickType_t wait = portMAX_DELAY;
+        uint32_t now = systime_get_ms();
 
         if (timer_running) {
-            int32_t left = (int32_t)(timer_due_ms - systime_get_ms());
+            int32_t left = (int32_t)(timer_due_ms - now);
 
             wait = (left > 0) ? pdMS_TO_TICKS(left) : 0;
         }
+        if (notice.showing) {
+            int32_t left = (int32_t)(notice.due_ms - now);
+            TickType_t until = (left > 0) ? pdMS_TO_TICKS(left) : 0;
+
+            wait = (until < wait) ? until : wait;
+        }
 
         if (xQueueReceive(queue, &ev, wait) != pdTRUE) {
-            if (!timer_running || ((int32_t)(timer_due_ms - systime_get_ms()) > 0)) {
+            now = systime_get_ms();
+            if (notice.showing && ((int32_t)(notice.due_ms - now) <= 0)) {
+                notice.showing = false; // its time is up
+                redraw = true;
+            }
+            if (!timer_running || ((int32_t)(timer_due_ms - now) > 0)) {
                 continue;
             }
             timer_running = false;
             ev.type = UI_EVENT_TIMER;
+        }
+        if (notice_event(&ev)) {
+            continue;
         }
 
         // The event changes the screens' data, or the screens: then the radio on the channel they make now (once,

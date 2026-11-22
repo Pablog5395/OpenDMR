@@ -4,7 +4,7 @@ the programming cable.
 
   py tools/ids/id_db.py build [--csv user.csv] [--countries "Canada,United States"] [-o ids.bin]
   py tools/ids/id_db.py check [ids.bin] [--csv user.csv]
-  py tools/ids/id_db.py write COM6 [ids.bin]
+  py tools/ids/id_db.py write COM6 [ids.bin] [--baud auto|375000]
   py tools/ids/id_db.py countries [--csv user.csv]
 
 build downloads https://radioid.net/static/user.csv (or takes --csv) and packs it; --countries keeps those countries
@@ -52,6 +52,8 @@ import zlib
 
 URL = 'https://radioid.net/static/user.csv'
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, '..', 'common'))
+import cable_speed  # noqa: E402
 WINDOW_SIZE = 0x900000           # src/drivers/flash.h FLASH_WINDOW_SIZE
 HEADER_AT = WINDOW_SIZE - 0x1000  # src/services/dmr_ids.c NEW_HEADER
 MAX_SIZE = 0x400000              # below: the OpenGD77 database
@@ -60,7 +62,6 @@ BLOCK = 0x1000
 CHUNK_WRITE = 1024               # bytes of an 'X' 2 (the radio's request buffer: 1536)
 UART_CLOCK = 84000000 // 16      # the radio's UART: baud = UART_CLOCK / divisor
 SPEED_DIVISORS = (7, 14, 21)     # 750000, 375000, 250000 baud (12 MHz / n for the CH340 too)
-SPEED_BACK_S = 0.5               # an unconfirmed speed: the radio is back at 115200 after 0.4 s
 CHUNK = 16
 SUFFIX_BITS = [0, 5, 10, 15, 19]
 FIELDS = ('delta', 'call', 'name', 'place', 'other')
@@ -339,7 +340,7 @@ def build(rows):
     return base, body, header, stats
 
 
-def write(port_name, path):
+def write(port_name, path, speed='auto'):
     import serial
     data = open(path, 'rb').read()
     header, body = data[:SECTOR], data[SECTOR:]
@@ -365,34 +366,22 @@ def write(port_name, path):
             time.sleep(0.1)
         return None
 
-    def speed_up():
-        """The fastest speed both ends keep ('D' 'S', confirmed by 'D' 'Y'; the radio goes back by itself)"""
-        for divisor in SPEED_DIVISORS:
-            baud = UART_CLOCK // divisor
-            if not request(b'DS' + struct.pack('>H', divisor), b'DS\x01'):
-                return 115200  # an older firmware: as fast as it goes
-            time.sleep(0.02)
-            port.baudrate = baud
-            time.sleep(0.05)
-            if request(b'DY', b'DY') and all(sector_crc(HEADER_AT) is not None for _ in range(4)):
-                return baud
-            port.baudrate = 115200  # the radio goes back by itself: after 0.4 s (a firmware before: 2 s)
-            for wait in (SPEED_BACK_S, 2.0):
-                time.sleep(wait)
-                if sector_crc(HEADER_AT) is not None:
-                    break
-        return 115200
+    def check():
+        return sector_crc(HEADER_AT) is not None
 
     def put_sector(address, sector):
         """'X' 1, 2, 3 as the CPS writes a sector, then its CRC read back; again when it is not there"""
         want = zlib.crc32(sector)
-        for _ in range(4):
+        for attempt in range(6):
             if (request(b'X\x01' + struct.pack('>I', address // SECTOR)[1:], b'X\x01') and
                     all(request(b'X\x02' + struct.pack('>IH', address + at, len(sector[at:at + CHUNK_WRITE])) +
                                 sector[at:at + CHUNK_WRITE], b'X\x02') for at in range(0, SECTOR, CHUNK_WRITE)) and
                     request(b'X\x03', b'X\x03') and sector_crc(address) == want):
                 return
-            time.sleep(0.2)
+            time.sleep(0.3)  # a request cut short: the radio drops it after 0.2 s
+            if attempt % 2 == 1 and speed == 'auto' and port.baudrate != cable_speed.BAUD:  # twice: slower
+                print('\n%d baud' % cable_speed.slower(port, speed, check))
+        cable_speed.speed_down(port)
         sys.exit('\nsector 0x%06X could not be written' % address)
 
     def find():
@@ -408,9 +397,8 @@ def write(port_name, path):
         sys.exit('the radio does not answer (locked? another program on %s?)' % port_name)
 
     start = time.time()
-    baud = find()
-    if baud == 115200:
-        baud = speed_up()
+    find()
+    baud = cable_speed.start(port, speed, check)
     count = len(body) // SECTOR
     print('%d baud; comparing %d sectors' % (baud, count + 1))
     changed = [i for i in range(count)
@@ -427,6 +415,7 @@ def write(port_name, path):
         put_sector(HEADER_AT, header)
     port.write(b'C\x05')  # the CPS's close: the radio's CPS screen goes (cps_screen.c)
     port.read(1)
+    cable_speed.speed_down(port)
     print('\n%d sectors written in %.0f s' % (len(changed), time.time() - start))
 
 
@@ -576,6 +565,7 @@ def main():
     w = sub.add_parser('write', help='write a packed database to the radio')
     w.add_argument('port', help='the programming cable, e.g. COM6')
     w.add_argument('file', nargs='?', default='ids.bin')
+    cable_speed.add_argument(w)
     args = parser.parse_args()
 
     if args.command == 'build':
@@ -603,7 +593,7 @@ def main():
         for x in bad[:5]:
             print('  ', x, '->', reader.lookup(x[0]))
     else:
-        write(args.port, args.file)
+        write(args.port, args.file, args.baud)
 
 
 if __name__ == '__main__':

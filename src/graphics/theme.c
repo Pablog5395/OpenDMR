@@ -245,6 +245,11 @@ void theme_init(void)
     theme_set(current);
 }
 
+bool theme_dark(void)
+{
+    return is_dark(current);
+}
+
 uint16_t theme_colour(theme_colour_t colour)
 {
     return palette[(colour < THEME_COLOUR_COUNT) ? colour : THEME_COLOUR_TEXT];

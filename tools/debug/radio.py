@@ -61,6 +61,13 @@ class Radio:
         for n in names:
             self.key(n, settle=settle)
 
+    def notice(self, line1, line2=0xFFFF, kind=0, ms=3000):
+        """A notice bubble (ui_notify()): text ids (src/ui/text/text.h order), kind 0 info, 1 tx, 2 ok, 3 error"""
+        steps = min(ms // 100, 0xFFFF)
+        self._request(b'Dn' + bytes([line1 >> 8, line1 & 0xFF, line2 >> 8, line2 & 0xFF, kind, steps >> 8, steps & 0xFF]),
+                      b'Dn')
+        self.port.read(1)
+
     def ptt(self, on):
         self.event('ptt', PRESS if on else RELEASE)
 

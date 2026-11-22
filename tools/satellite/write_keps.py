@@ -5,6 +5,7 @@ loadKeps() in menuSatelliteScreen.c. Over the programming cable, the radio runni
 
   py tools/satellite/write_keps.py COM6                      TLEs from celestrak.org, frequencies of the CPS
   py tools/satellite/write_keps.py COM6 --tle amateur.txt    TLEs from a file (3 lines per satellite)
+  --baud auto|375000 ...                                     the cable's speed (tools/common/cable_speed.py)
 
 Frequencies: satellites.txt of the OpenGD77 CPS (default: its install folder). The keps get old: write them again
 every week or two (a few minutes off for the ISS after a month).
@@ -19,6 +20,9 @@ import urllib.request
 
 import serial
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'common'))
+import cable_speed  # noqa: E402
+
 CPS_SATELLITES = r'C:\Program Files (x86)\OpenGD77CPS\satellites.txt'
 CUSTOM_DATA = 0x20000            # logical flash address of the "OpenGD77" custom data (FLASH_ADDRESS_OFFSET + 0)
 BLOCK_TYPE = 3                   # CODEPLUG_CUSTOM_DATA_TYPE_SATELLITE_TLE
@@ -30,9 +34,27 @@ TLE_CHARS = '0123456789. +-*'    # satellite.c DECOMPRESSION_LOOKUP
 
 
 class Radio:
-    def __init__(self, port):
-        self.p = serial.Serial(port, 115200, timeout=0.5)
+    def __init__(self, port, baud='auto'):
+        self.p = serial.Serial(port, cable_speed.BAUD, timeout=0.5)
+        self.baud = baud
+        self.fast = False  # auto: faster for the writes only; a fixed speed: for everything
         time.sleep(0.2)
+        if baud != 'auto':
+            print('link at %d baud' % cable_speed.start(self.p, baud, self.check))
+            self.fast = True
+
+    def check(self):
+        """A short request answered ('D' 'K', the CRC of a sector of the window): the speed works"""
+        self.p.reset_input_buffer()
+        self.p.write(b'DK' + struct.pack('>I', CUSTOM_DATA))
+        return self.p.read(6)[:2] == b'DK'
+
+    def close(self):
+        """The radio back at 115200"""
+        try:
+            cable_speed.speed_down(self.p)
+        finally:
+            self.p.close()
 
     def _request(self, data, length, header):
         for _ in range(3):
@@ -57,6 +79,9 @@ class Radio:
         return out
 
     def write_sector(self, sector, data):
+        if not self.fast:
+            self.fast = True
+            print('link at %d baud' % cable_speed.start(self.p, self.baud, self.check))
         self._request(b'X\x01' + struct.pack('>I', sector)[1:], 2, b'X\x01')
         for i in range(0, SECTOR, 1024):
             self._request(b'X\x02' + struct.pack('>IH', sector * SECTOR + i, 1024) + data[i:i + 1024], 2, b'X\x02')
@@ -125,6 +150,7 @@ def main():
     ap.add_argument('port')
     ap.add_argument('--frequencies', default=CPS_SATELLITES)
     ap.add_argument('--tle', help='TLE file instead of celestrak.org')
+    cable_speed.add_argument(ap)
     args = ap.parse_args()
 
     sats = load_frequencies(args.frequencies)
@@ -144,7 +170,14 @@ def main():
         print('%-8s epoch 20%s day %s' % (s['Name'], line1[18:20], line1[20:32].strip()))
     body = body.ljust(BLOCK_LEN, b'\0')
 
-    radio = Radio(args.port)
+    radio = Radio(args.port, args.baud)
+    try:
+        write(radio, body, count)
+    finally:
+        radio.close()
+
+
+def write(radio, body, count):
     region = radio.read(CUSTOM_DATA, 0x3000)
     if region[:8] != b'OpenGD77':
         sys.exit('no OpenGD77 custom data header at 0x%X: write a codeplug with the CPS first' % CUSTOM_DATA)

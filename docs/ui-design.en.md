@@ -228,7 +228,7 @@ Dual watch, add to dual watch, channel ↔ VFO, filters, DMR filter; in the VFO 
 | Radio info | ![](manual/en/radio-info.png) | Battery, time, date, location, battery graph; time/date/location with the digit entry widget |
 | RSSI | ![](manual/en/rssi.png) | dBm (large), S meter, frequency and mode |
 | Last heard | ![](manual/en/last-heard.png) | Two lines per call: ID/callsign, talk group and slot, how long ago |
-| Number entry | ![](manual/en/number-entry.png) | `#` cycles TG / PC / contact / own ID; OK saves the own ID for good |
+| Number entry | ![](manual/en/number-entry.png) | `#` cycles TG / PC / All Call / contact |
 | Firmware info | ![](manual/en/firmware-info.png) | Version, build time, chip, model, credits |
 | GPS | ![](manual/en/gps.png) | Sky plot (GPS blue, BeiDou amber, filled when received), position, satellites, height, UTC and local time; OK switches the GPS |
 | Satellites | ![](manual/en/satellite.png) | Asks for the location first when none is set; then the passes list and the pass (polar track, Doppler corrected frequencies) |
@@ -241,6 +241,12 @@ Dual watch, add to dual watch, channel ↔ VFO, filters, DMR filter; in the VFO 
 - **Screens describe what the screen is now**: each redraw draws the whole screen into the frame buffer;
   `drivers/framebuffer.c` (240x320, 4 bits a pixel = a palette index) sends only the rectangles that changed, as
   every LCD transfer is heard as a tick in the FM audio.
+- **Notices** (`ui_notify()`, `src/ui/notice.c`, #105): a bubble over whatever screen is on top, for what the user
+  should know at once (an APRS beacon going out and its result). Any task posts one through the event queue: two
+  texts, a kind (info, transmit, done, failed: its icon) and how long it shows. The UI task draws it after
+  the screen and closes it when its time is up or at the next key, knob step or PTT; that press only closes it (the
+  PTT still transmits). A solid card with round corners in the colour of the menus' selected row, the icon and the
+  text in the selected row's text colour, a shadow under it on a light theme.
 - **Menus and settings are tables** (`src/ui/list.c`, `ui_list_t`): label, icon, type (screen, submenu, bit, choice,
   number, custom), target. Left/right and the knob change values; the menu key opens screens and submenus only, and
   the bottom bar says `Select` only where it does (`item_selectable()`).

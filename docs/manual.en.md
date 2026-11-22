@@ -338,9 +338,9 @@ Two paths watched at once, each **any channel or VFO A / B** (both may be the sa
 
 <img src="manual/en/number-entry.png" alt="Number entry">
 
-- **#** on a main screen. **#** cycles TG → PC → contact → own ID; ▲ ▼ add / subtract 1.
-- The menu key takes it: a TG or PC replaces the channel's contact for now; a contact also brings its timeslot;
-  **the own ID is written into the codeplug** (kept after power off).
+- **#** on a main screen. **#** cycles TG → PC → All Call → contact; ▲ ▼ add / subtract 1.
+- The menu key takes it: a TG, PC or the All Call (16777215, nothing to type) replaces the channel's contact for
+  now; a contact also brings its timeslot. Your own DMR ID is set in Settings (User DMR ID), not here.
 - In FM # is the DTMF entry: digits, * and # type the code, ◀ deletes, the menu key sends it.
 
 ### Contact list (SK2 + #)
@@ -565,6 +565,11 @@ Read only: the factory calibration table (oscillator tune, receive level, power 
 - Location: the fixed location of the channel's APRS configuration, or the GPS;
 - Interval, Decay, Compress; for Smart: Slow / Fast Rate, Low / Hi Speed, Turn Angle / Slope / Time.
 - SK1 + 1 switches APRS on / off at any time. Beacons are sent as AFSK (1200 baud) in FM.
+- A bubble in the middle of the screen, over any screen, shows the beacon: a manual one (SK1 + 3, the menu's Send
+  now), the PTT mode's and the satellite screen's show "APRS Sending..." and then "APRS Sent", or "Channel busy, not
+  sent", "Not sent", "No fix"; Auto and Smart beacons show only "APRS Sent" (a busy channel is tried again and again,
+  not shown each time). The bubble closes after a few seconds or at any key (that press only closes it; the PTT
+  still transmits).
 - The APRS configuration's "Beacon Tx frequency" (in the CPS) is the frequency the beacon is sent on, in every mode but
   PTT (the beacon goes out on the channel after each transmission). A channel opts in by naming a configuration: one
   without it never beacons, and a receive-only channel never beacons either. With no beacon frequency, an FM channel
@@ -663,7 +668,7 @@ py tools\ids\id_db.py write COM6             (the radio on, the cable in)
 ```
 
 `build --countries "Canada,United States"` keeps only those countries (smaller, written faster). The first write takes
-about 3 minutes (the cable goes up to 750 000 baud); writing a newer list again only sends the parts that changed.
+about 3 minutes (the cable goes up to 750 000 baud; `--baud 250000` or so for a cable that isn't reliable); writing a newer list again only sends the parts that changed.
 While it is there it is used instead of the CPS's database; RadioID's list has no surnames.
 
 ### DMR hotspot (MMDVM)

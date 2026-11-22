@@ -32,6 +32,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "codeplug.h"
+#include "text.h"
 
 // The UI framework (docs/ui-design.md 6): events from the input service and the other services go into a queue; the
 // UI task gives them to the screen on top of the stack and draws the whole screen into the frame buffer when the
@@ -77,6 +78,7 @@ typedef enum {
     UI_EVENT_ROTARY,      // steps: + clockwise
     UI_EVENT_DATA,        // what: UI_DATA_x changed
     UI_EVENT_TIMER,       // the timer of the screen (ui_timer_start())
+    UI_EVENT_NOTICE,      // ui_notify(): taken by the UI task, the screens don't see it
 } ui_event_type_t;
 
 // What changed, for UI_EVENT_DATA
@@ -137,6 +139,22 @@ void *ui_arg(void);      // the arg the screen on top was pushed with
 int32_t *ui_state(void); // a value kept for the screen on top, 0 when pushed (e.g. its selected row)
 
 void ui_timer_start(uint32_t ms); // one UI_EVENT_TIMER for the screen on top, after ms
+
+// A notice: a bubble in the middle of whatever screen is on top, for what the user should know at once (an APRS
+// beacon going out, its result). It closes by itself after ms, or at the user's next key, knob step or PTT: that
+// press only closes it (the PTT still transmits). A new one replaces the one showing. From any task (it goes
+// through the event queue); line2 TEXT_COUNT: one line.
+typedef enum {
+    UI_NOTICE_INFO,  // an i
+    UI_NOTICE_TX,    // an antenna: something goes on the air
+    UI_NOTICE_OK,    // a tick: done
+    UI_NOTICE_ERROR, // a cross: did not happen
+} ui_notice_kind_t;
+
+#define UI_NOTICE_MS_MAX 25500 // the longest (100 ms steps in the event)
+
+bool ui_notify(text_id_t line1, text_id_t line2, ui_notice_kind_t kind, uint32_t ms);
+void ui_notice_draw(text_id_t line1, text_id_t line2, ui_notice_kind_t kind); // notice.c, by the UI task
 void ui_key_beep(const int16_t *melody); // from handle(): the beep of this key instead of the key beep; NULL: none
 void ui_timer_stop(void);
 

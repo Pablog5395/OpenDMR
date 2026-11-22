@@ -78,6 +78,7 @@ void theme_name(uint8_t id, char *buffer, uint32_t size); // in the language sho
 uint8_t theme_first(bool dark);               // the first dark (or light) theme of the menu
 void theme_set(uint8_t id);                   // its palette: the whole screen changes at once; not there: the first one
 uint8_t theme_current(void);                  // its id
+bool theme_dark(void);                        // the theme in use is a dark one
 uint16_t theme_colour(theme_colour_t colour); // native colour format
 // The WCAG contrast of two colours of the theme in use, 1 - 21 (an icon on a fill shows from about 2.5)
 float theme_contrast(theme_colour_t a, theme_colour_t b);

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Firmware update over the programming cable, without the bootloader's upgrade mode (PTT + SK1).
 
-  py tools/debug/fw_update.py [--port COM6] [src/build/opendmr.bin]
+  py tools/debug/fw_update.py [--port COM6] [--baud auto|375000] [src/build/opendmr.bin]
 
 The running firmware (src/, with services/serial_update.c) gets the debug request 'D' 'U' "UPD!": it turns
 the receiver off and stops everything (keys, knob, PTT, power switch: the interrupts are off), then its loader takes
@@ -141,15 +141,20 @@ class Updater:
         self.p.baudrate = 115200
         return None
 
-    def speed_up(self, port_name=None):
+    def speed_up(self, port_name=None, divisors=None):
         """The fastest speed the cable takes (the update program goes back to the old one if 'H' doesn't come). The
-        one that worked on this port last time is tried first, the faster ones that failed there not again."""
-        known = remembered_speeds().get(port_name)
-        divisors = FAST_DIVISORS if known is None else tuple(d for d in FAST_DIVISORS if d >= known)
+        one that worked on this port last time is tried first, the faster ones that failed there not again.
+        divisors: only these (--baud with a number: that one), nothing remembered."""
+        given = divisors is not None
+        if not given:
+            known = remembered_speeds().get(port_name)
+            divisors = FAST_DIVISORS if known is None else tuple(d for d in FAST_DIVISORS if d >= known)
+        else:
+            port_name = None
         for divisor in divisors:
             if self.p.baudrate == UART_CLOCK // divisor:
                 return
-            if self.p.baudrate > UART_CLOCK // divisor:
+            if self.p.baudrate > UART_CLOCK // divisor and not given:  # auto: already faster (a run cut short)
                 continue
             old = self.p.baudrate
             self.p.reset_input_buffer()
@@ -253,7 +258,16 @@ def main():
     ap.add_argument('bin', nargs='?', default=DEFAULT_BIN, help='opendmr.bin (not the BFUV32 file)')
     ap.add_argument('--port', default='COM6')
     ap.add_argument('--all', action='store_true', help='write every sector, the same ones too')
+    ap.add_argument('--baud', default='auto',
+                    help='auto (default: the fastest the cable takes, remembered per port) or a speed, e.g. 375000')
     args = ap.parse_args()
+    if args.baud != 'auto':
+        try:
+            divisor = (UART_CLOCK + (int(args.baud) // 2)) // int(args.baud)
+        except ValueError:
+            sys.exit('--baud: auto or a number')
+        if not 4 <= divisor <= 46:  # 1.3 Mbaud ... 115200
+            sys.exit('--baud %s: the radio takes 115200 to %d' % (args.baud, UART_CLOCK // 4))
 
     image = open(args.bin, 'rb').read()
     if image[:9] == b'BFUV32-V2':
@@ -268,7 +282,13 @@ def main():
     u = Updater(args.port)
     t0 = time.time()
     u.start()
-    u.speed_up(args.port)
+    if args.baud == 'auto':
+        u.speed_up(args.port)
+    elif divisor != 46:
+        u.speed_up(divisors=(divisor,))
+        if u.p.baudrate != UART_CLOCK // divisor:
+            sys.exit('the cable did not take %s baud: the radio stays in the update at %d, run again (or --baud auto)'
+                     % (args.baud, u.p.baudrate))
     print('the radio is in the update at %d baud (%d sectors, %s)' % (u.p.baudrate, len(sectors),
                                                                        os.path.basename(args.bin)))
     screen = Screen(u.p)
