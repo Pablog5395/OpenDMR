@@ -53,13 +53,11 @@ extern const int16_t SOUND_DMR_TX_STOP[];
 extern const int16_t SOUND_1750[]; // heard while sending 1750 Hz (stopped with sound_play(NULL))
 
 // Sound styles: alternative melodies for the call and PTT beeps, synthesized like all the others (no samples). The
-// original beeps are kept as Classic; Chirp is a short double-beep alert like the old digital radios, and Custom plays
-// the notes the user edits in the menu. No brand names or recorded audio are used. Key, error and boot sounds never
-// change.
+// original beeps are kept as Classic; Chirp is a short double-beep alert like the old digital radios. Key, error and
+// boot sounds never change. The editable notes and their menu are gone.
 enum {
     SOUND_STYLE_CLASSIC,
     SOUND_STYLE_CHIRP,
-    SOUND_STYLE_CUSTOM,
     SOUND_STYLES
 };
 
@@ -75,30 +73,13 @@ enum {
 
 extern uint8_t sound_style; // SOUND_STYLE_x, loaded from the codeplug at boot
 
-#define SOUND_CUSTOM_NOTES    3   // notes in the custom chirp
-#define SOUND_CUSTOM_HZ_MAX   4000
-#define SOUND_CUSTOM_HZ_STEP  100
-#define SOUND_CUSTOM_MS_MIN   20
-#define SOUND_CUSTOM_MS_MAX   400
-#define SOUND_CUSTOM_MS_STEP  20
-
-typedef struct {
-    uint16_t hz[SOUND_CUSTOM_NOTES]; // 0: skip that note
-    uint16_t ms[SOUND_CUSTOM_NOTES];
-} sound_custom_t;
-
-extern sound_custom_t sound_custom;
-
 const int16_t *sound_event_melody(uint8_t event); // the current style's melody, never NULL
 void sound_event_play(uint8_t event);             // play that melody
 void sound_style_set(uint8_t style);              // change it and save it in the codeplug
-void sound_custom_changed(void);                  // a note changed: rebuild the melodies
-void sound_custom_save(void);                     // write the notes to the codeplug
-void sound_custom_preview(void);                  // hear the custom chirp
 
 // DMR over-the-air chirps: native AMBE tone frames (TIA-102.BABA-1), so any DMR radio hears a clean tone instead of a
-// sine pushed through the speech encoder. The air pattern follows the style (Classic: rising three-note alert, Chirp:
-// single high beep, Custom: the edited notes) but the speaker's own beeps are unchanged. Off by default.
+// sine pushed through the speech encoder. The pattern has its own menu row, separate from the speaker's sound style.
+// Off by default.
 enum {
     SOUND_DMR_AIR_OFF,
     SOUND_DMR_AIR_START,
@@ -108,11 +89,26 @@ enum {
 };
 extern uint8_t sound_dmr_air; // SOUND_DMR_AIR_x, loaded from the codeplug at boot
 
-void sound_dmr_air_set(uint8_t mode);       // change it and save it in the codeplug
-bool sound_dmr_air_begin(uint8_t event);    // arm the style's melody for that TX event; false: not enabled
-bool sound_dmr_air_active(void);            // frames still to send
-bool sound_dmr_air_tone(uint8_t out9[9]);   // next 9-byte AMBE tone frame; false: the beep is over
-void sound_dmr_air_cancel(void);            // aborted transmission: drop whatever was left
+// The air melody, used at both the start and the end of a transmission. The names are neutral; the patterns come from
+// the reference clips: a rising three-note alert, a single high beep, three single tones and a double 1 kHz beep.
+enum {
+    SOUND_AIR_RISING,
+    SOUND_AIR_HIGH,
+    SOUND_AIR_850,
+    SOUND_AIR_1150,
+    SOUND_AIR_1850,
+    SOUND_AIR_DOUBLE,
+    SOUND_AIR_PATTERNS
+};
+extern uint8_t dmr_air_pattern; // SOUND_AIR_x, loaded from the codeplug at boot
+
+void sound_dmr_air_set(uint8_t mode);        // change the Off / Start / Stop / Both setting
+void sound_dmr_air_pattern_set(uint8_t pat); // change the melody and save it in the codeplug
+void sound_dmr_air_preview(void);            // hear the current air melody on the speaker, without saving it
+bool sound_dmr_air_begin(uint8_t event);     // arm the melody for that TX event; false: not enabled
+bool sound_dmr_air_active(void);             // frames still to send
+bool sound_dmr_air_tone(uint8_t out9[9]);    // next 9-byte AMBE tone frame; false: the beep is over
+void sound_dmr_air_cancel(void);             // aborted transmission: drop whatever was left
 
 // settings.audio_prompt_mode (the main firmware's AUDIO_PROMPT_MODE_x)
 enum {

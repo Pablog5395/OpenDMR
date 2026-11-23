@@ -91,27 +91,19 @@ static const int16_t CHIRP_TALKER_END[] = {800, 60, 0, 50, 800, 60, -1, -1};
 static const int16_t CHIRP_TX_START[] = {1050, 60, -1, -1};
 static const int16_t CHIRP_TX_STOP[] = {700, 70, -1, -1};
 
-// The custom style's melodies, rebuilt whenever a note changes: the edited sequence, the same one reversed, and its
-// first / last note alone for our PTT, so a TX start beep never delays the transmitter much.
-#define SOUND_CUSTOM_MELODY_MAX ((2 * SOUND_CUSTOM_NOTES) + 2)
-static int16_t custom_begin[SOUND_CUSTOM_MELODY_MAX];
-static int16_t custom_end[SOUND_CUSTOM_MELODY_MAX];
-static int16_t custom_tx_start[4];
-static int16_t custom_tx_stop[4];
-
 static const int16_t *const style_melodies[SOUND_STYLES][SOUND_EVENTS] = {
     {SOUND_RX_BEGIN, SOUND_RX_END, SOUND_RX_TALKER_BEGIN, SOUND_RX_TALKER_END, SOUND_DMR_TX_START,
      SOUND_DMR_TX_STOP},
     {CHIRP_RX_BEGIN, CHIRP_RX_END, CHIRP_TALKER_BEGIN, CHIRP_TALKER_END, CHIRP_TX_START, CHIRP_TX_STOP},
-    {custom_begin, custom_end, custom_begin, custom_end, custom_tx_start, custom_tx_stop},
 };
 
 // Unique "DT" blocks: 2 is the keymap, 3 the FM radio, 4 the old language code, 5 scan, 6 NXDN ID, 7 the theme, 8 the
-// language choice. Sound styles use 9 - 11 so none of them can be read back as another feature's settings.
+// language choice. Our settings use 9, 11 and 12 so none of them can be read back as another feature's settings (10
+// was the removed custom-note block).
 #define SOUND_TX_TONES_DATA_TYPE 0x44540001 // ("DT", 1): the FM transmit tones
 #define SOUND_STYLE_DATA_TYPE    0x44540009 // ("DT", 9): the sound style byte
-#define SOUND_CUSTOM_DATA_TYPE   0x4454000A // ("DT", 10): the editable custom notes (sound_custom_t)
 #define SOUND_DMR_AIR_DATA_TYPE  0x4454000B // ("DT", 11): DMR over-the-air chirp mode
+#define SOUND_AIR_PATTERN_TYPE   0x4454000C // ("DT", 12): the DMR air melody
 
 // The patterns of the FM transmit tones
 static const int16_t TX_TONE_BEEP[] = {1000, 120, -1, -1};
@@ -126,9 +118,8 @@ static const int16_t *const tx_tones[SOUND_TX_TONE_PATTERNS] = {
 sound_tx_tones_t sound_tx_tones = {.air_level = 5, .local_volume = 2};
 static bool tx_tones_changed = false;
 uint8_t sound_style = SOUND_STYLE_CLASSIC;
-sound_custom_t sound_custom = {{880, 1100, 1320}, {60, 60, 80}};
-static bool custom_changed = false;
 uint8_t sound_dmr_air = SOUND_DMR_AIR_OFF;
+uint8_t dmr_air_pattern = SOUND_AIR_HIGH; // keeps the beep the user already liked when no setting is stored
 
 // The boot melody notes: semitones from 104 Hz (freqs[] of the main firmware), 0 a pause
 static const int16_t notes[64] = {
@@ -375,53 +366,10 @@ static void sound_task(void *arg)
     }
 }
 
-// Rebuild the custom melodies from the edited notes. A 0 Hz (or 0 ms) note is skipped; an empty custom chirp falls
-// back to one beep, so a melody is never left unterminated.
-static void sound_custom_rebuild(void)
-{
-    int16_t notes[SOUND_CUSTOM_NOTES][2];
-    int count = 0;
-    int i, j;
-
-    for (i = 0; i < SOUND_CUSTOM_NOTES; i++) {
-        if ((sound_custom.hz[i] != 0) && (sound_custom.ms[i] != 0)) {
-            notes[count][0] = (int16_t)sound_custom.hz[i];
-            notes[count][1] = (int16_t)sound_custom.ms[i];
-            count++;
-        }
-    }
-    if (count == 0) {
-        notes[0][0] = 1000;
-        notes[0][1] = 60;
-        count = 1;
-    }
-    for (i = 0, j = 0; i < count; i++) {
-        custom_begin[j++] = notes[i][0];
-        custom_begin[j++] = notes[i][1];
-    }
-    custom_begin[j++] = -1;
-    custom_begin[j] = -1;
-
-    for (i = count - 1, j = 0; i >= 0; i--) {
-        custom_end[j++] = notes[i][0];
-        custom_end[j++] = notes[i][1];
-    }
-    custom_end[j++] = -1;
-    custom_end[j] = -1;
-
-    custom_tx_start[0] = notes[0][0];
-    custom_tx_start[1] = notes[0][1];
-    custom_tx_stop[0] = notes[count - 1][0];
-    custom_tx_stop[1] = notes[count - 1][1];
-    custom_tx_start[2] = custom_tx_start[3] = -1;
-    custom_tx_stop[2] = custom_tx_stop[3] = -1;
-}
-
 void sound_start(void)
 {
     sound_tx_tones_t stored;
-    sound_custom_t stored_custom;
-    uint8_t stored_style, stored_air;
+    uint8_t stored_style, stored_air, stored_pattern;
 
     if (custom_data_read(SOUND_TX_TONES_DATA_TYPE, (uint8_t *)&stored, sizeof(stored))) {
         sound_tx_tones = stored;
@@ -430,14 +378,14 @@ void sound_start(void)
         (stored_style < SOUND_STYLES)) {
         sound_style = stored_style;
     }
-    if (custom_data_read(SOUND_CUSTOM_DATA_TYPE, (uint8_t *)&stored_custom, sizeof(stored_custom))) {
-        sound_custom = stored_custom;
-    }
     if (custom_data_read(SOUND_DMR_AIR_DATA_TYPE, &stored_air, sizeof(stored_air)) &&
         (stored_air < SOUND_DMR_AIR_MODES)) {
         sound_dmr_air = stored_air;
     }
-    sound_custom_rebuild();
+    if (custom_data_read(SOUND_AIR_PATTERN_TYPE, &stored_pattern, sizeof(stored_pattern)) &&
+        (stored_pattern < SOUND_AIR_PATTERNS)) {
+        dmr_air_pattern = stored_pattern;
+    }
     task = xTaskCreateStatic(sound_task, "sound", sizeof(task_stack) / sizeof(task_stack[0]), NULL,
                              SOUND_TASK_PRIORITY, task_stack, &task_tcb);
 }
@@ -539,14 +487,21 @@ const int16_t *sound_event_melody(uint8_t event)
    so every DMR radio hears the same beep. The radio task arms a melody; the engine (codec.c) and the software
    transmitter (dmr_soft.c) ask for one 9-byte frame at a time instead of calling vocoderEncodeFrame().
 
-   The air path has its own short patterns, taken from the real things: the single high beep (~2300 Hz, 150 ms) and
-   the three-note rising alert (~900, 940, 1060 Hz). They are only what goes out over DMR; the speaker still plays the
-   style's own melody. Classic uses the rising alert, Chirp the high beep, Custom the user's notes. */
+   The air path has its own short patterns, taken from the reference clips: a rising three-note alert, a single high
+   beep, three single tones and a double 1 kHz beep. They are only what goes out over DMR; the speaker still plays the
+   selected style's own melody. */
 #define SOUND_DMR_AIR_AMP 104 // about -16 dBFS; 127 would be full scale
 #define SOUND_DMR_AIR_FADE 20 // softer first and last frame of a note: no click at the start or end
 
-static const int16_t AIR_NEXTEL[]  = {2300, 150, -1, -1};
-static const int16_t AIR_MOTOROLA[] = {900, 40, 0, 20, 940, 40, 0, 20, 1060, 60, -1, -1};
+static const int16_t AIR_RISING[] = {900, 40, 0, 20, 940, 40, 0, 20, 1060, 60, -1, -1};
+static const int16_t AIR_HIGH[]   = {2300, 150, -1, -1};
+static const int16_t AIR_850[]    = {850, 180, -1, -1};
+static const int16_t AIR_1150[]   = {1150, 180, -1, -1};
+static const int16_t AIR_1850[]   = {1850, 180, -1, -1};
+static const int16_t AIR_DOUBLE[] = {1000, 110, 0, 30, 1000, 120, -1, -1};
+static const int16_t *const air_patterns[SOUND_AIR_PATTERNS] = {
+    AIR_RISING, AIR_HIGH, AIR_850, AIR_1150, AIR_1850, AIR_DOUBLE,
+};
 
 static struct {
     const int16_t *melody;
@@ -621,6 +576,20 @@ void sound_dmr_air_set(uint8_t mode)
     (void)custom_data_write(SOUND_DMR_AIR_DATA_TYPE, &mode, sizeof(mode));
 }
 
+void sound_dmr_air_pattern_set(uint8_t pat)
+{
+    if ((pat >= SOUND_AIR_PATTERNS) || (pat == dmr_air_pattern)) {
+        return;
+    }
+    dmr_air_pattern = pat;
+    (void)custom_data_write(SOUND_AIR_PATTERN_TYPE, &pat, sizeof(pat));
+}
+
+void sound_dmr_air_preview(void)
+{
+    sound_play(air_patterns[(dmr_air_pattern < SOUND_AIR_PATTERNS) ? dmr_air_pattern : SOUND_AIR_HIGH]);
+}
+
 bool sound_dmr_air_begin(uint8_t event)
 {
     bool want = ((event == SOUND_EVENT_TX_START) &&
@@ -632,13 +601,7 @@ bool sound_dmr_air_begin(uint8_t event)
         return false;
     }
     taskENTER_CRITICAL();
-    if (sound_style == SOUND_STYLE_CHIRP) {
-        air.melody = AIR_NEXTEL; // the high single beep of the little black radios
-    } else if (sound_style == SOUND_STYLE_CLASSIC) {
-        air.melody = AIR_MOTOROLA; // the rising three-note alert
-    } else {
-        air.melody = sound_event_melody(event); // Custom: exactly the notes the user edited
-    }
+    air.melody = air_patterns[(dmr_air_pattern < SOUND_AIR_PATTERNS) ? dmr_air_pattern : SOUND_AIR_HIGH];
     air.pair = 0;
     air.hz = 0;
     air.frames = 0;
@@ -697,25 +660,6 @@ void sound_style_set(uint8_t style)
     }
     sound_style = style;
     (void)custom_data_write(SOUND_STYLE_DATA_TYPE, &style, sizeof(style));
-}
-
-void sound_custom_changed(void)
-{
-    sound_custom_rebuild();
-    custom_changed = true;
-}
-
-void sound_custom_save(void)
-{
-    if (custom_changed &&
-        custom_data_write(SOUND_CUSTOM_DATA_TYPE, (const uint8_t *)&sound_custom, sizeof(sound_custom))) {
-        custom_changed = false;
-    }
-}
-
-void sound_custom_preview(void)
-{
-    sound_play(custom_begin);
 }
 
 bool sound_is_playing(void)
