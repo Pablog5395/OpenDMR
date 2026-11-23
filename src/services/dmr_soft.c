@@ -682,9 +682,8 @@ static void soft_transmit(bool rmo, uint32_t reset_at)
             break; // the superframe finished and the air chirp (if any) was encoded
         }
         if (ending) {
-            if (sound_dmr_air_mix(pcm, 160)) { // the generated melody replaces the mic, then one flushing frame
-                vocoderEncodeFrame(pcm, ambe[nf]);
-            } else {
+            // A native AMBE tone frame decodes as a clean sine; no speech encoder, no flushing frame needed.
+            if (!sound_dmr_air_tone(ambe[nf])) {
                 memcpy(ambe[nf], silence, DMR_AMBE_BYTES);
             }
         } else if (sound_mic_take(&pcm[80 * halves])) {
@@ -692,13 +691,14 @@ static void soft_transmit(bool rmo, uint32_t reset_at)
                 continue;
             }
             halves = 0;
-            sound_dmr_air_mix(pcm, 160);
-            uint32_t enc_t0 = systime_get_us();
-            vocoderEncodeFrame(pcm, ambe[nf]);
-            if (dmr_soft_tx_stats[2] < 4) {
-                p25_ev_log(37, (uint16_t)((systime_get_us() - enc_t0) / 100)); // the delay log: a frame encoded (arg
-            }                                                                   // its time, 0.1 ms)
-            dmr_soft_tx_stats[2]++;
+            if (!sound_dmr_air_tone(ambe[nf])) {
+                uint32_t enc_t0 = systime_get_us();
+                vocoderEncodeFrame(pcm, ambe[nf]);
+                if (dmr_soft_tx_stats[2] < 4) {
+                    p25_ev_log(37, (uint16_t)((systime_get_us() - enc_t0) / 100)); // the delay log: a frame encoded
+                }                                                                   // (arg its time, 0.1 ms)
+                dmr_soft_tx_stats[2]++;
+            }
             if (!keyed && (nf + 1 >= TX_KEY_AFTER)) { // on the air now (the mic recording on meanwhile)
                 keyed = afrx_fifo_key(dmr_soft_tx_low_power != 0);
                 p25_ev_log(35, keyed); // the delay log: keyed

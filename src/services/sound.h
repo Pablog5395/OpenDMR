@@ -96,8 +96,8 @@ void sound_custom_changed(void);                  // a note changed: rebuild the
 void sound_custom_save(void);                     // write the notes to the codeplug
 void sound_custom_preview(void);                  // hear the custom chirp
 
-// DMR over-the-air chirps: the selected style encoded as ordinary voice PCM, so any DMR radio hears it. Off by default;
-// when enabled the generator replaces the mic for the melody and adds one silent frame to flush the AMBE encoder.
+// DMR over-the-air chirps: the selected style sent as native AMBE tone frames (TIA-102.BABA-1), so any DMR radio hears
+// a clean tone instead of a sine pushed through the speech encoder. Off by default.
 enum {
     SOUND_DMR_AIR_OFF,
     SOUND_DMR_AIR_START,
@@ -107,11 +107,11 @@ enum {
 };
 extern uint8_t sound_dmr_air; // SOUND_DMR_AIR_x, loaded from the codeplug at boot
 
-void sound_dmr_air_set(uint8_t mode);        // change it and save it in the codeplug
-bool sound_dmr_air_begin(uint8_t event);     // arm the style's melody for that TX event; false: not enabled
-bool sound_dmr_air_active(void);             // samples still to encode (includes the flushing frame)
-bool sound_dmr_air_mix(int16_t *pcm, int n); // write into pcm before vocoderEncodeFrame(); true if the beep used it
-void sound_dmr_air_cancel(void);             // aborted transmission: drop whatever was left
+void sound_dmr_air_set(uint8_t mode);       // change it and save it in the codeplug
+bool sound_dmr_air_begin(uint8_t event);    // arm the style's melody for that TX event; false: not enabled
+bool sound_dmr_air_active(void);            // frames still to send
+bool sound_dmr_air_tone(uint8_t out9[9]);   // next 9-byte AMBE tone frame; false: the beep is over
+void sound_dmr_air_cancel(void);            // aborted transmission: drop whatever was left
 
 // settings.audio_prompt_mode (the main firmware's AUDIO_PROMPT_MODE_x)
 enum {

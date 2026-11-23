@@ -285,7 +285,7 @@ static void tx_dmr_start(void)
 
 static void tx_dmr_stop(void)
 {
-    // Roger beep: hold the PTT until the generated melody has gone through the AMBE encoder. The engine and the
+    // Roger beep: hold the PTT until the generated melody frames have been sent. The engine and the
     // software transmitter (DMO) both consume the generator while the PTT is still held; after this wait the
     // terminator is sent. A failed repeater wake has no voice path, and a hotspot takes AMBE from USB: neither gets an
     // air chirp.

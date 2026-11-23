@@ -85,8 +85,10 @@ void codecEncodeBlock(uint8_t *outdata_ptr)
 		soundRetrieveBuffer();
 		memcpy(&pcm[80 * half], currentWaveBuffer, 160);
 	}
-	// The engine's DMR air chirp (sound options): a generated melody replaces the mic for a few frames, then the
-	// ordinary mic audio is back. The speaker beeps are separate and stay in voice_play.c.
-	sound_dmr_air_mix(pcm, 160);
-	vocoderEncodeFrame(pcm, outdata_ptr);
+	// The engine's DMR air chirp (sound options): a few native AMBE tone frames replace the encoded mic, then the
+	// ordinary speech is back. Native tones decode as clean sines on any DMR radio; the speaker beeps stay in
+	// voice_play.c.
+	if (!sound_dmr_air_tone(outdata_ptr)) {
+		vocoderEncodeFrame(pcm, outdata_ptr);
+	}
 }

@@ -49,6 +49,7 @@
 #include "custom_data.h"
 #include "sound.h"
 #include "voice_play.h"
+#include "ambe.h"
 
 #define SOUND_TASK_PRIORITY 3
 #define LOW_BATTERY_MS      (5 * 60 * 1000) // LOW_BATTERY_INTERVAL: the low battery beep again after this
@@ -532,19 +533,52 @@ const int16_t *sound_event_melody(uint8_t event)
     return style_melodies[style][item];
 }
 
-/* DMR over-the-air chirp. The radio task arms a melody; the DMR engine (codec.c) or the software transmitter
-   (dmr_soft.c) asks for 160-sample PCM blocks before vocoderEncodeFrame(). A note is a (Hz, ms) pair from the very same
-   style used on the speaker; 0 Hz is silence. The beep replaces the mic for its length, then one silent frame flushes
-   AMBE's one-frame delay before the DMR terminator is sent. Nothing is queued in voice_play.c: this is TX audio. */
+/* DMR over-the-air chirp. A sine pushed through AMBE's speech encoder sounds like a duck: the codec models a vocal
+   tract, not a pure tone. AMBE has a native tone frame instead (TIA-102.BABA-1, the 1031 Hz test vector in vocoder.c):
+   six ones, a 7-bit log amplitude, and the frequency index repeated four times. The decoder regenerates a clean sine,
+   so every DMR radio hears the same beep. The radio task arms a melody; the engine (codec.c) and the software
+   transmitter (dmr_soft.c) ask for one 9-byte frame at a time instead of calling vocoderEncodeFrame(). */
+#define SOUND_DMR_AIR_AMP 104 // about -16 dBFS; 127 would be full scale
+
 static struct {
     const int16_t *melody;
     int pair;
     int16_t hz;
-    uint32_t samples; // 8 kHz samples left in the current note
-    uint32_t flush;   // silent samples left after the melody
-    int32_t phase;    // an index into sine[]
+    int frames; // 20 ms AMBE frames left in the current note
 } air;
 static volatile bool air_busy;
+
+// Build the 49 vocoder bits of a tone frame (py/ambe_tone.py build()) and encode them into the 9 channel bytes
+static void dmr_air_tone_frame(uint8_t out9[9], int16_t hz)
+{
+    uint8_t d49[49] = {0};
+    uint8_t idx;
+    int i, c;
+
+    if (hz == 0) {
+        idx = 255; // the tone frame's silence
+    } else {
+        uint32_t n = (((uint32_t)hz * 4U) + 62U) / 125U; // round(hz / 31.25)
+
+        if (n < 5) {
+            n = 5;
+        } else if (n > 122) {
+            n = 122;
+        }
+        idx = (uint8_t)n;
+    }
+    for (i = 0; i < 6; i++) {
+        d49[i] = 1;
+        d49[6 + i] = (SOUND_DMR_AIR_AMP >> (6 - i)) & 1; // amplitude bits 6 .. 1
+    }
+    for (c = 0; c < 4; c++) {
+        for (i = 0; i < 8; i++) {
+            d49[12 + 8 * c + i] = (idx >> (7 - i)) & 1;
+        }
+    }
+    d49[44] = SOUND_DMR_AIR_AMP & 1; // amplitude bit 0; 45 .. 48 stay 0
+    ambe_encode_frame(d49, out9);
+}
 
 static void dmr_air_next(void)
 {
@@ -558,14 +592,14 @@ static void dmr_air_next(void)
     if ((hz < 0) || (ms < 0)) {
         air.melody = NULL;
         air.hz = 0;
-        air.samples = 0;
-        air.flush = 160; // one AMBE frame of silence: the encoder's delay
+        air.frames = 0;
         return;
     }
     air.hz = hz;
-    // AMBE needs a few frames to make a tone recognisable, and a short burst may not open the other radio's squelch:
-    // stretch the speaker's short chirps for the air path only.
-    air.samples = ((ms < 120) ? 120U : (uint32_t)ms) * 8;
+    // A few frames are needed to hear a tone and open the other radio's squelch; the speaker's short chirps are
+    // stretched for the air path only.
+    ms = (ms < 120) ? 120 : ms;
+    air.frames = (ms + 19) / 20;
     air.pair += 2;
 }
 
@@ -591,10 +625,8 @@ bool sound_dmr_air_begin(uint8_t event)
     taskENTER_CRITICAL();
     air.melody = sound_event_melody(event);
     air.pair = 0;
-    air.phase = 0;
     air.hz = 0;
-    air.samples = 0;
-    air.flush = 0;
+    air.frames = 0;
     taskEXIT_CRITICAL();
     dmr_air_next();
     air_busy = true; // published last: the consumer only looks at this
@@ -606,47 +638,27 @@ bool sound_dmr_air_active(void)
     return air_busy;
 }
 
-bool sound_dmr_air_mix(int16_t *pcm, int n)
+bool sound_dmr_air_tone(uint8_t out9[9])
 {
-    int16_t tone[160] = {0};
-
-    if (!air_busy || (n > (int)(sizeof(tone) / sizeof(tone[0])))) {
+    if (!air_busy) {
         return false;
     }
-    for (int i = 0; i < n; i++) {
-        if (air.melody != NULL) {
-            if (air.samples == 0) {
-                dmr_air_next();
-            }
-            if (air.melody != NULL) {
-                if (air.hz != 0) {
-                    tone[i] = (int16_t)(sine[air.phase] >> 2); // about -12 dBFS into the encoder
-                    air.phase += (int32_t)(air.hz / 3.915f);
-                    while (air.phase >= 2048) {
-                        air.phase -= 2048;
-                    }
-                }
-                air.samples--;
-            }
-        } else if (air.flush != 0) {
-            air.flush--;
-        }
-        if ((air.melody == NULL) && (air.flush == 0)) {
-            air_busy = false; // no more samples: the rest of the block stays as the mic left it
-            break;
+    if (air.frames <= 0) {
+        dmr_air_next();
+        if (air.melody == NULL) {
+            air_busy = false;
+            return false;
         }
     }
-    for (int i = 0; i < n; i++) {
-        pcm[i] = tone[i];
-    }
+    dmr_air_tone_frame(out9, air.hz);
+    air.frames--;
     return true;
 }
 
 void sound_dmr_air_cancel(void)
 {
     air.melody = NULL;
-    air.samples = 0;
-    air.flush = 0;
+    air.frames = 0;
     air_busy = false;
 }
 
