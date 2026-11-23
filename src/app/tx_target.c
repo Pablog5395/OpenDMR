@@ -45,7 +45,6 @@
 #include "nxdn_id.h"
 
 #define TS_MASK           0x03
-#define TS_CONTACT_SHIFT  6    // tsSetContactHasBeenOverriden(): a bit for each source after the 3 x 2 bits
 #define FLAG2_TIMESLOT_2  0x40
 
 tx_target_source_t tx_target_source(void)
@@ -56,18 +55,6 @@ tx_target_source_t tx_target_source(void)
 static int manual_timeslot(void)
 {
     return (settings.ts_manual_override >> (2 * tx_target_source())) & TS_MASK;
-}
-
-static bool contact_overridden(void)
-{
-    return (settings.ts_manual_override >> (TS_CONTACT_SHIFT + tx_target_source())) & 1;
-}
-
-static void set_contact_overridden(bool on)
-{
-    uint16_t bit = (uint16_t)(1U << (TS_CONTACT_SHIFT + tx_target_source()));
-
-    settings.ts_manual_override = on ? (settings.ts_manual_override | bit) : (settings.ts_manual_override & ~bit);
 }
 
 // The RX group's TG at current_index_in_trx_group_list, else the channel's contact; false: none
@@ -92,7 +79,6 @@ void tx_target_get(const codeplug_channel_t *channel, tx_target_t *target)
 {
     codeplug_contact_t contact;
     int manual = manual_timeslot();
-    int contact_ts = 0;
 
     memset(target, 0, sizeof(*target));
     if (settings.override_tg != 0) {
@@ -113,14 +99,11 @@ void tx_target_get(const codeplug_channel_t *channel, tx_target_t *target)
     } else if (channel_contact(channel, &contact)) {
         target->id = contact.id | ((contact.call_type == CODEPLUG_CALL_PRIVATE) ? ((uint32_t)TX_TARGET_PC_FLAG << 24) : 0);
         codeplug_text_name(contact.name, CODEPLUG_NAME_LENGTH, target->name, sizeof(target->name));
-        contact_ts = codeplug_contact_timeslot(&contact);
     }
 
-    if (contact_ts != 0) { // the contact's own timeslot, unless * changed it
-        target->timeslot = (contact_overridden() && (manual != 0)) ? manual : contact_ts;
-    } else {
-        target->timeslot = (manual != 0) ? manual : ((channel->flag2 & FLAG2_TIMESLOT_2) ? 2 : 1);
-    }
+    // The TS of the channel (the one edited in the channel screen) wins unless * or an explicitly chosen contact
+    // set one. The channel's contact alone must not hide a TS change made in the channel: that is what * long clears.
+    target->timeslot = (manual != 0) ? manual : ((channel->flag2 & FLAG2_TIMESLOT_2) ? 2 : 1);
 }
 
 void tx_target_apply(codeplug_channel_t *channel, tx_target_t *target)
@@ -187,25 +170,56 @@ void tx_target_set_timeslot(int timeslot)
 void tx_target_toggle_timeslot(const codeplug_channel_t *channel)
 {
     tx_target_t target;
-    codeplug_contact_t contact;
 
     tx_target_get(channel, &target);
     tx_target_set_timeslot(3 - target.timeslot);
-    if ((settings.override_tg == 0) && channel_contact(channel, &contact) && (codeplug_contact_timeslot(&contact) != 0)) {
-        set_contact_overridden(true);
+}
+
+void tx_target_clear_timeslot_source(tx_target_source_t source)
+{
+    uint16_t mask = (uint16_t)(TS_MASK << (2 * (int)source));
+    uint16_t before = settings.ts_manual_override;
+
+    settings.ts_manual_override = (uint16_t)(before & ~mask);
+    if (settings.ts_manual_override != before) {
+        settings_changed();
     }
 }
 
 void tx_target_clear_timeslot(void)
 {
-    tx_target_set_timeslot(0);
-    set_contact_overridden(false);
+    tx_target_clear_timeslot_source(tx_target_source()); // the channel's own TS again
 }
 
-// LEFT / RIGHT (uiChannelMode.c): the next TG of the RX group list, and no override any more
+// Called when the channel shown changes: the * override belongs to the channel left behind. An explicitly chosen
+// contact (its TG / PC override) keeps the timeslot it brought, so apply it again after clearing.
+void tx_target_channel_changed(void)
+{
+    codeplug_contact_t contact;
+    bool pc = ((settings.override_tg >> 24) == TX_TARGET_PC_FLAG);
+    uint32_t id = settings.override_tg & CODEPLUG_CONTACT_ID_MAX;
+    int index;
+    int ts;
+
+    tx_target_clear_timeslot_source(TX_TARGET_CHANNEL);
+    if (settings.override_tg == 0) {
+        return;
+    }
+    index = codeplug_contact_find(id, pc ? CODEPLUG_CALL_PRIVATE : CODEPLUG_CALL_GROUP, 0);
+    if ((index != 0) && codeplug_get_contact(index, &contact)) {
+        ts = codeplug_contact_timeslot(&contact);
+        if (ts != 0) {
+            tx_target_set_timeslot(ts);
+        }
+    }
+}
+
+// LEFT / RIGHT (uiChannelMode.c): the next TG of the RX group list, and no TG override any more. A contact of the
+// list with a TS override brings its timeslot, as when it is chosen from the contacts list.
 int tx_target_step_group(const codeplug_channel_t *channel, int step)
 {
     codeplug_rx_group_t group;
+    codeplug_contact_t contact;
     int16_t *index = &settings.current_index_in_trx_group_list[(tx_target_source() + 1) % 3];
     int stepped = -1;
 
@@ -215,7 +229,13 @@ int tx_target_step_group(const codeplug_channel_t *channel, int step)
         stepped = *index;
     }
     settings.override_tg = 0;
-    set_contact_overridden(false); // updateTrxID()
+    if ((stepped >= 0) && codeplug_get_contact(group.contacts[*index], &contact)) {
+        int ts = codeplug_contact_timeslot(&contact);
+
+        if (ts != 0) {
+            tx_target_set_timeslot(ts);
+        }
+    }
     settings_changed();
     return stepped;
 }

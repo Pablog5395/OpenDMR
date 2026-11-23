@@ -280,6 +280,7 @@ codeplug_channel_t *channel_screen_edit(void)
 static void load(void)
 {
     int number = zone_channel(position);
+    bool different = (number != channel_screen_channel);
 
     channel_screen_channel = number;
     // where the zone is: the channel shown again after power on (written at power off; not the scan's steps)
@@ -290,6 +291,11 @@ static void load(void)
     if (!has_channel) {
         memset(&channel, 0, sizeof(channel));
         strcpy(channel.name, "--");
+    }
+    // The * timeslot override belongs to the channel just left: the new one must show its own TS. An explicitly
+    // chosen contact keeps the TS it brought (tx_target_channel_changed() applies it again).
+    if (different) {
+        tx_target_channel_changed();
     }
 }
 

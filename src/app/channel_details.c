@@ -57,6 +57,7 @@
 #include "tones.h"
 #include "text_entry.h"
 #include "channel_details.h"
+#include "tx_target.h"
 
 enum {
     ITEM_NAME = 0,
@@ -346,6 +347,7 @@ static void change(int item, int direction, bool fast, uint8_t modifiers)
         case ITEM_TIMESLOT:
             if (!fm) {
                 set_bit(&edit->flag2, FLAG2_TIMESLOT_2, on);
+                tx_target_clear_timeslot(); // the TS just edited is the one to use, not a leftover * override
             }
             break;
         case ITEM_RX_CSS:

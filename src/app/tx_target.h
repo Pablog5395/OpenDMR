@@ -39,8 +39,8 @@
 //   settings.override_tg       a TG / PC entered or picked (# entry, contacts, last heard); kept across channels
 //   the RX group's TG          LEFT / RIGHT step through the channel's RX group list (current_index_in_trx_group_list)
 //   the channel's contact
-// The timeslot: the manual override of settings.ts_manual_override (* toggles it), else the contact's override, else
-// the channel's.
+// The timeslot: the manual override of settings.ts_manual_override (*, or a contact chosen from a list), else the
+// channel's. The channel's own contact does not override the channel's timeslot: * long (* clear) goes back to it.
 
 #define TX_TARGET_PC_FLAG 0x03 // the top byte of a private call (HR_C7000 PC_CALL_FLAG)
 
@@ -67,7 +67,9 @@ void tx_target_apply(codeplug_channel_t *channel, tx_target_t *target);
 void tx_target_set(uint32_t id, bool private_call); // override (setOverrideTGorPC())
 void tx_target_set_timeslot(int timeslot);          // manual override, 1 / 2 (tsSetManualOverride())
 void tx_target_toggle_timeslot(const codeplug_channel_t *channel);
-void tx_target_clear_timeslot(void);                                // long *: the contact's or channel's again
+void tx_target_clear_timeslot_source(tx_target_source_t source);    // clears one source's * override
+void tx_target_channel_changed(void);                               // a channel change: its own TS again
+void tx_target_clear_timeslot(void);                                // long *: the channel's own TS again
 int tx_target_step_group(const codeplug_channel_t *channel, int step); // the TG's position; -1: no group of 2+
 
 #endif
