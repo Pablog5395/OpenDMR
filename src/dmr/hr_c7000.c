@@ -1704,7 +1704,7 @@ void RAM_CODE hrc7000TimeslotInterruptHandler(void)
 			if (!voice_air_beep_started && !hrc.dataTxActive && (settingsUsbMode != USB_MODE_HOTSPOT))
 			{
 				voice_air_beep_started = true;
-				sound_dmr_air_begin(SOUND_EVENT_TX_START); // on the air only after the header samples were dropped
+				sound_dmr_air_request(SOUND_EVENT_TX_START); // no critical section from the ISR; armed by the encoder
 			}
 			if (hrc.dataTxActive)
 			{

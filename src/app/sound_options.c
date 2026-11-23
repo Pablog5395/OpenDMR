@@ -262,7 +262,7 @@ static void dmr_air_change(int direction, uint8_t modifiers)
         sound_dmr_air_set(value);
         if ((value != SOUND_DMR_AIR_OFF) && !silent()) {
             ui_key_beep(NULL);
-            sound_event_play(SOUND_EVENT_RX_TALKER_BEGIN);
+            sound_dmr_air_preview();
         }
     }
 }
@@ -272,7 +272,7 @@ static const ui_custom_t dmr_air_item = {
     .change = dmr_air_change,
 };
 
-/* DMR air melody: the patterns from the reference clips, used at both the start and the end of a transmission */
+/* DMR air melody: synthesized (Hz, ms) patterns authored for this feature, sent at the start and end of a TX */
 
 static void roger_pattern_format(char *buffer, size_t size)
 {
@@ -609,4 +609,5 @@ const ui_list_t sound_options = {
     .title = TEXT_SOUND_OPTIONS,
     .items = sound_options_items,
     .count = sizeof(sound_options_items) / sizeof(sound_options_items[0]),
+    .leave = sound_settings_save,
 };

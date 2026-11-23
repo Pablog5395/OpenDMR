@@ -352,6 +352,11 @@ void dmr_data_cancel(void)
     HRC7000AbortDataBursts();
 }
 
+bool dmr_repeater_waking(void)
+{
+    return (HRC7000GetIsWakingState() == WAKING_MODE_WAITING);
+}
+
 bool dmr_aprs_send_position(int32_t latitude_e7, int32_t longitude_e7, uint16_t speed_knots, uint16_t course,
                             uint32_t destination, uint32_t source)
 {

@@ -535,7 +535,7 @@ each in the source (`src/graphics/themes/`).
 | DMR beep | DMR transmit start / stop beeps |
 | RX beep | Beep at the end of a carrier / talker |
 | Talker beep | Beep when a talker starts too |
-| Sound style | Classic / Chirp (speaker beeps) |
+| Sound style | Classic / Chirp (carrier, talker and PTT beeps on the speaker, including FM carrier begin/end) |
 | DMR air beep | Off / Start / Stop (roger beep) / Both: send the air melody as DMR voice so other radios hear it |
 | Roger style | Rising / High beep / 850 Hz / 1150 Hz / 1850 Hz / Double 1k: the melody sent at both the start and the end |
 | FM Tx tones | FM transmit tones (below) |
