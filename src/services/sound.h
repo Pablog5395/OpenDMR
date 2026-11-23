@@ -96,8 +96,9 @@ void sound_custom_changed(void);                  // a note changed: rebuild the
 void sound_custom_save(void);                     // write the notes to the codeplug
 void sound_custom_preview(void);                  // hear the custom chirp
 
-// DMR over-the-air chirps: the selected style sent as native AMBE tone frames (TIA-102.BABA-1), so any DMR radio hears
-// a clean tone instead of a sine pushed through the speech encoder. Off by default.
+// DMR over-the-air chirps: native AMBE tone frames (TIA-102.BABA-1), so any DMR radio hears a clean tone instead of a
+// sine pushed through the speech encoder. The air pattern follows the style (Classic: rising three-note alert, Chirp:
+// single high beep, Custom: the edited notes) but the speaker's own beeps are unchanged. Off by default.
 enum {
     SOUND_DMR_AIR_OFF,
     SOUND_DMR_AIR_START,

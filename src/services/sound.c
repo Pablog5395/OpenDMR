@@ -537,19 +537,28 @@ const int16_t *sound_event_melody(uint8_t event)
    tract, not a pure tone. AMBE has a native tone frame instead (TIA-102.BABA-1, the 1031 Hz test vector in vocoder.c):
    six ones, a 7-bit log amplitude, and the frequency index repeated four times. The decoder regenerates a clean sine,
    so every DMR radio hears the same beep. The radio task arms a melody; the engine (codec.c) and the software
-   transmitter (dmr_soft.c) ask for one 9-byte frame at a time instead of calling vocoderEncodeFrame(). */
+   transmitter (dmr_soft.c) ask for one 9-byte frame at a time instead of calling vocoderEncodeFrame().
+
+   The air path has its own short patterns, taken from the real things: the single high beep (~2300 Hz, 150 ms) and
+   the three-note rising alert (~900, 940, 1060 Hz). They are only what goes out over DMR; the speaker still plays the
+   style's own melody. Classic uses the rising alert, Chirp the high beep, Custom the user's notes. */
 #define SOUND_DMR_AIR_AMP 104 // about -16 dBFS; 127 would be full scale
+#define SOUND_DMR_AIR_FADE 20 // softer first and last frame of a note: no click at the start or end
+
+static const int16_t AIR_NEXTEL[]  = {2300, 150, -1, -1};
+static const int16_t AIR_MOTOROLA[] = {900, 40, 0, 20, 940, 40, 0, 20, 1060, 60, -1, -1};
 
 static struct {
     const int16_t *melody;
     int pair;
     int16_t hz;
-    int frames; // 20 ms AMBE frames left in the current note
+    int frames;      // 20 ms AMBE frames left in the current note
+    int note_frames; // the note's length, for the amplitude fade
 } air;
 static volatile bool air_busy;
 
 // Build the 49 vocoder bits of a tone frame (py/ambe_tone.py build()) and encode them into the 9 channel bytes
-static void dmr_air_tone_frame(uint8_t out9[9], int16_t hz)
+static void dmr_air_tone_frame(uint8_t out9[9], int16_t hz, int amp)
 {
     uint8_t d49[49] = {0};
     uint8_t idx;
@@ -569,14 +578,14 @@ static void dmr_air_tone_frame(uint8_t out9[9], int16_t hz)
     }
     for (i = 0; i < 6; i++) {
         d49[i] = 1;
-        d49[6 + i] = (SOUND_DMR_AIR_AMP >> (6 - i)) & 1; // amplitude bits 6 .. 1
+        d49[6 + i] = (amp >> (6 - i)) & 1; // amplitude bits 6 .. 1
     }
     for (c = 0; c < 4; c++) {
         for (i = 0; i < 8; i++) {
             d49[12 + 8 * c + i] = (idx >> (7 - i)) & 1;
         }
     }
-    d49[44] = SOUND_DMR_AIR_AMP & 1; // amplitude bit 0; 45 .. 48 stay 0
+    d49[44] = amp & 1; // amplitude bit 0; 45 .. 48 stay 0
     ambe_encode_frame(d49, out9);
 }
 
@@ -596,10 +605,10 @@ static void dmr_air_next(void)
         return;
     }
     air.hz = hz;
-    // A few frames are needed to hear a tone and open the other radio's squelch; the speaker's short chirps are
-    // stretched for the air path only.
-    ms = (ms < 120) ? 120 : ms;
+    // Two frames (40 ms) is the minimum a native tone needs to be heard and open the other radio's squelch.
+    ms = (ms < 40) ? 40 : ms;
     air.frames = (ms + 19) / 20;
+    air.note_frames = air.frames;
     air.pair += 2;
 }
 
@@ -623,10 +632,17 @@ bool sound_dmr_air_begin(uint8_t event)
         return false;
     }
     taskENTER_CRITICAL();
-    air.melody = sound_event_melody(event);
+    if (sound_style == SOUND_STYLE_CHIRP) {
+        air.melody = AIR_NEXTEL; // the high single beep of the little black radios
+    } else if (sound_style == SOUND_STYLE_CLASSIC) {
+        air.melody = AIR_MOTOROLA; // the rising three-note alert
+    } else {
+        air.melody = sound_event_melody(event); // Custom: exactly the notes the user edited
+    }
     air.pair = 0;
     air.hz = 0;
     air.frames = 0;
+    air.note_frames = 0;
     taskEXIT_CRITICAL();
     dmr_air_next();
     air_busy = true; // published last: the consumer only looks at this
@@ -650,7 +666,13 @@ bool sound_dmr_air_tone(uint8_t out9[9])
             return false;
         }
     }
-    dmr_air_tone_frame(out9, air.hz);
+    int amp = SOUND_DMR_AIR_AMP;
+
+    if ((air.frames == air.note_frames) ||
+        ((air.frames == 1) && (air.note_frames > 2))) {
+        amp -= SOUND_DMR_AIR_FADE;
+    }
+    dmr_air_tone_frame(out9, air.hz, amp);
     air.frames--;
     return true;
 }
@@ -659,6 +681,7 @@ void sound_dmr_air_cancel(void)
 {
     air.melody = NULL;
     air.frames = 0;
+    air.note_frames = 0;
     air_busy = false;
 }
 
