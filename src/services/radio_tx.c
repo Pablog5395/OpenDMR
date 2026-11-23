@@ -48,7 +48,6 @@
 #include "mdc1200.h"
 #include "codeplug.h"
 #include "dmr.h"
-#include "dmr_soft.h"
 #include "hotspot.h"
 #include "p25_radio.h"
 #include "nxdn_radio.h"
@@ -286,11 +285,11 @@ static void tx_dmr_start(void)
 
 static void tx_dmr_stop(void)
 {
-    // Roger beep: keep the engine keyed until the generated melody has gone through the AMBE encoder. The software
-    // transmitter (DMO) does this in its own loop, so only the engine waits here. A failed repeater wake has no voice
-    // path at all, and a hotspot takes AMBE from USB, so neither gets an air chirp.
-    if (!dmr_soft_running() && !hotspot_active() && !dmr_repeater_failed() &&
-        sound_dmr_air_begin(SOUND_EVENT_TX_STOP)) {
+    // Roger beep: hold the PTT until the generated melody has gone through the AMBE encoder. The engine and the
+    // software transmitter (DMO) both consume the generator while the PTT is still held; after this wait the
+    // terminator is sent. A failed repeater wake has no voice path, and a hotspot takes AMBE from USB: neither gets an
+    // air chirp.
+    if (!hotspot_active() && !dmr_repeater_failed() && sound_dmr_air_begin(SOUND_EVENT_TX_STOP)) {
         TickType_t t0 = xTaskGetTickCount();
 
         while (sound_dmr_air_active() && ((xTaskGetTickCount() - t0) < pdMS_TO_TICKS(1000))) {

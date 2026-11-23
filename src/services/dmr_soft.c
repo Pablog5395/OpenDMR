@@ -675,9 +675,8 @@ static void soft_transmit(bool rmo, uint32_t reset_at)
         if (rmo && !keyed && !ending) {
             break;
         }
-        if (!afrx_ptt_held() && !ending) {
-            ending = true;
-            sound_dmr_air_begin(SOUND_EVENT_TX_STOP); // the roger beep goes out before the terminator
+        if (!afrx_ptt_held()) {
+            ending = true; // the radio task armed the roger beep before it released the PTT
         }
         if (ending && (nf == 0) && (pos == 0) && !sound_dmr_air_active()) {
             break; // the superframe finished and the air chirp (if any) was encoded
