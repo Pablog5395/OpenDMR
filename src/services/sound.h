@@ -52,6 +52,50 @@ extern const int16_t SOUND_DMR_TX_START[];
 extern const int16_t SOUND_DMR_TX_STOP[];
 extern const int16_t SOUND_1750[]; // heard while sending 1750 Hz (stopped with sound_play(NULL))
 
+// Sound styles: alternative melodies for the call and PTT beeps, synthesized like all the others (no samples). The
+// original beeps are kept as Classic; Chirp is a short double-beep alert like the old digital radios, and Custom plays
+// the notes the user edits in the menu. No brand names or recorded audio are used. Key, error and boot sounds never
+// change.
+enum {
+    SOUND_STYLE_CLASSIC,
+    SOUND_STYLE_CHIRP,
+    SOUND_STYLE_CUSTOM,
+    SOUND_STYLES
+};
+
+enum {
+    SOUND_EVENT_RX_CARRIER_BEGIN, // a carrier opens (FM squelch, DMR carrier)
+    SOUND_EVENT_RX_CARRIER_END,
+    SOUND_EVENT_RX_TALKER_BEGIN, // a caller is identified (DMR)
+    SOUND_EVENT_RX_TALKER_END,
+    SOUND_EVENT_TX_START, // our own PTT (DMR)
+    SOUND_EVENT_TX_STOP,
+    SOUND_EVENTS
+};
+
+extern uint8_t sound_style; // SOUND_STYLE_x, loaded from the codeplug at boot
+
+#define SOUND_CUSTOM_NOTES    3   // notes in the custom chirp
+#define SOUND_CUSTOM_HZ_MAX   4000
+#define SOUND_CUSTOM_HZ_STEP  100
+#define SOUND_CUSTOM_MS_MIN   20
+#define SOUND_CUSTOM_MS_MAX   400
+#define SOUND_CUSTOM_MS_STEP  20
+
+typedef struct {
+    uint16_t hz[SOUND_CUSTOM_NOTES]; // 0: skip that note
+    uint16_t ms[SOUND_CUSTOM_NOTES];
+} sound_custom_t;
+
+extern sound_custom_t sound_custom;
+
+const int16_t *sound_event_melody(uint8_t event); // the current style's melody, never NULL
+void sound_event_play(uint8_t event);             // play that melody
+void sound_style_set(uint8_t style);              // change it and save it in the codeplug
+void sound_custom_changed(void);                  // a note changed: rebuild the melodies
+void sound_custom_save(void);                     // write the notes to the codeplug
+void sound_custom_preview(void);                  // hear the custom chirp
+
 // settings.audio_prompt_mode (the main firmware's AUDIO_PROMPT_MODE_x)
 enum {
     SOUND_PROMPT_SILENT,

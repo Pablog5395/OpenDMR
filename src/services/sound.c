@@ -81,7 +81,33 @@ const int16_t SOUND_DMR_TX_STOP[] = {500, 50, -1, -1};
 const int16_t SOUND_1750[] = {1750, 10000, -1, -1};
 static int16_t dtmf_melody[] = {0, 10000, -1, -1}; // sound_play_dtmf(): the low tone here, the high one aside
 
+// Chirp: a short double beep on an incoming call, a lower one when it ends, a short blip on our PTT. Synthesized from
+// the same sine table as everything else here, with no brand names or recorded audio.
+static const int16_t CHIRP_RX_BEGIN[] = {1050, 80, -1, -1};
+static const int16_t CHIRP_RX_END[] = {700, 80, -1, -1};
+static const int16_t CHIRP_TALKER_BEGIN[] = {1050, 70, 0, 60, 1050, 70, -1, -1};
+static const int16_t CHIRP_TALKER_END[] = {800, 60, 0, 50, 800, 60, -1, -1};
+static const int16_t CHIRP_TX_START[] = {1050, 60, -1, -1};
+static const int16_t CHIRP_TX_STOP[] = {700, 70, -1, -1};
+
+// The custom style's melodies, rebuilt whenever a note changes: the edited sequence, the same one reversed, and its
+// first / last note alone for our PTT, so a TX start beep never delays the transmitter much.
+#define SOUND_CUSTOM_MELODY_MAX ((2 * SOUND_CUSTOM_NOTES) + 2)
+static int16_t custom_begin[SOUND_CUSTOM_MELODY_MAX];
+static int16_t custom_end[SOUND_CUSTOM_MELODY_MAX];
+static int16_t custom_tx_start[4];
+static int16_t custom_tx_stop[4];
+
+static const int16_t *const style_melodies[SOUND_STYLES][SOUND_EVENTS] = {
+    {SOUND_RX_BEGIN, SOUND_RX_END, SOUND_RX_TALKER_BEGIN, SOUND_RX_TALKER_END, SOUND_DMR_TX_START,
+     SOUND_DMR_TX_STOP},
+    {CHIRP_RX_BEGIN, CHIRP_RX_END, CHIRP_TALKER_BEGIN, CHIRP_TALKER_END, CHIRP_TX_START, CHIRP_TX_STOP},
+    {custom_begin, custom_end, custom_begin, custom_end, custom_tx_start, custom_tx_stop},
+};
+
 #define SOUND_TX_TONES_DATA_TYPE 0x44540001 // a custom data block of this firmware ("DT", 1)
+#define SOUND_STYLE_DATA_TYPE    0x44540002 // ("DT", 2): the sound style byte
+#define SOUND_CUSTOM_DATA_TYPE   0x44540003 // ("DT", 3): the editable custom notes (sound_custom_t)
 
 // The patterns of the FM transmit tones
 static const int16_t TX_TONE_BEEP[] = {1000, 120, -1, -1};
@@ -95,6 +121,9 @@ static const int16_t *const tx_tones[SOUND_TX_TONE_PATTERNS] = {
 // Off but for the air level and the local volume, until set
 sound_tx_tones_t sound_tx_tones = {.air_level = 5, .local_volume = 2};
 static bool tx_tones_changed = false;
+uint8_t sound_style = SOUND_STYLE_CLASSIC;
+sound_custom_t sound_custom = {{880, 1100, 1320}, {60, 60, 80}};
+static bool custom_changed = false;
 
 // The boot melody notes: semitones from 104 Hz (freqs[] of the main firmware), 0 a pause
 static const int16_t notes[64] = {
@@ -341,13 +370,65 @@ static void sound_task(void *arg)
     }
 }
 
+// Rebuild the custom melodies from the edited notes. A 0 Hz (or 0 ms) note is skipped; an empty custom chirp falls
+// back to one beep, so a melody is never left unterminated.
+static void sound_custom_rebuild(void)
+{
+    int16_t notes[SOUND_CUSTOM_NOTES][2];
+    int count = 0;
+    int i, j;
+
+    for (i = 0; i < SOUND_CUSTOM_NOTES; i++) {
+        if ((sound_custom.hz[i] != 0) && (sound_custom.ms[i] != 0)) {
+            notes[count][0] = (int16_t)sound_custom.hz[i];
+            notes[count][1] = (int16_t)sound_custom.ms[i];
+            count++;
+        }
+    }
+    if (count == 0) {
+        notes[0][0] = 1000;
+        notes[0][1] = 60;
+        count = 1;
+    }
+    for (i = 0, j = 0; i < count; i++) {
+        custom_begin[j++] = notes[i][0];
+        custom_begin[j++] = notes[i][1];
+    }
+    custom_begin[j++] = -1;
+    custom_begin[j] = -1;
+
+    for (i = count - 1, j = 0; i >= 0; i--) {
+        custom_end[j++] = notes[i][0];
+        custom_end[j++] = notes[i][1];
+    }
+    custom_end[j++] = -1;
+    custom_end[j] = -1;
+
+    custom_tx_start[0] = notes[0][0];
+    custom_tx_start[1] = notes[0][1];
+    custom_tx_stop[0] = notes[count - 1][0];
+    custom_tx_stop[1] = notes[count - 1][1];
+    custom_tx_start[2] = custom_tx_start[3] = -1;
+    custom_tx_stop[2] = custom_tx_stop[3] = -1;
+}
+
 void sound_start(void)
 {
     sound_tx_tones_t stored;
+    sound_custom_t stored_custom;
+    uint8_t stored_style;
 
     if (custom_data_read(SOUND_TX_TONES_DATA_TYPE, (uint8_t *)&stored, sizeof(stored))) {
         sound_tx_tones = stored;
     }
+    if (custom_data_read(SOUND_STYLE_DATA_TYPE, &stored_style, sizeof(stored_style)) &&
+        (stored_style < SOUND_STYLES)) {
+        sound_style = stored_style;
+    }
+    if (custom_data_read(SOUND_CUSTOM_DATA_TYPE, (uint8_t *)&stored_custom, sizeof(stored_custom))) {
+        sound_custom = stored_custom;
+    }
+    sound_custom_rebuild();
     task = xTaskCreateStatic(sound_task, "sound", sizeof(task_stack) / sizeof(task_stack[0]), NULL,
                              SOUND_TASK_PRIORITY, task_stack, &task_tcb);
 }
@@ -433,6 +514,47 @@ void sound_tx_tones_save(void)
         custom_data_write(SOUND_TX_TONES_DATA_TYPE, (const uint8_t *)&sound_tx_tones, sizeof(sound_tx_tones))) {
         tx_tones_changed = false;
     }
+}
+
+const int16_t *sound_event_melody(uint8_t event)
+{
+    uint8_t style = (sound_style < SOUND_STYLES) ? sound_style : SOUND_STYLE_CLASSIC;
+    uint8_t item = (event < SOUND_EVENTS) ? event : SOUND_EVENT_RX_CARRIER_BEGIN;
+
+    return style_melodies[style][item];
+}
+
+void sound_event_play(uint8_t event)
+{
+    sound_play(sound_event_melody(event));
+}
+
+void sound_style_set(uint8_t style)
+{
+    if ((style >= SOUND_STYLES) || (style == sound_style)) {
+        return;
+    }
+    sound_style = style;
+    (void)custom_data_write(SOUND_STYLE_DATA_TYPE, &style, sizeof(style));
+}
+
+void sound_custom_changed(void)
+{
+    sound_custom_rebuild();
+    custom_changed = true;
+}
+
+void sound_custom_save(void)
+{
+    if (custom_changed &&
+        custom_data_write(SOUND_CUSTOM_DATA_TYPE, (const uint8_t *)&sound_custom, sizeof(sound_custom))) {
+        custom_changed = false;
+    }
+}
+
+void sound_custom_preview(void)
+{
+    sound_play(custom_begin);
 }
 
 bool sound_is_playing(void)

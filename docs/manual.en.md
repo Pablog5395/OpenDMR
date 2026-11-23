@@ -535,6 +535,8 @@ each in the source (`src/graphics/themes/`).
 | DMR beep | DMR transmit start / stop beeps |
 | RX beep | Beep at the end of a carrier / talker |
 | Talker beep | Beep when a talker starts too |
+| Sound style | Classic / Chirp / Custom (the editable notes below) |
+| Custom tone | Three notes, frequency (Hz) and length (ms), for the Custom style |
 | FM Tx tones | FM transmit tones (below) |
 | DMR mic / FM mic | Microphone gain of each mode |
 | VOX Thres. / VOX Tail | VOX: 0 = off, smaller is more sensitive; how long it keeps transmitting after you stop |

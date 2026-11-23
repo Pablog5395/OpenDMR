@@ -405,7 +405,7 @@ static void rx_beep_begin(void)
     if (rx_end_beep) {
         rx_end_beep = false; // the same over, interrupted a moment: no beeps
     } else if (rx_beeps()) {
-        sound_play(SOUND_RX_BEGIN);
+        sound_event_play(SOUND_EVENT_RX_CARRIER_BEGIN);
     }
 }
 
@@ -427,7 +427,7 @@ void rx_beep_end_check(void)
 {
     if (rx_end_beep && ((int32_t)(xTaskGetTickCount() - rx_end_beep_at) >= 0)) {
         rx_end_beep = false;
-        sound_play(SOUND_RX_END);
+        sound_event_play(SOUND_EVENT_RX_CARRIER_END);
     }
 }
 

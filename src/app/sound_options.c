@@ -216,6 +216,106 @@ static const ui_custom_t talker_beep = {
     .change = talker_beep_change,
 };
 
+/* Sound style: Classic / Chirp / Custom; the choice is saved in the codeplug */
+
+static void style_format(char *buffer, size_t size)
+{
+    static const text_id_t styles[SOUND_STYLES] = {TEXT_CLASSIC, TEXT_CHIRP, TEXT_CUSTOM};
+
+    format_text((sound_style < SOUND_STYLES) ? styles[sound_style] : TEXT_CLASSIC, buffer, size);
+}
+
+static void style_change(int direction, uint8_t modifiers)
+{
+    uint8_t value = (uint8_t)CLAMP(sound_style + direction, 0, SOUND_STYLES - 1);
+
+    (void)modifiers;
+    if (value != sound_style) {
+        sound_style_set(value);
+        if (!silent()) { // hear the new chirp at once, not the key beep
+            ui_key_beep(NULL);
+            sound_event_play(SOUND_EVENT_RX_TALKER_BEGIN);
+        }
+    }
+}
+
+static const ui_custom_t sound_style_item = {
+    .format = style_format,
+    .change = style_change,
+};
+
+/* Custom chirp: three editable notes (frequency and length), saved in the codeplug */
+
+static void custom_hz_format(uint8_t index, char *buffer, size_t size)
+{
+    snprintf(buffer, size, "%uHz", (unsigned)sound_custom.hz[index]);
+}
+
+static void custom_ms_format(uint8_t index, char *buffer, size_t size)
+{
+    snprintf(buffer, size, "%ums", (unsigned)sound_custom.ms[index]);
+}
+
+static void custom_hz_set(uint8_t index, int direction)
+{
+    int value = (int)sound_custom.hz[index] + (direction * SOUND_CUSTOM_HZ_STEP);
+
+    sound_custom.hz[index] = (uint16_t)CLAMP(value, 0, SOUND_CUSTOM_HZ_MAX);
+    sound_custom_changed();
+    if (!silent()) {
+        ui_key_beep(NULL);
+        sound_custom_preview();
+    }
+}
+
+static void custom_ms_set(uint8_t index, int direction)
+{
+    int value = (int)sound_custom.ms[index] + (direction * SOUND_CUSTOM_MS_STEP);
+
+    sound_custom.ms[index] = (uint16_t)CLAMP(value, SOUND_CUSTOM_MS_MIN, SOUND_CUSTOM_MS_MAX);
+    sound_custom_changed();
+    if (!silent()) {
+        ui_key_beep(NULL);
+        sound_custom_preview();
+    }
+}
+
+#define CUSTOM_NOTE(n)                                                                                 \
+    static void note_##n##_hz_format(char *buffer, size_t size) { custom_hz_format(n - 1, buffer, size); } \
+    static void note_##n##_ms_format(char *buffer, size_t size) { custom_ms_format(n - 1, buffer, size); } \
+    static void note_##n##_hz_change(int direction, uint8_t modifiers)                                  \
+    {                                                                                                   \
+        (void)modifiers;                                                                                 \
+        custom_hz_set(n - 1, direction);                                                                 \
+    }                                                                                                   \
+    static void note_##n##_ms_change(int direction, uint8_t modifiers)                                  \
+    {                                                                                                   \
+        (void)modifiers;                                                                                 \
+        custom_ms_set(n - 1, direction);                                                                 \
+    }                                                                                                   \
+    static const ui_custom_t note_##n##_hz = {.format = note_##n##_hz_format, .change = note_##n##_hz_change}; \
+    static const ui_custom_t note_##n##_ms = {.format = note_##n##_ms_format, .change = note_##n##_ms_change}
+
+CUSTOM_NOTE(1);
+CUSTOM_NOTE(2);
+CUSTOM_NOTE(3);
+
+static const ui_item_t custom_tone_items[] = {
+    {TEXT_NOTE_1_HZ, ICONS_COUNT, UI_ITEM_CUSTOM, &note_1_hz, NULL},
+    {TEXT_NOTE_1_MS, ICONS_COUNT, UI_ITEM_CUSTOM, &note_1_ms, NULL},
+    {TEXT_NOTE_2_HZ, ICONS_COUNT, UI_ITEM_CUSTOM, &note_2_hz, NULL},
+    {TEXT_NOTE_2_MS, ICONS_COUNT, UI_ITEM_CUSTOM, &note_2_ms, NULL},
+    {TEXT_NOTE_3_HZ, ICONS_COUNT, UI_ITEM_CUSTOM, &note_3_hz, NULL},
+    {TEXT_NOTE_3_MS, ICONS_COUNT, UI_ITEM_CUSTOM, &note_3_ms, NULL},
+};
+
+static const ui_list_t custom_tone = {
+    .title = TEXT_CUSTOM_TONE,
+    .items = custom_tone_items,
+    .count = sizeof(custom_tone_items) / sizeof(custom_tone_items[0]),
+    .leave = sound_custom_save,
+};
+
 // Taken at each transmission: DMR into the codec (HRC7000SetMicGainDMR()), FM into the FD6818
 static const ui_number_t mic_gain_dmr = {
     .value = &settings.mic_gain_dmr,
@@ -506,6 +606,8 @@ static const ui_item_t sound_options_items[] = {
     {TEXT_DMR_BEEP, ICONS_COUNT, UI_ITEM_CUSTOM, &dmr_beep, NULL},
     {TEXT_RX_BEEP, ICONS_COUNT, UI_ITEM_CUSTOM, &rx_beep_item, NULL},
     {TEXT_TALKER_BEEP, ICONS_COUNT, UI_ITEM_CUSTOM, &talker_beep, NULL},
+    {TEXT_SOUND_STYLE, ICONS_COUNT, UI_ITEM_CUSTOM, &sound_style_item, NULL},
+    {TEXT_CUSTOM_TONE, ICONS_COUNT, UI_ITEM_LIST, &custom_tone, NULL},
     {TEXT_FM_TX_TONES, ICONS_COUNT, UI_ITEM_LIST, &tx_tones, NULL},
     {TEXT_DMR_MIC_GAIN, ICONS_COUNT, UI_ITEM_NUMBER, &mic_gain_dmr, NULL},
     {TEXT_FM_MIC_GAIN, ICONS_COUNT, UI_ITEM_NUMBER, &mic_gain_fm, NULL},
