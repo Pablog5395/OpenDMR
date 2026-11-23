@@ -244,6 +244,34 @@ static const ui_custom_t sound_style_item = {
     .change = style_change,
 };
 
+/* DMR air chirp: Off / Start / Stop / Both, encoded as voice so the other radio hears the selected style */
+
+static void dmr_air_format(char *buffer, size_t size)
+{
+    static const text_id_t modes[SOUND_DMR_AIR_MODES] = {TEXT_OFF, TEXT_START, TEXT_STOP, TEXT_BOTH};
+
+    format_text((sound_dmr_air < SOUND_DMR_AIR_MODES) ? modes[sound_dmr_air] : TEXT_OFF, buffer, size);
+}
+
+static void dmr_air_change(int direction, uint8_t modifiers)
+{
+    uint8_t value = (uint8_t)CLAMP(sound_dmr_air + direction, 0, SOUND_DMR_AIR_MODES - 1);
+
+    (void)modifiers;
+    if (value != sound_dmr_air) {
+        sound_dmr_air_set(value);
+        if ((value != SOUND_DMR_AIR_OFF) && !silent()) {
+            ui_key_beep(NULL);
+            sound_event_play(SOUND_EVENT_RX_TALKER_BEGIN);
+        }
+    }
+}
+
+static const ui_custom_t dmr_air_item = {
+    .format = dmr_air_format,
+    .change = dmr_air_change,
+};
+
 /* Custom chirp: three editable notes (frequency and length), saved in the codeplug */
 
 static void custom_hz_format(uint8_t index, char *buffer, size_t size)
@@ -608,6 +636,7 @@ static const ui_item_t sound_options_items[] = {
     {TEXT_TALKER_BEEP, ICONS_COUNT, UI_ITEM_CUSTOM, &talker_beep, NULL},
     {TEXT_SOUND_STYLE, ICONS_COUNT, UI_ITEM_CUSTOM, &sound_style_item, NULL},
     {TEXT_CUSTOM_TONE, ICONS_COUNT, UI_ITEM_LIST, &custom_tone, NULL},
+    {TEXT_DMR_AIR_BEEP, ICONS_COUNT, UI_ITEM_CUSTOM, &dmr_air_item, NULL},
     {TEXT_FM_TX_TONES, ICONS_COUNT, UI_ITEM_LIST, &tx_tones, NULL},
     {TEXT_DMR_MIC_GAIN, ICONS_COUNT, UI_ITEM_NUMBER, &mic_gain_dmr, NULL},
     {TEXT_FM_MIC_GAIN, ICONS_COUNT, UI_ITEM_NUMBER, &mic_gain_fm, NULL},

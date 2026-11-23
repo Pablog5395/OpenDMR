@@ -105,9 +105,12 @@ static const int16_t *const style_melodies[SOUND_STYLES][SOUND_EVENTS] = {
     {custom_begin, custom_end, custom_begin, custom_end, custom_tx_start, custom_tx_stop},
 };
 
-#define SOUND_TX_TONES_DATA_TYPE 0x44540001 // a custom data block of this firmware ("DT", 1)
-#define SOUND_STYLE_DATA_TYPE    0x44540002 // ("DT", 2): the sound style byte
-#define SOUND_CUSTOM_DATA_TYPE   0x44540003 // ("DT", 3): the editable custom notes (sound_custom_t)
+// Unique "DT" blocks: 2 is the keymap, 3 the FM radio, 4 the old language code, 5 scan, 6 NXDN ID, 7 the theme, 8 the
+// language choice. Sound styles use 9 - 11 so none of them can be read back as another feature's settings.
+#define SOUND_TX_TONES_DATA_TYPE 0x44540001 // ("DT", 1): the FM transmit tones
+#define SOUND_STYLE_DATA_TYPE    0x44540009 // ("DT", 9): the sound style byte
+#define SOUND_CUSTOM_DATA_TYPE   0x4454000A // ("DT", 10): the editable custom notes (sound_custom_t)
+#define SOUND_DMR_AIR_DATA_TYPE  0x4454000B // ("DT", 11): DMR over-the-air chirp mode
 
 // The patterns of the FM transmit tones
 static const int16_t TX_TONE_BEEP[] = {1000, 120, -1, -1};
@@ -124,6 +127,7 @@ static bool tx_tones_changed = false;
 uint8_t sound_style = SOUND_STYLE_CLASSIC;
 sound_custom_t sound_custom = {{880, 1100, 1320}, {60, 60, 80}};
 static bool custom_changed = false;
+uint8_t sound_dmr_air = SOUND_DMR_AIR_OFF;
 
 // The boot melody notes: semitones from 104 Hz (freqs[] of the main firmware), 0 a pause
 static const int16_t notes[64] = {
@@ -416,7 +420,7 @@ void sound_start(void)
 {
     sound_tx_tones_t stored;
     sound_custom_t stored_custom;
-    uint8_t stored_style;
+    uint8_t stored_style, stored_air;
 
     if (custom_data_read(SOUND_TX_TONES_DATA_TYPE, (uint8_t *)&stored, sizeof(stored))) {
         sound_tx_tones = stored;
@@ -427,6 +431,10 @@ void sound_start(void)
     }
     if (custom_data_read(SOUND_CUSTOM_DATA_TYPE, (uint8_t *)&stored_custom, sizeof(stored_custom))) {
         sound_custom = stored_custom;
+    }
+    if (custom_data_read(SOUND_DMR_AIR_DATA_TYPE, &stored_air, sizeof(stored_air)) &&
+        (stored_air < SOUND_DMR_AIR_MODES)) {
+        sound_dmr_air = stored_air;
     }
     sound_custom_rebuild();
     task = xTaskCreateStatic(sound_task, "sound", sizeof(task_stack) / sizeof(task_stack[0]), NULL,
@@ -522,6 +530,124 @@ const int16_t *sound_event_melody(uint8_t event)
     uint8_t item = (event < SOUND_EVENTS) ? event : SOUND_EVENT_RX_CARRIER_BEGIN;
 
     return style_melodies[style][item];
+}
+
+/* DMR over-the-air chirp. The radio task arms a melody; the DMR engine (codec.c) or the software transmitter
+   (dmr_soft.c) asks for 160-sample PCM blocks before vocoderEncodeFrame(). A note is a (Hz, ms) pair from the very same
+   style used on the speaker; 0 Hz is silence. The beep replaces the mic for its length, then one silent frame flushes
+   AMBE's one-frame delay before the DMR terminator is sent. Nothing is queued in voice_play.c: this is TX audio. */
+static struct {
+    const int16_t *melody;
+    int pair;
+    int16_t hz;
+    uint32_t samples; // 8 kHz samples left in the current note
+    uint32_t flush;   // silent samples left after the melody
+    int32_t phase;    // an index into sine[]
+} air;
+static volatile bool air_busy;
+
+static void dmr_air_next(void)
+{
+    int16_t hz, ms;
+
+    if (air.melody == NULL) {
+        return;
+    }
+    hz = air.melody[air.pair];
+    ms = air.melody[air.pair + 1];
+    if ((hz < 0) || (ms < 0)) {
+        air.melody = NULL;
+        air.hz = 0;
+        air.samples = 0;
+        air.flush = 160; // one AMBE frame of silence: the encoder's delay
+        return;
+    }
+    air.hz = hz;
+    // AMBE needs a few frames to make a tone recognisable, and a short burst may not open the other radio's squelch:
+    // stretch the speaker's short chirps for the air path only.
+    air.samples = ((ms < 120) ? 120U : (uint32_t)ms) * 8;
+    air.pair += 2;
+}
+
+void sound_dmr_air_set(uint8_t mode)
+{
+    if ((mode >= SOUND_DMR_AIR_MODES) || (mode == sound_dmr_air)) {
+        return;
+    }
+    sound_dmr_air = mode;
+    (void)custom_data_write(SOUND_DMR_AIR_DATA_TYPE, &mode, sizeof(mode));
+}
+
+bool sound_dmr_air_begin(uint8_t event)
+{
+    bool want = ((event == SOUND_EVENT_TX_START) &&
+                 ((sound_dmr_air == SOUND_DMR_AIR_START) || (sound_dmr_air == SOUND_DMR_AIR_BOTH))) ||
+                ((event == SOUND_EVENT_TX_STOP) &&
+                 ((sound_dmr_air == SOUND_DMR_AIR_STOP) || (sound_dmr_air == SOUND_DMR_AIR_BOTH)));
+
+    if (!want) {
+        return false;
+    }
+    taskENTER_CRITICAL();
+    air.melody = sound_event_melody(event);
+    air.pair = 0;
+    air.phase = 0;
+    air.hz = 0;
+    air.samples = 0;
+    air.flush = 0;
+    taskEXIT_CRITICAL();
+    dmr_air_next();
+    air_busy = true; // published last: the consumer only looks at this
+    return true;
+}
+
+bool sound_dmr_air_active(void)
+{
+    return air_busy;
+}
+
+bool sound_dmr_air_mix(int16_t *pcm, int n)
+{
+    int16_t tone[160] = {0};
+
+    if (!air_busy || (n > (int)(sizeof(tone) / sizeof(tone[0])))) {
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        if (air.melody != NULL) {
+            if (air.samples == 0) {
+                dmr_air_next();
+            }
+            if (air.melody != NULL) {
+                if (air.hz != 0) {
+                    tone[i] = (int16_t)(sine[air.phase] >> 2); // about -12 dBFS into the encoder
+                    air.phase += (int32_t)(air.hz / 3.915f);
+                    while (air.phase >= 2048) {
+                        air.phase -= 2048;
+                    }
+                }
+                air.samples--;
+            }
+        } else if (air.flush != 0) {
+            air.flush--;
+        }
+        if ((air.melody == NULL) && (air.flush == 0)) {
+            air_busy = false; // no more samples: the rest of the block stays as the mic left it
+            break;
+        }
+    }
+    for (int i = 0; i < n; i++) {
+        pcm[i] = tone[i];
+    }
+    return true;
+}
+
+void sound_dmr_air_cancel(void)
+{
+    air.melody = NULL;
+    air.samples = 0;
+    air.flush = 0;
+    air_busy = false;
 }
 
 void sound_event_play(uint8_t event)

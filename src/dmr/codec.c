@@ -37,6 +37,7 @@
 #include "dmr_compat.h"
 #include "codec.h"
 #include "vocoder.h"
+#include "sound.h"
 
 void codecInit(bool fromVoicePrompts)
 {
@@ -84,5 +85,8 @@ void codecEncodeBlock(uint8_t *outdata_ptr)
 		soundRetrieveBuffer();
 		memcpy(&pcm[80 * half], currentWaveBuffer, 160);
 	}
+	// The engine's DMR air chirp (sound options): a generated melody replaces the mic for a few frames, then the
+	// ordinary mic audio is back. The speaker beeps are separate and stay in voice_play.c.
+	sound_dmr_air_mix(pcm, 160);
 	vocoderEncodeFrame(pcm, outdata_ptr);
 }

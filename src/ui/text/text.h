@@ -379,6 +379,7 @@ typedef enum {
     TEXT_NOTE_2_MS,
     TEXT_NOTE_3_HZ,
     TEXT_NOTE_3_MS,
+    TEXT_DMR_AIR_BEEP,
     TEXT_FM_TX_TONES,
     TEXT_AIR_START,
     TEXT_AIR_END,

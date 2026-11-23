@@ -35,6 +35,7 @@
 #include "dmr.h"
 #include "systime.h"
 #include "p25_phy.h"
+#include "sound.h"
 
 #define QSODATA_TIMER_TIMEOUT            2400
 #define QSODATA_RX_BEEP_TIMER_TIMEOUT   (QSODATA_TIMER_TIMEOUT - 1000)
@@ -1292,6 +1293,10 @@ void hrc7000SysInterruptHandler(void)
 // (AUDIO_CONTROL bit 4) puts a DC step in the first samples, which are then discarded in DMR_STATE_TX_START_4.
 static bool hrc7000MicCaptureStartedEarly = false;
 
+// The DMR air chirp is armed at PTT and started on the first voice timeslot, not before: codecInit() at TX_START_4
+// drops the samples taken during the headers, so a beep generated earlier would never go out.
+static bool voice_air_beep_started = false;
+
 static void hrc7000StartMicCaptureEarly(void)
 {
 	soundReceiveData();
@@ -1302,6 +1307,8 @@ static void hrc7000TransitionToTx(void)
 {
 	disableAudioAmp(AUDIO_AMP_MODE_RF);
 	LedWrite(LED_GREEN_R, 0);
+	voice_air_beep_started = false;
+	sound_dmr_air_cancel();
 
 	// Data bursts (APRS over DMR) don't use the microphone or the codec: no capture to start, nothing to reset later.
 	if (!hrc.dataTxActive && (settingsUsbMode != USB_MODE_HOTSPOT))
@@ -1694,6 +1701,11 @@ void RAM_CODE hrc7000TimeslotInterruptHandler(void)
 			break;
 
 		case DMR_STATE_TX_2: // Ongoing TX (active timeslot)
+			if (!voice_air_beep_started && !hrc.dataTxActive && (settingsUsbMode != USB_MODE_HOTSPOT))
+			{
+				voice_air_beep_started = true;
+				sound_dmr_air_begin(SOUND_EVENT_TX_START); // on the air only after the header samples were dropped
+			}
 			if (hrc.dataTxActive)
 			{
 				if (hrc.dataTxIndex < hrc.dataTxCount)

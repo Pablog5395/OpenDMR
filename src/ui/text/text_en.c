@@ -375,6 +375,7 @@ const char *const text_en[TEXT_COUNT] = {
     [TEXT_NOTE_2_MS] = "Note 2 ms",
     [TEXT_NOTE_3_HZ] = "Note 3 Hz",
     [TEXT_NOTE_3_MS] = "Note 3 ms",
+    [TEXT_DMR_AIR_BEEP] = "DMR air beep",
     [TEXT_FM_TX_TONES] = "FM Tx tones",
     [TEXT_AIR_START] = "Air start",
     [TEXT_AIR_END] = "Air end",
