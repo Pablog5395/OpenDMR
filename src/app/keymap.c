@@ -40,8 +40,7 @@
 #include "keymap.h"
 
 #define KEYMAP_DATA_TYPE 0x44540002 // a custom data block of this firmware ("DT", 2)
-#define KEYMAP_VERSION   8 // 2: KEYMAP_FM_RADIO, 3: KEYMAP_SCAN, 4: KEYMAP_SCAN_DOWN, 5: the APRS keys, 7: SK1 + 3,
-                           // 8: KEYMAP_LOCK
+#define KEYMAP_VERSION   7 // 2: KEYMAP_FM_RADIO, 3: KEYMAP_SCAN, 4: KEYMAP_SCAN_DOWN, 5: the APRS keys, 7: SK1 + 3,
 #define KEYMAP_SLOTS     32 // room for more actions: a block keeps its size
 #define SIDE_KEYS        (UI_MODIFIER_SK1 | UI_MODIFIER_SK2)
 #define NO_KEY           {UI_KEY_COUNT, 0, 0, 0}
