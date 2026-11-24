@@ -32,6 +32,10 @@
  *   'D' 'q'                              the state, "name=value" lines             -> 'D' 'q' length(2) text
  *   'D' 'g' id(3)                         the APRS-over-DMR gateway, 24 bit big endian -> 'D' 'g' ok(1)
  *   'D' 'w' via(1)                        0 AFSK, 1 DMR, 2 both                     -> 'D' 'w' ok(1)
+ *   'D' 's' dst(3) group(1) n(1) text(n) a text message (sms_send(), UTF-8) on the channel -> 'D' 's' ok(1)
+ *   'D' 'f' format(1)                    the DMR text messages' format (dmr_sms.h DMR_SMS_xxx)  -> 'D' 'f' ok(1)
+ *   'D' 'p'                              an APRS-over-DMR position report (the fixed position, to the gateway) on the
+ *                                        channel at once, as the beacon's (no APRS set up needed) -> 'D' 'p' ok(1)
  *
  * The state: screen (and for a list: title, sel, count, row, value), home (vfo / channel), vfo, rx, tx, mode,
  * channel, name, zone, scan (off / on / paused: standing on a signal), receiving, transmitting, dbm, lockouts (temp channels, temp frequencies,
@@ -46,6 +50,7 @@
 #include "codeplug.h"
 #include "codeplug_text.h"
 #include "radio.h"
+#include "tx_target.h"
 #include "radio_hooks.h"
 #include "settings.h"
 #include "scan.h"
@@ -55,6 +60,9 @@
 #include "menus.h"
 #include "extra_options.h"
 #include "aprs.h"
+#include "aprs_dmr.h"
+#include "sms.h"
+#include "dmr.h"
 #include "test_link.h"
 #include "systime.h"
 
@@ -198,8 +206,12 @@ static uint32_t state(char *text, uint32_t size)
         codeplug_channel_t r;
 
         if (radio_get_channel(&r)) {
-            put(&o, "use", "mode=%s ts=%d sql=%u power=%u bw=%s", codeplug_mode_name(r.mode), (r.flag2 & 0x40) ? 2 : 1,
-                (unsigned)r.sql, (unsigned)r.libre_dmr_power, (r.flag4 & 0x02) ? "25" : "12.5");
+            tx_target_t target;
+
+            tx_target_get(&r, &target);
+            put(&o, "use", "mode=%s ts=%d sql=%u power=%u bw=%s tg=%lu", codeplug_mode_name(r.mode),
+                (r.flag2 & 0x40) ? 2 : 1, (unsigned)r.sql, (unsigned)r.libre_dmr_power, (r.flag4 & 0x02) ? "25" : "12.5",
+                (unsigned long)target.id);
         }
     }
     put(&o, "receiving", "%d", radio_is_receiving() ? 1 : 0);
@@ -298,6 +310,28 @@ uint32_t test_link_command(volatile uint8_t *request, volatile uint8_t *reply, u
             reply[2] = test_beacon_send(((uint32_t)request[2] << 24) | ((uint32_t)request[3] << 16) |
                                         ((uint32_t)request[4] << 8) | request[5]) ? 1 : 0;
             return 3;
+        case 'f': // the DMR text messages' format (the options)
+            sms_set_dmr_format(request[2]);
+            reply[2] = (sms_dmr_format() == request[2]) ? 1 : 0;
+            return 3;
+        case 's': { // a text message on the channel (sms.c)
+            char text[256];
+            for (int i = 0; i < request[6]; i++) {
+                text[i] = (char)request[7 + i];
+            }
+            text[request[6]] = 0;
+            reply[2] = sms_send(((uint32_t)request[2] << 16) | ((uint32_t)request[3] << 8) | request[4], request[5] != 0,
+                                "", text) ? 1 : 0;
+            return 3;
+        }
+        case 'p': { // an APRS-over-DMR position report (dmr.c), the beacon's way without its set up
+            uint32_t flags;
+            int32_t lat, lon;
+            aprs_debug_status(&flags, &lat, &lon);
+            reply[2] = dmr_aprs_send_position(lat, lon, APRS_DMR_SPEED_UNKNOWN, APRS_DMR_COURSE_UNKNOWN,
+                                              extra_options_aprs_dmr_gateway(), codeplug_get_dmr_id()) ? 1 : 0;
+            return 3;
+        }
         case 'd': // a test data burst: ms (16 bits, big endian), fail
             reply[2] = test_data_send(((uint32_t)request[2] << 8) | request[3], request[4] != 0) ? 1 : 0;
             return 3;

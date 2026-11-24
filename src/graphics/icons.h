@@ -59,6 +59,7 @@ typedef enum {
     ICONS_FM_RADIO,      // broadcast radio
     ICONS_STEREO,        // two rings
     ICONS_LOCK,          // padlock
+    ICONS_MAIL,          // envelope
     ICONS_COUNT
 } icons_id_t;
 

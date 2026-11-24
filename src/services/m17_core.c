@@ -29,8 +29,13 @@
 /*
  * OpenDMR, service: M17 receive (m17_core.h), from the M17 specification (m17/README.md): the sync bursts (LSF 0x55F7,
  * stream 0xFF5D, EoT 0x555D), the randomizer, the QPP interleaver (its own inverse), the K=5 rate 1/2 convolutional
- * code (G1 = 1 + D^3 + D^4, G2 = 1 + D + D^2 + D^4) punctured with P1 (LSF) or P2 (stream), the LICH's extended
- * Golay(24, 12) and the CRC (0x5935, from 0xFFFF).
+ * code (G1 = 1 + D^3 + D^4, G2 = 1 + D + D^2 + D^4) punctured with P1 (LSF), P2 (stream) or P3 (packet), the LICH's
+ * extended Golay(24, 12) and the CRC (0x5935, from 0xFFFF).
+ *
+ * Packet mode (spec v2.1.1 "Packet Mode"): after an LSF whose TYPE says packet (P/S 0; the v3 draft's payload 0xF in
+ * byte 12's high nibble too), frames with the packet sync 0x75FF: 206 bits (25 octets of the packet, then the EOF bit
+ * and a 5-bit counter: the frame's number, or in the last one its octets 1 - 25) through P3 (7 of 8 coded bits). The
+ * packet (its type, data, CRC-16 over both) is whole at the EOF frame: its CRC checked, then M17_RX_PACKET.
  *
  * Hunting, a frame starts at an exact sync burst; a stream frame found that way is taken if its Viterbi metric says it
  * is one. From an LSF or a stream frame on the receiver is locked: the next frame is expected 192 dibits on, its sync
@@ -45,7 +50,9 @@
 
 #define LSF_SYNC    0x55F7
 #define STREAM_SYNC 0xFF5D
+#define PACKET_SYNC 0x75FF
 #define EOT_SYNC    0x555D
+enum { P1, P2, P3 }; // the puncture matrices: LSF, stream, packet
 #define PAYLOAD     184 // dibits after the sync
 #define BITS        368
 #define MAX_MISSES  3   // frames without a sync before the lock is given up
@@ -155,15 +162,16 @@ static unsigned parity(unsigned v)
     return (unsigned)__builtin_parity(v);
 }
 
-static bool kept_bit(unsigned c, bool stream)
+static bool kept_bit(unsigned c, int p)
 {
-    return stream ? (c % 12 != 11) : ((c % 61) % 4 != 2); // P2: 11 of 12; P1: 1, then 1 0 1 1 ...
+    return (p == P3) ? (c % 8 != 7) : (p == P2) ? (c % 12 != 11) : ((c % 61) % 4 != 2); // 7 of 8; 11 of 12; P1
 }
 
 // The Viterbi decoder: length data bits (and 4 flush bits) from the coded bits from first on, punctured with P1 (the
-// LSF) or P2 (a stream frame), soft: a branch costs the sureness of each coded bit it disagrees with; punctured and
-// erased bits cost nothing. Returns the coded bits (hard decisions) the decoded data, re-encoded, differs in.
-static uint16_t viterbi(const int8_t *payload, unsigned first, uint8_t *out, unsigned length, bool stream,
+// LSF), P2 (a stream frame) or P3 (a packet frame), soft: a branch costs the sureness of each coded bit it disagrees
+// with; punctured and erased bits cost nothing. Returns the coded bits (hard decisions) the decoded data, re-encoded,
+// differs in.
+static uint16_t viterbi(const int8_t *payload, unsigned first, uint8_t *out, unsigned length, int stream,
                         uint16_t *soft)
 {
     uint16_t trace[244];
@@ -282,7 +290,7 @@ static m17_rx_event_t frame(m17_rx *r)
 {
     if (r->kind == 1) {
         uint8_t lsf[M17_LSF_BYTES];
-        r->metric = viterbi(r->payload, 0, lsf, 240, false, &r->soft_metric);
+        r->metric = viterbi(r->payload, 0, lsf, 240, P1, &r->soft_metric);
         if (crc16(lsf, sizeof(lsf)) != 0) {
             r->lsf_bad++;
             return M17_RX_NONE;
@@ -293,10 +301,43 @@ static m17_rx_event_t frame(m17_rx *r)
         r->locked = true;
         r->misses = 0;
         r->lich_got = 0; // a new transmission
+        r->packet_mode = m17_lsf_packet(lsf);
+        r->packet_len = 0;
+        r->packet_frames = 0;
         return M17_RX_LSF;
     }
+    if (r->kind == 3) { // a packet frame
+        uint8_t d[26];
+        r->metric = viterbi(r->payload, 0, d, 206, P3, &r->soft_metric);
+        unsigned eof = d[25] >> 7, n = (d[25] >> 2) & 0x1F;
+        if (!eof) {
+            if ((n != r->packet_frames) || ((r->packet_len + 25U) > M17_PACKET_MAX)) {
+                r->packets_bad++; // a frame lost or out of order: the packet given up
+                m17_rx_reset(r);
+                return M17_RX_NONE;
+            }
+            memcpy(&r->packet[r->packet_len], d, 25);
+            r->packet_len = (uint16_t)(r->packet_len + 25);
+            r->packet_frames++;
+            return M17_RX_NONE;
+        }
+        bool ok = (n >= 1) && (n <= 25) && ((r->packet_len + n) <= M17_PACKET_MAX);
+        if (ok) {
+            memcpy(&r->packet[r->packet_len], d, n);
+            r->packet_len = (uint16_t)(r->packet_len + n);
+            ok = (r->packet_len >= 3) && (crc16(r->packet, r->packet_len) == 0);
+        }
+        m17_rx_reset(r); // the EoT next
+        if (!ok) {
+            r->packets_bad++;
+            return M17_RX_NONE;
+        }
+        r->packets++;
+        r->packet_len = (uint16_t)(r->packet_len - 2); // without the CRC
+        return M17_RX_PACKET;
+    }
     uint8_t data[18];
-    r->metric = viterbi(r->payload, 96, data, 144, true, &r->soft_metric);
+    r->metric = viterbi(r->payload, 96, data, 144, P2, &r->soft_metric);
     if (!r->locked && r->metric > HUNT_METRIC) {
         r->stream_bad++;
         return M17_RX_NONE;
@@ -347,7 +388,8 @@ m17_rx_event_t m17_rx_symbol(m17_rx *r, int8_t z)
                 // the EoT only when nearer it than the stream sync, and by 2 bits at most: the two differ in 4 bits
                 // (the first 4 symbols' signs), a stream sync with one sign wrong was taken for the EoT and the call
                 // ended in the middle (2026-11-20). A missed EoT only ends the call CALL_TIMEOUT later
-                unsigned d_eot = weight((s ^ EOT_SYNC) & mask), d_stream = weight((s ^ STREAM_SYNC) & mask);
+                unsigned d_eot = weight((s ^ EOT_SYNC) & mask),
+                         d_stream = weight((s ^ (r->packet_mode ? PACKET_SYNC : STREAM_SYNC)) & mask);
                 if ((valid >= 6) && (d_eot <= EOT_ERRORS) && (d_eot < d_stream)) {
                     r->eots++;
                     m17_rx_reset(r);
@@ -362,7 +404,7 @@ m17_rx_event_t m17_rx_symbol(m17_rx *r, int8_t z)
                 } else {
                     r->misses = 0;
                 }
-                r->kind = 2;
+                r->kind = r->packet_mode ? 3 : 2;
                 r->pos = 0;
             }
             return M17_RX_NONE;
@@ -428,7 +470,13 @@ void m17_address(const uint8_t addr[6], char out[10])
 
 bool m17_lsf_voice(const uint8_t lsf[M17_LSF_BYTES])
 {
-    return (lsf[13] & 0x1F) == 0x05; // stream, voice (3200), not encrypted
+    return ((lsf[12] >> 4) != 0x0F) && ((lsf[13] & 0x1F) == 0x05); // stream, voice (3200), not encrypted
+}
+
+bool m17_lsf_packet(const uint8_t lsf[M17_LSF_BYTES])
+{
+    // v2: P/S (byte 13 bit 0) 0; the v3 draft: payload 0xF in byte 12 (reserved, 0, in v2)
+    return ((lsf[12] >> 4) == 0x0F) || !(lsf[13] & 0x01);
 }
 
 /* ---- transmit ---- */
@@ -478,16 +526,40 @@ void m17_lsf_make(uint8_t lsf[M17_LSF_BYTES], const char *dst, const char *src, 
     lsf[29] = (uint8_t)crc;
 }
 
-// length data bits and 4 flush bits through the convolutional code, punctured (P1 LSF, P2 stream), from coded bit pos
-static unsigned conv_encode(const uint8_t *data, unsigned length, bool stream, uint8_t *coded, unsigned pos)
+void m17_lsf_make_packet(uint8_t lsf[M17_LSF_BYTES], const char *dst, const char *src, uint8_t can)
+{
+    m17_lsf_make(lsf, dst, src, can);
+    lsf[13] &= 0x80; // TYPE (v2): packet (P/S 0), data type and encryption none, the CAN kept
+    uint16_t crc = crc16(lsf, M17_LSF_BYTES - 2);
+    lsf[28] = (uint8_t)(crc >> 8);
+    lsf[29] = (uint8_t)crc;
+}
+
+int m17_packet_sms(const char *text, uint8_t *out, int max)
+{
+    int n = (int)strlen(text);
+    if ((n + 4) > max) {
+        return 0;
+    }
+    out[0] = M17_PACKET_SMS;
+    memcpy(&out[1], text, (size_t)n);
+    out[1 + n] = 0;
+    uint16_t crc = crc16(out, (unsigned)(n + 2));
+    out[n + 2] = (uint8_t)(crc >> 8);
+    out[n + 3] = (uint8_t)crc;
+    return n + 4;
+}
+
+// length data bits and 4 flush bits through the convolutional code, punctured (P1 LSF, P2 stream, P3 packet), from
+// coded bit pos
+static unsigned conv_encode(const uint8_t *data, unsigned length, int punct, uint8_t *coded, unsigned pos)
 {
     unsigned state = 0, c = 0;
     for (unsigned i = 0; i < length + 4; i++) {
         state = ((state << 1) | ((i < length) ? get_bit(data, i) : 0)) & 31;
         unsigned out[2] = {parity(state & 0x19), parity(state & 0x17)};
         for (int o = 0; o < 2; o++, c++) {
-            bool kept = stream ? (c % 12 != 11) : ((c % 61) % 4 != 2);
-            if (kept) {
+            if (kept_bit(c, punct)) {
                 put_bit(coded, pos++, out[o]);
             }
         }
@@ -523,8 +595,23 @@ void m17_tx_preamble(uint8_t out[M17_FRAME_DIBITS])
 void m17_tx_lsf(const uint8_t lsf[M17_LSF_BYTES], uint8_t out[M17_FRAME_DIBITS])
 {
     uint8_t coded[BITS / 8] = {0};
-    conv_encode(lsf, 240, false, coded, 0);
+    conv_encode(lsf, 240, P1, coded, 0);
     tx_frame(LSF_SYNC, coded, out);
+}
+
+int m17_tx_packet_frame(const uint8_t *packet, int length, int frame, uint8_t out[M17_FRAME_DIBITS])
+{
+    uint8_t d[26] = {0}, coded[BITS / 8] = {0};
+    int at = frame * 25, n = length - at;
+    if (n <= 0) {
+        return 0;
+    }
+    bool last = (n <= 25);
+    memcpy(d, &packet[at], (size_t)(last ? n : 25));
+    d[25] = last ? (uint8_t)(0x80 | (n << 2)) : (uint8_t)(frame << 2);
+    conv_encode(d, 206, P3, coded, 0);
+    tx_frame(PACKET_SYNC, coded, out);
+    return last ? 1 : 2;
 }
 
 void m17_tx_stream(const uint8_t lsf[M17_LSF_BYTES], uint16_t fn, bool last, const uint8_t data[M17_STREAM_BYTES],
@@ -548,7 +635,7 @@ void m17_tx_stream(const uint8_t lsf[M17_LSF_BYTES], uint16_t fn, bool last, con
     d[0] = (uint8_t)(((fn >> 8) & 0x7F) | (last ? 0x80 : 0));
     d[1] = (uint8_t)fn;
     memcpy(&d[2], data, M17_STREAM_BYTES);
-    conv_encode(d, 144, true, coded, pos);
+    conv_encode(d, 144, P2, coded, pos);
     tx_frame(STREAM_SYNC, coded, out);
 }
 

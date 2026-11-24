@@ -280,6 +280,7 @@ static void burst(dmr_demod *d)
     }
     b.since_sync = d->since_sync;
     b.g = d->g;
+    b.at = (d->rebased << 4) + (uint32_t)(d->t >> (Q - 4));
     // the CACH and the burst as levels (Q8)
     int32_t z[CACH_SYMS + BURST_SYMS];
     int32_t gs = (d->g >> 8) ? (d->g >> 8) : 1;
@@ -356,5 +357,6 @@ void dmr_demod_samples(dmr_demod *d, const int16_t *x, int count)
         d->hunt_t -= by;
         d->t -= by;
         d->cand_t -= by;
+        d->rebased += REBASE_BY;
     }
 }

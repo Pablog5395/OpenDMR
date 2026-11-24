@@ -27,40 +27,60 @@
  */
 
 // The DMR receiver in software (dmr_soft.c): the FM discriminator recorded and demodulated as NXDN and M17 are,
-// instead of the HR_C7000's own DMR receive; the HR_C7000 engine still transmits. On a DMR channel (not in hotspot
-// mode) while dmr_soft_enabled.
+// instead of the HR_C7000's own DMR receive; voice and data (APRS) transmitted in software too, direct and repeater
+// mode; unconfirmed data packets received. On a DMR channel (not in hotspot mode) while dmr_soft_enabled.
 #ifndef DMR_SOFT_H
 #define DMR_SOFT_H
 
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "dmr_data.h"
+
 extern volatile uint32_t dmr_soft_enabled; // 0: the HR_C7000 receives (over the cable: A / B tests)
-// direct mode (Rx == Tx) transmitted in software too (0: the HR_C7000 engine transmits); 50 mW (tests side by side);
+// transmitted in software too, direct and repeater mode (0: the HR_C7000 engine transmits); 50 mW (tests side by side);
 // counters of the last transmission: calls, bursts, AMBE frames encoded, FIFO underruns
 extern volatile uint32_t dmr_soft_tx, dmr_soft_tx_low_power, dmr_soft_tx_stats[4];
 
 bool dmr_soft_wanted(void); // a DMR channel would be received in software now
 void dmr_soft_start(void);
 void dmr_soft_stop(void);
-// APRS over DMR with the software receiver running (dmr.c): the engine sends the bursts (hr_c7000.h), the recording
-// off meanwhile; false: not running (the engine's own way then)
-bool dmr_soft_send_data(const uint8_t *types, const uint8_t *lengths, const uint8_t (*payloads)[12], uint8_t count);
+// APRS over DMR with the software receiver running (dmr.c): the bursts sent in software (direct mode, or the repeater
+// woken first; dmr_soft_tx 0: by the engine); false: not running (the engine's own way then)
+bool dmr_soft_send_data(const dmr_data_tx_t *tx);
 bool dmr_soft_data_busy(void);
 bool dmr_soft_data_failed(void);
 void dmr_soft_data_cancel(void);
 bool dmr_soft_running(void);
-void dmr_soft_ptt(bool on);       // the PTT: the recording off, the engine transmits (dmr.c)
+void dmr_soft_ptt(bool on);       // the PTT: the recording off, the transmission (dmr.c)
 bool dmr_soft_transmitting(void); // the PTT held, or the transmission still ending
 bool dmr_soft_has_sync(void);     // a DMR signal's time line followed (scan)
 bool dmr_soft_busy(void);         // a call on the channel now
+// repeater mode: the repeater didn't answer the wake-ups (the PTT pressed again clears it)
+extern volatile bool dmr_soft_wake_failed;
+// repeater mode's timing: our burst's start on the air, the repeater's as received less this (us); counters
+extern volatile int32_t dmr_soft_rmo_lead_us;
+extern volatile uint32_t dmr_soft_rmo_stats[6];
 
 // counters, read over the cable
 typedef struct {
     uint32_t halves, missed_halves, busy_us_max, bursts, syncs, lost, relocks;
     uint32_t headers, terminators, emb_ok, emb_bad, emb_lcs, voice_bursts, calls, filtered;
     uint32_t pcm_drops, underruns, dec_us_max, other_cc;
+    // data: CSBKs, data headers, packets whole (their CRC-32 right), CRC-32 wrong, FEC / header CRC wrong, blocks
+    // that stopped coming, other kinds (confirmed, Rate 3/4, Rate 1: not taken yet)
+    uint32_t csbks, data_headers, data_packets, data_crc_bad, data_fec_bad, data_lost, data_other;
 } dmr_soft_stats_t;
+
+// the data packets received (unconfirmed, Rate 1/2), the last few (dmr_soft_data_log_n so far)
+typedef struct {
+    uint8_t ts, crc_ok, sap, group;
+    uint32_t src, dst;
+    uint16_t length;   // the user data's octets (the CRC-32 wrong: the blocks' less the CRC)
+    uint8_t data[64];  // the first of them
+} dmr_soft_data_rx_t;
+extern dmr_soft_data_rx_t dmr_soft_data_log[4];
+extern volatile uint32_t dmr_soft_data_log_n;
 extern volatile dmr_soft_stats_t dmr_soft_stats;
 
 #endif

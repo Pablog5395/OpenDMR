@@ -51,6 +51,11 @@ bool m17_radio_heard_within(uint32_t ms); // a stream frame decoded in the last 
 // The PTT: a voice stream from the radio's callsign (the codeplug's) to ALL while on; transmitting until the EoT is
 // sent. The channel access number it carries (the channel's, tx_target_apply()); received: any
 void m17_radio_set_can(uint8_t can);
+// A text message (packet mode) to the callsign dst ("" or NULL: all), sent by the receiver's task; false: not
+// running, the last still going, too long. Then busy while it goes, failed if it couldn't be keyed
+bool m17_radio_send_sms(const char *dst, const char *text);
+bool m17_radio_sms_busy(void);
+bool m17_radio_sms_failed(void);
 void m17_radio_transmit(bool on);
 bool m17_radio_transmitting(void);
 
@@ -61,6 +66,7 @@ typedef struct {
     uint32_t busy_us_max;   // the longest a half took (demodulation and all)
     uint32_t gain_sum;      // the demodulator's gain at each stream frame (Q8, per symbol level): over streams, the
                             // deviation as received (tests: m17/py/m17_tx_check.py)
+    uint32_t packets;       // packets received whole (packet mode)
 } m17_radio_stats_t;
 extern volatile m17_radio_stats_t m17_radio_stats;
 

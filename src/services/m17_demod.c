@@ -71,6 +71,7 @@ volatile uint32_t m17_demod_dd = M17_DEMOD_DD, m17_demod_eq = M17_DEMOD_EQ;
 
 static const int8_t LSF[8] = {3, 3, 3, 3, -3, -3, 3, -3};    // 0x55F7; the stream sync 0xFF5D is its negative
 static const int8_t STREAM[8] = {-3, -3, -3, -3, 3, 3, -3, 3};
+static const int8_t PACKET[8] = {3, -3, 3, 3, -3, -3, -3, -3}; // 0x75FF: packet mode's frames
 static const int8_t EOT[8] = {3, 3, 3, 3, 3, 3, -3, 3};      // 0x555D
 
 // the time of symbol i of a frame starting at t (Q12)
@@ -261,6 +262,13 @@ static void track(m17_demod *d)
                 bg = g;
                 bdc = dc;
                 bp = STREAM;
+            }
+            if (fit(d, tt, PACKET, &g, &dc, &err, ERR_MAX) && (err < best_err)) {
+                best_err = err;
+                bt = tt;
+                bg = g;
+                bdc = dc;
+                bp = PACKET;
             }
             // the EOT (7 of its 8 symbols +3: nearly a constant) at the levels followed, not fitted: with its own gain
             // and DC free it fitted pieces of stream frames, the stream ended in the middle (a dozen times in 40 s at

@@ -2734,6 +2734,10 @@ static void hrc7000TaskFunction(void *data)
 				hrc7000Tick();
 				dmr_after_tick(); // the call to the last heard list and the UI (applicationMain.c)
 			}
+			else
+			{
+				dmr_soft_tick(); // the software receiver's calls beep as the engine's (dmr.c)
+			}
 
 //			timer_hrc6000task = 1; // Reset ISR activity marker
 //		}

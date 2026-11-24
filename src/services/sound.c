@@ -66,6 +66,7 @@ const int16_t SOUND_KEY[] = {600, 60, -1, -1};
 const int16_t SOUND_KEY_LONG[] = {880, 60, -1, -1};
 const int16_t SOUND_KEY_FIRST_ITEM[] = {800, 100, -1, -1};
 const int16_t SOUND_ACK[] = {440, 120, 660, 120, 880, 120, -1, -1};
+const int16_t SOUND_SMS[] = {1047, 70, 0, 50, 1319, 70, 0, 50, 1568, 110, -1, -1};
 const int16_t SOUND_NACK[] = {494, 120, 466, 120, -1, -1};
 const int16_t SOUND_ERROR[] = {440, 30, 0, 30, 440, 30, 0, 30, 440, 30, -1, -1};
 const int16_t SOUND_TX_TIMEOUT[] = {440, 60, 494, 60, 440, 60, 494, 60, 440, 60, 494, 60, 440, 60, 494, 60, -1, -1};

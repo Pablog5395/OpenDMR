@@ -34,51 +34,23 @@
 
 /*
  * OpenDMR, service: APRS over DMR (aprs_dmr.h). The RadioFoundry LRRP report is an MBXML document inside an IPv4/UDP
- * packet (port 4001) in an unconfirmed DMR data transmission: two preamble CSBKs, a data header, then Rate 1/2 blocks
- * with the CRC-32. The HR-C7000 adds the FEC and the sync, so these are the 10 / 12 octets written to its TX RAM.
+ * packet (port 4001) in an unconfirmed DMR data transmission (dmr_data.c): two preamble CSBKs, a data header, then
+ * Rate 1/2 blocks with the CRC-32; their 10 / 12 octets (the CRC-16, the FEC and the sync added when sent).
  */
 
 #include <string.h>
 #include "aprs_dmr.h"
 
 #define LRRP_PORT             4001u
-#define IP_PROTOCOL_UDP       17u
-#define DMR_CAI_INDIVIDUAL    0x0Cu
-#define IP_ID_DEFAULT         0u
-
-#define DPF_UNCONFIRMED       0x02u
-#define SAP_IP                0x04u
-#define CSBK_OPCODE_PREAMBLE  0x3Du
-
 #define DOC_TRIGGERED_REPORT  0x0Du
 #define TOKEN_REQUEST_ID      0x22u
 #define TOKEN_POSITION_RADIUS 0x51u
 #define TOKEN_SPEED_HOR       0x6Cu
 #define TOKEN_DIRECTION       0x56u
 
-#define PREAMBLES             2
-#define RATE_12_BYTES         12
 #define LRRP_MAX_DOCUMENT     64
-#define PACKET_MAX            128
 
 static const uint8_t REPORT_ID[4] = {0, 0, 0, 1};
-
-static uint16_t ip_identification = IP_ID_DEFAULT;
-static uint8_t ip_packet[PACKET_MAX];
-static uint8_t packet_data[PACKET_MAX];
-
-static void put_u16(uint8_t *p, uint16_t v)
-{
-    p[0] = (uint8_t)(v >> 8);
-    p[1] = (uint8_t)v;
-}
-
-static void put_id(uint8_t *p, uint32_t id)
-{
-    p[0] = (uint8_t)(id >> 16);
-    p[1] = (uint8_t)(id >> 8);
-    p[2] = (uint8_t)id;
-}
 
 static int put_uintvar(uint8_t *out, uint32_t v)
 {
@@ -93,44 +65,6 @@ static int put_uintvar(uint8_t *out, uint32_t v)
         out[i] = (uint8_t)(tmp[n - 1 - i] | ((i < (n - 1)) ? 0x80u : 0u));
     }
     return n;
-}
-
-// 10-byte CSBK / data header (the HR_C7000 computes the CRC-16 and fills bytes 10..11)
-static void add_burst(aprs_dmr_tx_t *tx, uint8_t type, const uint8_t *payload)
-{
-    aprs_dmr_burst_t *burst = &tx->burst[tx->count++];
-
-    burst->type = type;
-    burst->length = (type == APRS_DMR_BURST_RATE_1_2) ? RATE_12_BYTES : 10;
-    memset(burst->payload, 0, sizeof(burst->payload));
-    memcpy(burst->payload, payload, burst->length);
-}
-
-// ETSI B.3.9: pairs of octets are taken least significant first, polynomial 0x04C11DB7, remainder zero
-static uint32_t crc32_dmr(const uint8_t *data, int length)
-{
-    uint32_t crc = 0;
-    int padded = (length + 1) & ~1;
-
-    for (int i = 0; i < padded; i++) {
-        int index = i ^ 1;
-        crc ^= (uint32_t)((index < length) ? data[index] : 0) << 24;
-        for (int bit = 0; bit < 8; bit++) {
-            crc = (crc & 0x80000000UL) ? ((crc << 1) ^ 0x04C11DB7UL) : (crc << 1);
-        }
-    }
-    return crc;
-}
-
-static uint16_t ones_complement_sum(uint32_t sum, const uint8_t *data, int length)
-{
-    for (int i = 0; i < length; i += 2) {
-        sum += (uint32_t)((data[i] << 8) | (((i + 1) < length) ? data[i + 1] : 0));
-    }
-    while (sum >> 16) {
-        sum = (sum & 0xFFFFu) + (sum >> 16);
-    }
-    return (uint16_t)sum;
 }
 
 // 1e-7 degrees -> degrees and 1/10000 minute, as RadioFoundry's lrrpPositionFromE7()
@@ -217,105 +151,24 @@ static int build_lrrp(int32_t lat_e7, int32_t lon_e7, uint16_t speed_knots, uint
     }
 }
 
-static int build_ip(uint32_t destination, uint32_t source, const uint8_t *payload, int length)
-{
-    uint32_t src_ip = (DMR_CAI_INDIVIDUAL << 24) | source;
-    uint32_t dst_ip = (DMR_CAI_INDIVIDUAL << 24) | destination;
-    uint16_t id = ip_identification++;
-    int udp_length = 8 + length;
-    int total = 20 + udp_length;
-    uint16_t sum;
-
-    if ((total + 4) > PACKET_MAX) {
-        return 0;
-    }
-    memset(ip_packet, 0, 20);
-    ip_packet[0] = 0x45;
-    put_u16(&ip_packet[2], (uint16_t)total);
-    put_u16(&ip_packet[4], id);
-    ip_packet[8] = 64; // group would use TTL 1; this is an individual call
-    ip_packet[9] = IP_PROTOCOL_UDP;
-    put_u16(&ip_packet[12], (uint16_t)(src_ip >> 16));
-    put_u16(&ip_packet[14], (uint16_t)src_ip);
-    put_u16(&ip_packet[16], (uint16_t)(dst_ip >> 16));
-    put_u16(&ip_packet[18], (uint16_t)dst_ip);
-    put_u16(&ip_packet[10], (uint16_t)~ones_complement_sum(0, ip_packet, 20));
-
-    memcpy(&ip_packet[28], payload, (size_t)length);
-    put_u16(&ip_packet[20], LRRP_PORT);
-    put_u16(&ip_packet[22], LRRP_PORT);
-    put_u16(&ip_packet[24], (uint16_t)udp_length);
-    put_u16(&ip_packet[26], 0);
-    sum = ones_complement_sum(IP_PROTOCOL_UDP + (uint32_t)udp_length, &ip_packet[12], 8);
-    sum = (uint16_t)~ones_complement_sum(sum, &ip_packet[20], udp_length);
-    put_u16(&ip_packet[26], (sum == 0) ? 0xFFFFu : sum);
-    return total;
-}
-
 bool aprs_dmr_build_position(int32_t latitude_e7, int32_t longitude_e7, uint16_t speed_knots, uint16_t course,
                              uint32_t destination, uint32_t source, aprs_dmr_tx_t *tx)
 {
     uint8_t doc[LRRP_MAX_DOCUMENT];
-    uint8_t buf[RATE_12_BYTES];
-    uint8_t header[10];
-    int doc_length;
-    int length;
-    int blocks;
-    int pad;
-    int bursts;
-    uint32_t crc;
+    uint8_t ip[28 + LRRP_MAX_DOCUMENT];
 
     if ((tx == NULL) || (destination == 0) || (destination > 0xFFFFFFu) || (source == 0) || (source > 0xFFFFFFu)) {
         return false;
     }
     tx->count = 0;
-    doc_length = build_lrrp(latitude_e7, longitude_e7, speed_knots, course, doc);
+    int doc_length = build_lrrp(latitude_e7, longitude_e7, speed_knots, course, doc);
     if (doc_length <= 0) {
         return false;
     }
-    length = build_ip(destination, source, doc, doc_length);
-    if (length <= 0) {
-        return false;
-    }
-    blocks = (length + 4 + RATE_12_BYTES - 1) / RATE_12_BYTES;
-    pad = (blocks * RATE_12_BYTES) - 4 - length;
-    bursts = PREAMBLES + 1 + blocks;
-    if ((pad < 0) || (pad > 31) || (blocks > 127) || (bursts > APRS_DMR_MAX_BURSTS) ||
-        ((blocks * RATE_12_BYTES) > PACKET_MAX)) {
-        return false;
-    }
-
-    // Preamble CSBKs: the receivers use them to syncronise before the data header
-    for (int i = 0; i < PREAMBLES; i++) {
-        memset(buf, 0, sizeof(buf));
-        buf[0] = 0x80u | CSBK_OPCODE_PREAMBLE; // Last Block
-        buf[1] = 0x00;                         // FID
-        buf[2] = 0x80u;                        // Data follows, individual
-        buf[3] = (uint8_t)(PREAMBLES - 1 - i + 1 + blocks);
-        put_id(&buf[4], destination);
-        put_id(&buf[7], source);
-        add_burst(tx, APRS_DMR_BURST_CSBK, buf);
-    }
-
-    // Unconfirmed data header (ETSI figure 8.3)
-    memset(header, 0, sizeof(header));
-    header[0] = (uint8_t)(((pad & 0x10u) != 0) ? 0x10u : 0) | DPF_UNCONFIRMED;
-    header[1] = (uint8_t)((SAP_IP << 4) | (pad & 0x0Fu));
-    put_id(&header[2], destination);
-    put_id(&header[5], source);
-    header[8] = (uint8_t)(0x80u | blocks); // Full message
-    header[9] = 0;                         // FSN: unconfirmed single fragment
-    add_burst(tx, APRS_DMR_BURST_DATA_HEADER, header);
-
-    memcpy(packet_data, ip_packet, (size_t)length);
-    memset(&packet_data[length], 0, (size_t)pad);
-    crc = crc32_dmr(packet_data, length + pad);
-    packet_data[length + pad] = (uint8_t)crc;
-    packet_data[length + pad + 1] = (uint8_t)(crc >> 8);
-    packet_data[length + pad + 2] = (uint8_t)(crc >> 16);
-    packet_data[length + pad + 3] = (uint8_t)(crc >> 24);
-    for (int i = 0; i < blocks; i++) {
-        add_burst(tx, APRS_DMR_BURST_RATE_1_2, &packet_data[i * RATE_12_BYTES]);
-    }
-    return true;
+    // to the gateway's radio address, TTL 64 (an individual datagram), port 4001 both ways
+    int length = dmr_ip_udp(ip, (int)sizeof(ip), DMR_IP_RADIO(source), DMR_IP_RADIO(destination), 64, LRRP_PORT, doc,
+                            doc_length);
+    return (length > 0) &&
+           dmr_data_unconfirmed(tx, DMR_DATA_PREAMBLES, false, DMR_SAP_IP, destination, source, ip, length) &&
+           (tx->count <= APRS_DMR_MAX_BURSTS);
 }

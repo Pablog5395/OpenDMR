@@ -74,6 +74,7 @@ static uint32_t saved_sync[4];
 static bool saved_p25_sync;
 
 static volatile bool tx_active;
+static volatile bool tx_timed; // the send timer started by this transmission's reset: its interrupts taken
 
 bool p25_phy_active(void)
 {
@@ -254,6 +255,7 @@ static uint32_t nxdn_bw = NXDN_FM_BW_VALUE; // the recording's FM_BANDWIDTH (afr
 volatile uint32_t afrec_rewrites; // WORK_MODE / FM_BANDWIDTH found changed and put back
 volatile uint32_t afrec_early_late; // early reads given up: the reader came too late (a change of FM_ADDR_SW missed?)
 volatile uint32_t afrec_early = 1; // not 0: the first quarter of a half read while the modem writes the second (tests)
+volatile uint32_t afrec_half_us;   // when the last half was seen finished (afrec_read(): late by up to its caller's poll)
 #define EARLY_US 18000             // a quarter (128 samples) is 16 ms: read 2 ms after it should be written ...
 #define LATE_US  30000             // ... but not after 30 ms: a half is 32 ms, a change of FM_ADDR_SW not seen by then
                                    // was missed (the reader held up): which half is written then is not known
@@ -302,6 +304,11 @@ static void af_copy(int16_t *out, const volatile uint8_t *src, int n)
     for (int i = 0; i < n; i++) {
         out[i] = (int16_t)((src[2 * i] << 8) | src[2 * i + 1]);
     }
+}
+
+bool afrec_half_switched(void)
+{
+    return (NXDN_FM_ADDR_SW & 3) != nxdn_last_sw;
 }
 
 // The recording since the last call (16 bit big endian in the modem's RAM, two halves of 256 samples, FM_ADDR_SW
@@ -356,6 +363,7 @@ int afrec_read(int16_t out[256], bool *half_end)
     *half_end = true;
     nxdn_last_sw = sw;
     sw_seen_us = now;
+    afrec_half_us = now;
     if (sw_changes < 2) {
         sw_changes++;
     }
@@ -458,6 +466,7 @@ volatile uint32_t p25_phy_tx_blocks;
 volatile uint32_t p25_phy_tx_underrun;
 volatile uint32_t p25_phy_tx_xor; // each dibit sent XOR this: 2 turns the symbols over (+3 <-> -3, +1 <-> -1), a test
 volatile uint32_t p25_phy_tx_isr_n = UINT32_MAX, p25_phy_tx_isr_us, p25_phy_tx_isr_next;
+volatile uint32_t p25_phy_tx_isr_first[4]; // the first interrupts' times (tests)
 
 // the transmit log (tools/debug/p25_txlog.py): the begin, the interrupts, the end
 p25_phy_txlog_t p25_phy_txlog[P25_PHY_TXLOG];
@@ -541,6 +550,12 @@ static void RAM_CODE write_half(int half, const uint8_t *b)
 // the transmit timeslot interrupt (dmr.c timeslot_tx_isr()): half n & 1 is being sent, the next block into the other
 void RAM_CODE p25_phy_tx_isr(void)
 {
+    // Before the reset the timer is the last transmission's (a repeater's wake-up just before: its interrupts came
+    // during the set up, 1 or 2 of them, 2026-11-24): taking them took the FIFO's first blocks and moved the count,
+    // an odd number of them the bursts and the PA gate into the other timeslot
+    if (!tx_timed) {
+        return;
+    }
     uint8_t b[P25_PHY_BLOCK_BYTES];
     uint32_t n = p25_phy_tx_blocks++;
     uint32_t now = systime_get_us();
@@ -549,6 +564,9 @@ void RAM_CODE p25_phy_tx_isr(void)
     bool have = next_block(b);
     write_half((int)((n + 1) & 1), b);
     p25_phy_tx_isr_us = now;
+    if (n < 4) {
+        p25_phy_tx_isr_first[n] = now;
+    }
     p25_phy_tx_isr_next = have;
     p25_phy_tx_isr_n = n;
 }
@@ -560,7 +578,14 @@ void p25_phy_tx_reset(void)
     p25_phy_tx_blocks = p25_phy_tx_underrun = 0;
 }
 
+volatile uint32_t p25_phy_tx_reset_us;
+
 int p25_phy_tx_begin(bool low_power)
+{
+    return p25_phy_tx_begin_at(low_power, 0);
+}
+
+int p25_phy_tx_begin_at(bool low_power, uint32_t at)
 {
     if (active || tx_active) {
         return -1;
@@ -574,15 +599,28 @@ int p25_phy_tx_begin(bool low_power)
     saved_tx_layer2 = *LAYER2_CONTROL;
     saved_tx_txrx = *LAYER2_TXRX_CTRL;
     *LAYER2_TXRX_CTRL = 0;
-    phy_soft_reset(); // the modem's send timing from the start (above)
-    *WORK_MODE = WORK_MODE_PHY_CONTINUOUS;
-    *LAYER2_CONTROL = LAYER2_PHY_SEND;
     uint8_t b[P25_PHY_BLOCK_BYTES];
     next_block(b); // the first block in both halves: half 0 goes first, half 1 is written at the first interrupt
+    if (at) { // asleep until ~1.2 ms before, the rest busy (interrupts on: an interrupt just then delays it some us)
+        while ((int32_t)(at - systime_get_us()) > 1200) {
+            vTaskDelay(1);
+        }
+        while ((int32_t)(at - systime_get_us()) > 0) {
+        }
+    }
+    taskENTER_CRITICAL();
+    phy_soft_reset(); // the modem's send timing from the start (above)
+    p25_phy_tx_reset_us = systime_get_us();
+    p25_phy_tx_blocks = 0;
+    p25_phy_tx_isr_n = UINT32_MAX;
+    tx_timed = true;
+    *WORK_MODE = WORK_MODE_PHY_CONTINUOUS;
+    *LAYER2_CONTROL = LAYER2_PHY_SEND;
     write_half(0, b);
     write_half(1, b);
-    p25_phy_tx_state = 2;
     *LAYER2_TXRX_CTRL = TXRX_PHY_SEND;
+    taskEXIT_CRITICAL();
+    p25_phy_tx_state = 2;
     txlog(0, 1);
     return 0;
 }
@@ -604,6 +642,7 @@ void p25_phy_tx_end(void)
     radio_phy_tx(false, false);
     vTaskDelay(pdMS_TO_TICKS(TX_RF_SETUP_MS));
     tx_active = false;
+    tx_timed = false;
     p25_phy_tx_state = (p25_phy_tx_underrun >= TX_UNDERRUN_STOP) ? 4 : 3;
 }
 

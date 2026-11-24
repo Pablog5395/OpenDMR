@@ -340,7 +340,9 @@ static void change(int item, int direction, bool fast, uint8_t modifiers)
                 step_value(&can, direction, 0, CODEPLUG_M17_CAN_MAX);
                 codeplug_set_m17_can(edit, can);
             } else if (!fm) {
-                step_value(&edit->tx_colour, direction, 0, COLOUR_CODE_MAX);
+                uint8_t cc = codeplug_colour_code(edit); // from the colour code in use (the byte may hold a NAC)
+                step_value(&cc, direction, 0, COLOUR_CODE_MAX);
+                edit->tx_colour = cc;
             }
             break;
         case ITEM_TIMESLOT:
@@ -532,7 +534,7 @@ static void format_item(int item, char *label, size_t label_size, char *out, siz
             } else if (fm) {
                 snprintf(out, size, "%s", na);
             } else {
-                snprintf(out, size, "%u", edit->tx_colour);
+                snprintf(out, size, "%u", codeplug_colour_code(edit));
             }
             break;
         case ITEM_TIMESLOT:

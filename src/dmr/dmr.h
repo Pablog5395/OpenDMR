@@ -32,6 +32,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "codeplug.h"
+#include "dmr_data.h"
 
 // DMR (dmr.c): the main firmware's HR_C7000 engine (hr_c7000.c) behind the radio service. The radio service tunes the
 // FD6818 and calls these; the UI reads the call.
@@ -54,6 +55,12 @@ bool dmr_channel_busy(void);    // a DMR call on the channel now (its timeslots 
 bool dmr_repeater_failed(void); // the repeater didn't wake up
 
 // APRS over DMR: one LRRP position report to a gateway, reusing the current DMR channel. Coordinates are 1e-7 degrees.
+// A data transmission (dmr_data.h: APRS, text messages): queued for the radio's next chance (repeater mode: woken
+// first); its state then busy, failed (wake failure, engine reset, cancelled)
+bool dmr_data_send(const dmr_data_tx_t *tx);
+bool dmr_data_busy(void);
+bool dmr_data_failed(void);
+void dmr_data_cancel(void);
 bool dmr_aprs_send_position(int32_t latitude_e7, int32_t longitude_e7, uint16_t speed_knots, uint16_t course,
                             uint32_t destination, uint32_t source);
 bool dmr_aprs_busy(void);   // a queued report is still being transmitted
@@ -79,5 +86,7 @@ void dmr_engine_transmit(bool on);
 bool dmr_engine_transmitting(void);
 void dmr_lc_heard(const uint8_t lc[9], uint8_t timeslot); // a Full LC heard (9 bytes) on timeslot 0 / 1
 void dmr_call_over(void);                                 // the call heard ended
+void dmr_soft_call_beeps(bool begin); // the software receiver's call began / ended: the receive beeps (dmr.c)
+void dmr_soft_tick(void);             // the engine's task while the software receiver runs: those beeps played
 
 #endif

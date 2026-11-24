@@ -36,6 +36,7 @@
 #include <string.h>
 #include "flash.h"
 #include "extra_options.h"
+#include "dmr_sms.h"
 
 #define ADDRESS 0x6140
 #define MAGIC   0x3154504F // "OPT1"
@@ -45,6 +46,7 @@ typedef struct {
     uint32_t bits;
     uint8_t theme;           // 0xFF: none chosen (a block written before it)
     uint8_t aprs_gateway[3]; // 24 bit DMR ID, big endian; 0 / 0xFFFFFF: use the default
+    uint8_t sms_format;      // the DMR text messages' format (dmr_sms.h); another value (a block before it): Motorola
 } block_t;
 
 static block_t block;
@@ -112,6 +114,19 @@ void extra_options_set_theme(uint8_t theme)
 {
     if (theme != block.theme) {
         block.theme = theme;
+        (void)flash_write(ADDRESS, (const uint8_t *)&block, sizeof(block));
+    }
+}
+
+uint8_t extra_options_sms_format(void)
+{
+    return (block.sms_format < DMR_SMS_FORMATS) ? block.sms_format : DMR_SMS_MOTOROLA;
+}
+
+void extra_options_set_sms_format(uint8_t format)
+{
+    if ((format < DMR_SMS_FORMATS) && (format != block.sms_format)) {
+        block.sms_format = format;
         (void)flash_write(ADDRESS, (const uint8_t *)&block, sizeof(block));
     }
 }

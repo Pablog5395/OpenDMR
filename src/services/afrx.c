@@ -30,9 +30,17 @@
  * OpenDMR, service: the software receivers' common running (afrx.h).
  *
  * The task looks at the recording every POLL_MS: each half the modem finished goes to the receiver; a half more than
- * 48 ms after the last means halves went by unread (counted). The PTT held: the receiver's call ended, the playback
- * and the recording off, its transmit() (which returns once the PTT is released and its transmission is out), then
- * the recording, the receiver's state and the playback again.
+ * 48 ms after the last means halves went by unread (counted). The PTT held (and the receiver's tx_ready()): the
+ * receiver's call ended, the playback and the recording off, its transmit() (which returns once the PTT is released
+ * and its transmission is out, or, DMR in repeater mode, once the repeater's wake-up is sent), then the recording,
+ * the receiver's state and the playback again.
+ *
+ * The samples' time (afrx_sample_us()): each half's end as seen, less its samples' time (125 us each), the earliest of
+ * the last CLOCK_HALVES. Polling alone sees a half's end late by a fixed amount: the 32 ms halves and the 1 ms ticks keep
+ * their phase (the modem's clock and the CPU's ~15 ppm apart: it moves 4 ms in ~4.5 minutes), so the least of many
+ * waits is no better than one (repeater mode's bursts were off by up to 3 ms, 2026-11-24). With precise_clock the task
+ * polls every 1 ms and, a half's end due within the poll (32 ms after the last), watches for it (~0.6 ms of spinning a
+ * half on average): its time to some us from the second half on.
  */
 
 #include <string.h>
@@ -47,6 +55,7 @@
 #include "afrx.h"
 
 #define POLL_MS     4    // a half is 32 ms
+#define CLOCK_HALVES 32  // the samples' clock from the last this many halves (~1 s)
 #define STACK_WORDS 2304 // 9 KB: frame decoding and our AMBE decoder (NXDN, DMR); the AMBE encoder ~6.5 KB (NXDN, DMR
                          // transmit); Codec 2 decoding ~3.5 KB, encoding ~2 KB (M17). 7 KB overflowed with DMR's
                          // transmit (2026-11-20: the flags below the stack overwritten, the receiver stopped);
@@ -59,6 +68,10 @@ static const afrx_ops_t *volatile current;
 static volatile bool running;
 static volatile bool busy; // the task is using the receiver (its overlay)
 static volatile bool tx_want, tx_busy;
+static uint32_t clk_samples;           // samples given to the receiver since receive_again()
+static uint32_t clk_off[CLOCK_HALVES]; // each half's end as seen, less its samples' time (125 us each)
+static uint32_t clk_n;                 // halves in clk_off since receive_again() or a half lost
+static uint32_t next_half_us;          // precise_clock: the next half's end due (the last's + 32 ms)
 static int16_t half[256]; // off the stack
 // over the cable: [0] running | busy << 1 | tx_want << 2 | tx_busy << 3 | a receiver set << 4; [1] the recording not
 // started again after a transmission; [2] transmissions; [3] stops; [4] the stack never used (bytes, the least seen)
@@ -85,6 +98,8 @@ static void debug_state(void)
 
 static void receive_again(const afrx_ops_t *o)
 {
+    clk_samples = 0;
+    clk_n = 0;
     o->rx_init();
     if (o->play) {
         voice_play_start(o->play);
@@ -119,7 +134,8 @@ static void task_main(void *arg)
 
     (void)arg;
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(POLL_MS));
+        const afrx_ops_t *p = current;
+        vTaskDelay(pdMS_TO_TICKS((p && p->precise_clock) ? 1 : POLL_MS));
         debug_state();
         busy = true;
         const afrx_ops_t *o = current;
@@ -128,11 +144,19 @@ static void task_main(void *arg)
             busy = false;
             continue;
         }
-        if (tx_want && o->transmit) {
+        if (o->precise_clock && clk_n) { // a half's end due before the next poll: watched for
+            int32_t until = (int32_t)(next_half_us - systime_get_us());
+            if ((until > -2000) && (until <= 1100)) {
+                uint32_t end = next_half_us + 2000;
+                while (!afrec_half_switched() && ((int32_t)(end - systime_get_us()) > 0)) {
+                }
+            }
+        }
+        if (tx_want && o->transmit && (!o->tx_ready || o->tx_ready())) {
             transmit(o, o->transmit);
             last_half = 0;
         }
-        if (data_want && o->data) {
+        if (data_want && o->data && (!o->tx_ready || o->tx_ready())) {
             data_want = false;
             transmit(o, o->data);
             last_half = 0;
@@ -144,13 +168,22 @@ static void task_main(void *arg)
             TickType_t now = xTaskGetTickCount();
             const afrx_stats_t *s = &o->stats;
             if (half_end) {
-                if (s->missed && last_half && ((now - last_half) > pdMS_TO_TICKS(48))) {
-                    *s->missed += (now - last_half) / pdMS_TO_TICKS(32) - 1;
+                if (last_half && ((now - last_half) > pdMS_TO_TICKS(48))) {
+                    clk_n = 0; // the samples no longer the time since the start
+                    if (s->missed) {
+                        *s->missed += (now - last_half) / pdMS_TO_TICKS(32) - 1;
+                    }
                 }
                 if (s->halves) {
                     (*s->halves)++;
                 }
                 last_half = now;
+            }
+            clk_samples += (uint32_t)n;
+            if (half_end) {
+                clk_off[clk_n % CLOCK_HALVES] = afrec_half_us - clk_samples * 125u;
+                clk_n++;
+                next_half_us = afrec_half_us + 32000u;
             }
             o->samples(half, n);
             uint32_t took = systime_get_us() - t0;
@@ -210,6 +243,30 @@ void afrx_stop(void)
     current = NULL;
 }
 
+volatile uint32_t afrx_clock[2]; // the last afrx_sample_us(): its halves, their offsets' spread (us)
+
+bool afrx_sample_us(uint32_t at, uint32_t *us)
+{
+    uint32_t n = (clk_n < CLOCK_HALVES) ? clk_n : CLOCK_HALVES;
+    if (n < 3) {
+        return false;
+    }
+    uint32_t best = clk_off[0], worst = clk_off[0];
+    for (uint32_t i = 1; i < n; i++) {
+        if ((int32_t)(clk_off[i] - best) < 0) {
+            best = clk_off[i];
+        }
+        if ((int32_t)(clk_off[i] - worst) > 0) {
+            worst = clk_off[i];
+        }
+    }
+    afrx_clock[0] = clk_n;
+    afrx_clock[1] = worst - best;
+    // sample i ends at (i + 1) * 125 us: the last of a half ends when the modem switches halves
+    *us = best + (uint32_t)(((uint64_t)at * 125u + 125u * 16u) >> 4);
+    return true;
+}
+
 bool afrx_running(const afrx_ops_t *ops)
 {
     return running && (current == ops);
@@ -245,6 +302,11 @@ void afrx_fifo_prepare(uint32_t mod_scale)
 bool afrx_fifo_key(bool low_power)
 {
     return p25_phy_tx_begin(low_power) == 0;
+}
+
+bool afrx_fifo_key_at(bool low_power, uint32_t at)
+{
+    return p25_phy_tx_begin_at(low_power, at) == 0;
 }
 
 uint32_t afrx_fifo_finish(bool keyed)

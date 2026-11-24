@@ -175,6 +175,9 @@ static uint32_t expected_length(uint32_t received)
             case 'q': return 2; // the state
             case 'a': return 6; // a test APRS beacon
             case 'd': return 5; // a test data burst
+            case 'p': return 2; // an APRS-over-DMR position report
+            case 's': return (received < 7) ? 7 : (7 + request[6]); // a text message: its text's length in octet 6
+            case 'f': return 3; // the DMR text messages' format
             case 'n': return 9; // a notice
             default: break;
         }

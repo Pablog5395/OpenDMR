@@ -107,6 +107,11 @@ uint32_t p25_phy_tx_level(void); // dibits in the FIFO
 void p25_phy_tx_pad(void);        // zeros up to a whole block (after the last data unit)
 uint32_t p25_phy_tx_room(void);
 int p25_phy_tx_begin(bool low_power);
+// ... its timing (the modem's send timer, from the physical layer reset) started at systime_get_us() at (0: at once;
+// at least TX_RF_SETUP_MS + ~2 ms ahead: else late), the reset's time kept in p25_phy_tx_reset_us
+int p25_phy_tx_begin_at(bool low_power, uint32_t at);
+extern volatile uint32_t p25_phy_tx_reset_us;
+extern volatile uint32_t p25_phy_tx_isr_first[4]; // the first transmit interrupts' times (tests)
 void p25_phy_tx_end(void);
 // the last transmit interrupt: its number n (block n being sent since some 2 ms; UINT32_MAX: none yet), when
 // (systime_get_us()), and whether block n + 1 (just written) has data (not an underrun's zeros)
@@ -137,7 +142,9 @@ extern volatile uint32_t p25_phy_txlog_n;
 bool afrec_start(uint32_t bw);
 void afrec_stop(void);
 int afrec_read(int16_t out[256], bool *half_end);
+bool afrec_half_switched(void); // the modem has finished a half afrec_read() hasn't seen yet
 extern volatile uint32_t afrec_early;
+extern volatile uint32_t afrec_half_us; // the time the last half was seen finished (systime_get_us())
 extern volatile uint32_t afrec_rewrites;
 
 // NXDN experiments: the FM receive recording (the AF input at 8 kHz) into p25_phy_buf (p25_phy.c)

@@ -55,6 +55,8 @@ typedef struct {
     void (*poll)(void);              // every few ms after the halves: timeouts (or NULL)
     void (*end_call)(void);          // a call shown ended now (stopping, transmitting; or NULL)
     void (*transmit)(void);          // the PTT held: the transmission, until the PTT is released (afrx_ptt())
+    bool (*tx_ready)(void);          // the PTT held: transmit() now (or NULL: at once); false: receiving meanwhile
+    bool precise_clock;              // the halves' ends timed to some us (afrx_sample_us()): polled every 1 ms, watched
     void (*data)(void);              // a data transmission asked (afrx_data()): sent, then back (or NULL)
     afrx_stats_t stats;
 } afrx_ops_t;
@@ -69,12 +71,16 @@ void afrx_ptt(bool on);
 bool afrx_ptt_held(void);        // for transmit(): go on while true
 bool afrx_transmitting(void);    // the PTT held or the transmission still ending
 void afrx_data(void);            // the receiver's data() to run in the task (as a transmission: the recording off)
+// For the receiver (its task): the time (systime_get_us()) a sample ended, at: its index since rx_init(), Q4; false:
+// not known yet (a few halves needed). Within some us with precise_clock, else late by up to 4 ms (afrx.c)
+bool afrx_sample_us(uint32_t at, uint32_t *us);
 
 // For the transmit() of the receivers that send 4FSK through the physical layer's FIFO (NXDN, M17): the mic on, the
 // FIFO emptied, the modem's level scaled (MODEM_MOD_SCALE_ONE: as calibrated) ...
 void afrx_fifo_prepare(uint32_t mod_scale);
 // ... then, the first symbols put, the transmitter keyed (false: it could not be) ...
 bool afrx_fifo_key(bool low_power);
+bool afrx_fifo_key_at(bool low_power, uint32_t at); // the modem's send timing from systime_get_us() at (p25_phy.h)
 // ... and at the end the last block sent, the transmitter off, the level and the mic as before; returns the FIFO's
 // underruns (keyed false: only the level and the mic)
 uint32_t afrx_fifo_finish(bool keyed);

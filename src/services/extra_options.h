@@ -54,6 +54,8 @@ bool extra_option(uint32_t bit);
 void extra_option_set(uint32_t bit, bool on); // saved at once
 uint8_t extra_options_theme(void);          // the theme chosen (display.c); 0xFF: none yet
 void extra_options_set_theme(uint8_t theme); // saved at once
+uint8_t extra_options_sms_format(void);                    // DMR text messages sent: dmr_sms.h DMR_SMS_xxx
+void extra_options_set_sms_format(uint8_t format);        // saved at once
 uint8_t extra_options_aprs_via(void);                     // APRS_VIA_AFSK / DMR / BOTH
 void extra_options_set_aprs_via(uint8_t via);             // saved at once
 uint32_t extra_options_aprs_dmr_gateway(void);            // 24 bit DMR ID, default when unset

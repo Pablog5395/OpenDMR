@@ -42,6 +42,7 @@
 #include "codeplug.h"
 #include "vfo_screen.h"
 #include "channel_screen.h"
+#include "sms_screen.h"
 
 #define BAND_LIMITS_MODES     3 // off, on (the legacy bands), from the CPS
 #define CAPTURE_TIMEOUT_MIN   2 // s
@@ -322,6 +323,7 @@ static const ui_item_t radio_options_items[] = {
     {TEXT_POWER_TO_ALL, ICONS_COUNT, UI_ITEM_CUSTOM, &power_to_all, NULL},
     {TEXT_USER_POWER, ICONS_COUNT, UI_ITEM_CUSTOM, &user_power, NULL},
     {TEXT_DMR_CRC, ICONS_COUNT, UI_ITEM_BIT, &dmr_crc, NULL},
+    {TEXT_SMS_FORMAT, ICONS_COUNT, UI_ITEM_CUSTOM, &sms_format_item, NULL},
 };
 
 const ui_list_t radio_options = {

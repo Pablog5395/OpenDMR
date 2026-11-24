@@ -311,46 +311,69 @@ bool dmr_tg_filter(uint32_t tg_or_pc, uint32_t source)
 
 bool dmr_repeater_failed(void)
 {
-    return (HRC7000GetIsWakingState() == WAKING_MODE_FAILED);
+    return (HRC7000GetIsWakingState() == WAKING_MODE_FAILED) || dmr_soft_wake_failed;
+}
+
+// A data transmission (dmr_data.h): in software (dmr_soft.c) while the software receiver runs, else by the engine
+// (12 bursts at most)
+bool dmr_data_send(const dmr_data_tx_t *tx)
+{
+    uint8_t types[DMR_DATA_BURSTS_MAX];
+    uint8_t lengths[DMR_DATA_BURSTS_MAX];
+    uint8_t payloads[DMR_DATA_BURSTS_MAX][12];
+
+    if (dmr_soft_send_data(tx)) {
+        return true;
+    }
+    if (dmr_soft_running() || (tx->count > DMR_DATA_BURSTS_MAX)) {
+        return false; // the software's still sending the last one, or too long for the engine
+    }
+    for (uint8_t i = 0; i < tx->count; i++) {
+        types[i] = tx->burst[i].type;
+        lengths[i] = tx->burst[i].length;
+        memcpy(payloads[i], tx->burst[i].payload, tx->burst[i].length);
+    }
+    return HRC7000SendDataBursts(types, lengths, payloads, tx->count);
+}
+
+bool dmr_data_busy(void)
+{
+    return dmr_soft_data_busy() || !HRC7000DataBurstsDone();
+}
+
+bool dmr_data_failed(void)
+{
+    return dmr_soft_data_failed() || HRC7000DataBurstsFailed();
+}
+
+void dmr_data_cancel(void)
+{
+    dmr_soft_data_cancel();
+    HRC7000AbortDataBursts();
 }
 
 bool dmr_aprs_send_position(int32_t latitude_e7, int32_t longitude_e7, uint16_t speed_knots, uint16_t course,
                             uint32_t destination, uint32_t source)
 {
     aprs_dmr_tx_t tx;
-    uint8_t types[DMR_DATA_BURSTS_MAX];
-    uint8_t lengths[DMR_DATA_BURSTS_MAX];
-    uint8_t payloads[DMR_DATA_BURSTS_MAX][12];
 
-    if (!aprs_dmr_build_position(latitude_e7, longitude_e7, speed_knots, course, destination, source, &tx)) {
-        return false;
-    }
-    for (uint8_t i = 0; i < tx.count; i++) {
-        types[i] = tx.burst[i].type;
-        lengths[i] = tx.burst[i].length;
-        memcpy(payloads[i], tx.burst[i].payload, tx.burst[i].length);
-    }
-    // received in software (dmr_soft.c): its task has the engine send them, the recording off meanwhile
-    if (dmr_soft_send_data(types, lengths, (const uint8_t(*)[12])payloads, tx.count)) {
-        return true;
-    }
-    return HRC7000SendDataBursts(types, lengths, payloads, tx.count);
+    return aprs_dmr_build_position(latitude_e7, longitude_e7, speed_knots, course, destination, source, &tx) &&
+           dmr_data_send(&tx);
 }
 
 bool dmr_aprs_busy(void)
 {
-    return dmr_soft_data_busy() || !HRC7000DataBurstsDone();
+    return dmr_data_busy();
 }
 
 bool dmr_aprs_failed(void)
 {
-    return dmr_soft_data_failed() || HRC7000DataBurstsFailed();
+    return dmr_data_failed();
 }
 
 void dmr_aprs_cancel(void)
 {
-    dmr_soft_data_cancel();
-    HRC7000AbortDataBursts();
+    dmr_data_cancel();
 }
 
 /* The call: the LC of the engine to the last heard list and the UI (lastHeardListUpdate()) */
@@ -588,6 +611,9 @@ static void rx_beeps(void)
             sound_play(SOUND_RX_BEGIN);
         }
     } else if (*state & RX_BEEP_TALKER_HAS_STARTED_EXEC) {
+        if (sound_is_playing()) {
+            return; // the carrier beep first (the software receiver has both at once): this one after it
+        }
         *state &= (uint8_t)~(RX_BEEP_TALKER_HAS_STARTED_EXEC | RX_BEEP_TALKER_HAS_ENDED | RX_BEEP_TALKER_HAS_ENDED_EXEC);
         if ((settings.beep_options & BEEP_RX_TALKER_BEGIN) && must_beep(BEEP_RX_TALKER)) {
             sound_play(SOUND_RX_TALKER_BEGIN);
@@ -604,6 +630,34 @@ static void rx_beeps(void)
             (void)addTimerCallback(carrier_end_beep, CARRIER_END_DELAY_MS, MENU_ANY, false);
         }
     }
+}
+
+// The software receiver's calls (dmr_soft.c), which the engine doesn't see: the same beeps. It has the call with its
+// LC at once, so the carrier and the talker start together (the talker beep after the carrier one, rx_beeps()); its
+// end ends both, the talker beep first and the carrier one a moment later
+void dmr_soft_call_beeps(bool begin)
+{
+    volatile uint8_t *state = &uiDataGlobal.rxBeepState;
+
+    taskENTER_CRITICAL();
+    if (begin) {
+        if ((*state & RX_BEEP_CARRIER_HAS_STARTED) == 0) {
+            *state = (uint8_t)(RX_BEEP_CARRIER_HAS_STARTED | RX_BEEP_CARRIER_HAS_STARTED_EXEC | RX_BEEP_TALKER_IDENTIFIED |
+                               RX_BEEP_TALKER_HAS_STARTED | RX_BEEP_TALKER_HAS_STARTED_EXEC);
+        }
+    } else if (*state & RX_BEEP_CARRIER_HAS_STARTED) {
+        *state |= RX_BEEP_CARRIER_HAS_ENDED;
+        if ((*state & RX_BEEP_TALKER_HAS_STARTED) && ((*state & RX_BEEP_TALKER_HAS_ENDED) == 0)) {
+            *state |= (RX_BEEP_TALKER_HAS_ENDED | RX_BEEP_TALKER_HAS_ENDED_EXEC);
+        }
+    }
+    taskEXIT_CRITICAL();
+}
+
+// The engine's task while the software receiver has the modem (no engine tick): its beeps
+void dmr_soft_tick(void)
+{
+    rx_beeps();
 }
 
 // After each tick of the engine (its task)

@@ -32,6 +32,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "dmr_data.h"
+
 /*
  * The LRRP report and the DMR data packet formats here are ported from RadioFoundry
  * (https://github.com/gzalo/RadioFoundry), Copyright (c) The RadioFoundry Authors, used under the MIT License.
@@ -42,27 +44,11 @@
  */
 
 #define APRS_DMR_MAX_BURSTS       12
-#define APRS_DMR_PAYLOAD_MAX      24
 #define APRS_DMR_SPEED_UNKNOWN    0xFFFFu
 #define APRS_DMR_COURSE_UNKNOWN   0xFFFFu
 
-// DMR data types as the HR_C7000 LAYER2_SEND_TYPE expects them (type << 4)
-enum {
-    APRS_DMR_BURST_CSBK = 3,
-    APRS_DMR_BURST_DATA_HEADER = 6,
-    APRS_DMR_BURST_RATE_1_2 = 7
-};
-
-typedef struct {
-    uint8_t type;                        // APRS_DMR_BURST_xxx
-    uint8_t length;                      // bytes in payload, 10 or 12
-    uint8_t payload[APRS_DMR_PAYLOAD_MAX];
-} aprs_dmr_burst_t;
-
-typedef struct {
-    uint8_t count;
-    aprs_dmr_burst_t burst[APRS_DMR_MAX_BURSTS];
-} aprs_dmr_tx_t;
+// the bursts of a position report (dmr_data.h); at most APRS_DMR_MAX_BURSTS (the HR_C7000's way takes 12)
+typedef dmr_data_tx_t aprs_dmr_tx_t;
 
 // Build the preamble CSBKs, data header and Rate 1/2 blocks for one position. Coordinates are 1e-7 degrees.
 // Speed is knots, course degrees; use the *_UNKNOWN values when they aren't available.

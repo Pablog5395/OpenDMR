@@ -543,7 +543,7 @@ static void draw(void)
 
     if (dmr()) { // the timeslot and colour code after "TX" (docs/ui-design.md 5.4)
         snprintf(ts, sizeof(ts), "TS%d", tx.target.timeslot);
-        snprintf(cc, sizeof(cc), "CC%d", tx.channel.tx_colour);
+        snprintf(cc, sizeof(cc), "CC%d", codeplug_colour_code(&tx.channel));
         bar.item1 = ts;
         bar.item1_bold = true;
         bar.item2 = cc;

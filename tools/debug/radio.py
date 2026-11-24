@@ -93,6 +93,23 @@ class Radio:
         self._request(b'Da' + frequency.to_bytes(4, 'big'), b'Da')
         return self.port.read(1) == b'\x01'
 
+    def sms_format(self, fmt):
+        """The DMR text messages' format: 0 Hytera, 1 Motorola, 2 DMR; True: set"""
+        self._request(b'Df' + bytes([fmt]), b'Df')
+        return self.port.read(1) == b''
+
+    def sms(self, dst, text, group=False):
+        """A text message on the channel now (DMR: to the radio / talk group dst); True: accepted"""
+        t = text.encode('utf-8')
+        self._request(b'Ds' + bytes([(dst >> 16) & 0xFF, (dst >> 8) & 0xFF, dst & 0xFF, 1 if group else 0, len(t)]) + t,
+                      b'Ds')
+        return self.port.read(1) == b''
+
+    def dmr_position(self):
+        """An APRS-over-DMR position report on the channel now (the fixed position, to the gateway); True: accepted"""
+        self._request(b'Dp', b'Dp')
+        return self.port.read(1) == b''
+
     def data(self, ms, fail=False):
         """A test data burst through the radio task (no DMR engine, no RF): sent for ms, or failing; True: accepted"""
         self._request(b'Dd' + bytes([(ms >> 8) & 0xFF, ms & 0xFF, 1 if fail else 0]), b'Dd')

@@ -89,6 +89,7 @@ typedef struct {
     const char *item1; // e.g. "5W"
     const char *item2; // e.g. "12.5K"
     const char *right; // right aligned, e.g. "DMO"; NULL: none
+    bool item2_fixed;  // item2 where the widest power label ends, whatever item1 is (it doesn't move with it)
 } bottom_bar_data_t;
 
 void bottom_bar_draw(const bottom_bar_data_t *data);

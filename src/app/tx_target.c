@@ -53,6 +53,15 @@ tx_target_source_t tx_target_source(void)
     return vfo_screen_is_home() ? (tx_target_source_t)vfo_screen_current() : TX_TARGET_CHANNEL;
 }
 
+// The TG / PC entered or picked: a codeplug channel's for now (RAM, tx_target_channel_forget()), the VFOs' in the
+// settings (kept over power off, as before: both VFOs share it)
+static uint32_t channel_override_tg;
+
+static uint32_t *override_tg(void)
+{
+    return (tx_target_source() == TX_TARGET_CHANNEL) ? &channel_override_tg : &settings.override_tg;
+}
+
 static int manual_timeslot(void)
 {
     return (settings.ts_manual_override >> (2 * tx_target_source())) & TS_MASK;
@@ -95,12 +104,14 @@ void tx_target_get(const codeplug_channel_t *channel, tx_target_t *target)
     int contact_ts = 0;
 
     memset(target, 0, sizeof(*target));
-    if (settings.override_tg != 0) {
-        bool pc = ((settings.override_tg >> 24) == TX_TARGET_PC_FLAG);
-        uint32_t number = settings.override_tg & CODEPLUG_CONTACT_ID_MAX;
+    uint32_t picked = *override_tg();
+
+    if (picked != 0) {
+        bool pc = ((picked >> 24) == TX_TARGET_PC_FLAG);
+        uint32_t number = picked & CODEPLUG_CONTACT_ID_MAX;
         int index = codeplug_contact_find(number, (pc ? CODEPLUG_CALL_PRIVATE : CODEPLUG_CALL_GROUP), 0);
 
-        target->id = settings.override_tg;
+        target->id = picked;
         target->overridden = true;
         if ((index != 0) && codeplug_get_contact(index, &contact)) {
             codeplug_text_name(contact.name, CODEPLUG_NAME_LENGTH, target->name, sizeof(target->name));
@@ -175,7 +186,7 @@ void tx_target_apply(codeplug_channel_t *channel, tx_target_t *target)
 
 void tx_target_set(uint32_t id, bool private_call)
 {
-    settings.override_tg = (id & CODEPLUG_CONTACT_ID_MAX) | (private_call ? ((uint32_t)TX_TARGET_PC_FLAG << 24) : 0);
+    *override_tg() = (id & CODEPLUG_CONTACT_ID_MAX) | (private_call ? ((uint32_t)TX_TARGET_PC_FLAG << 24) : 0);
     settings_changed();
 }
 
@@ -195,7 +206,7 @@ void tx_target_toggle_timeslot(const codeplug_channel_t *channel)
 
     tx_target_get(channel, &target);
     tx_target_set_timeslot(3 - target.timeslot);
-    if ((tx_target_source() != TX_TARGET_CHANNEL) && (settings.override_tg == 0) && channel_contact(channel, &contact) &&
+    if ((tx_target_source() != TX_TARGET_CHANNEL) && (*override_tg() == 0) && channel_contact(channel, &contact) &&
         (codeplug_contact_timeslot(&contact) != 0)) {
         set_contact_overridden(true);
     }
@@ -217,28 +228,29 @@ int tx_target_step_group(const codeplug_channel_t *channel, int step)
     int stepped = -1;
 
     if ((channel->rx_group_list != 0) && codeplug_get_rx_group(channel->rx_group_list, &group) &&
-        (group.contact_count > 1) && (settings.override_tg == 0)) {
+        (group.contact_count > 1) && (*override_tg() == 0)) {
         *index = (int16_t)((((*index + step) % group.contact_count) + group.contact_count) % group.contact_count);
         stepped = *index;
         if ((tx_target_source() == TX_TARGET_CHANNEL) && codeplug_get_contact(group.contacts[*index], &contact)) {
             tx_target_set_timeslot(codeplug_contact_timeslot(&contact)); // 0: the channel's
         }
     }
-    settings.override_tg = 0;
+    *override_tg() = 0;
     set_contact_overridden(false); // updateTrxID()
     settings_changed();
     return stepped;
 }
 
 // What was picked for a codeplug channel lasts until another channel, the VFO, or power off: the TG / PC picked, the
-// RX group's TG stepped to, the timeslot set (channel_screen.c). In the settings meanwhile, so dropped here.
+// RX group's TG stepped to, the timeslot set (channel_screen.c). The last two are in the settings meanwhile, so dropped
+// here (the VFOs' own are left alone)
 void tx_target_channel_forget(void)
 {
     uint16_t channel_bits = (uint16_t)((TS_MASK << (2 * TX_TARGET_CHANNEL)) | (1U << (TS_CONTACT_SHIFT + TX_TARGET_CHANNEL)));
     int16_t *index = &settings.current_index_in_trx_group_list[(TX_TARGET_CHANNEL + 1) % 3];
 
-    if ((settings.override_tg != 0) || ((settings.ts_manual_override & channel_bits) != 0) || (*index != 0)) {
-        settings.override_tg = 0;
+    channel_override_tg = 0;
+    if (((settings.ts_manual_override & channel_bits) != 0) || (*index != 0)) {
         settings.ts_manual_override = (uint16_t)(settings.ts_manual_override & ~channel_bits);
         *index = 0;
         settings_changed();

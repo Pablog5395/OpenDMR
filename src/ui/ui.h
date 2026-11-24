@@ -90,6 +90,7 @@ typedef enum {
 #define UI_DATA_HOTSPOT    0x0020 // hotspot.c: a host wants it, it ended, or what it shows changed
 #define UI_DATA_CPS        0x0040 // cps_screen.c: the CPS opened, rendered or closed its screen, or more data went
 #define UI_DATA_GPS        0x0080 // gps.c: the fix came or went (the status bar's GPS icon)
+#define UI_DATA_SMS        0x0100 // sms.c: a message came, or one sent got its result
 
 // What a key event comes from, besides a key (0)
 #define UI_KEY_FROM_VOX 0x0001 // radio.c: the VOX's PTT press and release
@@ -149,12 +150,20 @@ typedef enum {
     UI_NOTICE_TX,    // an antenna: something goes on the air
     UI_NOTICE_OK,    // a tick: done
     UI_NOTICE_ERROR, // a cross: did not happen
+    UI_NOTICE_MAIL,  // an envelope: a message came
 } ui_notice_kind_t;
 
 #define UI_NOTICE_MS_MAX 25500 // the longest (100 ms steps in the event)
 
 bool ui_notify(text_id_t line1, text_id_t line2, ui_notice_kind_t kind, uint32_t ms);
-void ui_notice_draw(text_id_t line1, text_id_t line2, ui_notice_kind_t kind); // notice.c, by the UI task
+// the same with a text of its own as line2 (a caller's name: copied, UI_NOTICE_TEXT_MAX octets of it)
+#define UI_NOTICE_TEXT_MAX 47
+bool ui_notify_text(text_id_t line1, const char *line2, ui_notice_kind_t kind, uint32_t ms);
+// notice.c, by the UI task; line2_text: the text of line2 when not NULL (line2 then ignored)
+void ui_notice_draw(text_id_t line1, text_id_t line2, const char *line2_text, ui_notice_kind_t kind);
+// The left key on a notice of that kind: it closes it and does action (the UI task; NULL: none, as any key); while it
+// shows, the soft keys say so (label, Close: the right key, as any other, only closes it)
+void ui_set_notice_action(ui_notice_kind_t kind, void (*action)(void), text_id_t label);
 void ui_key_beep(const int16_t *melody); // from handle(): the beep of this key instead of the key beep; NULL: none
 void ui_timer_stop(void);
 

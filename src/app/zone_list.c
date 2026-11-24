@@ -38,6 +38,7 @@
 #include "settings.h"
 #include "codeplug.h"
 #include "menus.h"
+#include "tx_target.h"
 
 static int zone_count(void)
 {
@@ -65,8 +66,7 @@ static void zone_name(int index, char *buffer, size_t size)
 static void zone_pick(int index)
 {
     settings.current_zone = (int16_t)index;
-    settings.override_tg = 0;
-    settings.current_index_in_trx_group_list[0] = 0;
+    tx_target_channel_forget(); // the TG and timeslot picked on the channel (not the VFOs')
     settings_changed();
     settings_save_if_changed();
     ui_home();

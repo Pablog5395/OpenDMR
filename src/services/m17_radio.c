@@ -68,6 +68,7 @@
 #include "ui.h"
 #include "voice_play.h"
 #include "afrx.h"
+#include "sms.h"
 
 #define PCM_FRAMES    16   // 320 ms of decoded voice
 #define PLAY_START    2    // frames queued before the playback starts (they come two at a time every 40 ms, with a
@@ -228,6 +229,24 @@ static void log_stream(void)
     m17_stream_log_n++;
 }
 
+// a packet received (its LSF in rx.lsf): a text message to us or to all into the messages (sms.c)
+static void packet(void)
+{
+    char src[10], dst[10], own[16];
+    m17_address(rx.lsf + 6, src);
+    m17_address(rx.lsf, dst);
+    codeplug_get_radio_name(own);
+    own[9] = 0;
+    m17_radio_stats.packets++;
+    if ((rx.packet_len < 2) || (rx.packet[0] != M17_PACKET_SMS) || (rx.packet[rx.packet_len - 1] != 0)) {
+        return; // not a text (or not NUL terminated)
+    }
+    if (strcmp(dst, "ALL") && strcasecmp(dst, own)) {
+        return; // to another station
+    }
+    sms_m17_text(src, dst, (const char *)&rx.packet[1]);
+}
+
 static void on_dibit(void *ctx, int d)
 {
     (void)ctx;
@@ -242,6 +261,10 @@ static void on_dibit(void *ctx, int d)
     switch (m17_rx_symbol(&rx, (int8_t)d)) {
     case M17_RX_LSF:
         m17_radio_stats.lsfs++;
+        if (rx.packet_mode) { // a packet follows: no call, no voice
+            rx.lsf_valid = false;
+            break;
+        }
         p25_ev_log(40, 0); // the delay log (p25_radio.c): an LSF received
         call_begin();
         last_frame = xTaskGetTickCount();
@@ -271,6 +294,9 @@ static void on_dibit(void *ctx, int d)
         if (rx.eos) {
             call_end();
         }
+        break;
+    case M17_RX_PACKET:
+        packet();
         break;
     case M17_RX_EOT:
         m17_radio_stats.eots++;
@@ -432,6 +458,67 @@ static void transmit(void)
     m17_raw_hold = 1; // the mic's samples kept for the cable until m17_raw_rearm
 }
 
+/* ---- a text message (packet mode) ----
+   As the voice, through the afrx task (afrx_data(): the recording and the playback off meanwhile): the preamble, the
+   LSF of packet TYPE, the packet's frames (18 at most: they and the rest fit the FIFO, keyed once all are in), the
+   EoT. */
+
+static const afrx_ops_t ops;
+static uint8_t pkt[M17_PACKET_MAX];
+static int pkt_len;
+static char pkt_dst[10];
+static volatile bool pkt_pending, pkt_failed;
+
+static void data(void)
+{
+    afrx_fifo_prepare(m17_tx_dev);
+    char src[16];
+    codeplug_get_radio_name(src);
+    src[9] = 0;
+    m17_lsf_make_packet(tx_lsf, pkt_dst, src, tx_can);
+    m17_tx_preamble(tx_dibits);
+    p25_phy_tx_put(tx_dibits, M17_FRAME_DIBITS);
+    m17_tx_lsf(tx_lsf, tx_dibits);
+    p25_phy_tx_put(tx_dibits, M17_FRAME_DIBITS);
+    for (int f = 0; m17_tx_packet_frame(pkt, pkt_len, f, tx_dibits); f++) {
+        p25_phy_tx_put(tx_dibits, M17_FRAME_DIBITS);
+    }
+    m17_tx_eot(tx_dibits);
+    p25_phy_tx_put(tx_dibits, M17_FRAME_DIBITS);
+    bool started = afrx_fifo_key(m17_tx_low_power != 0);
+    afrx_fifo_finish(started);
+    pkt_failed = !started;
+    pkt_pending = false;
+}
+
+bool m17_radio_send_sms(const char *dst, const char *text)
+{
+    if (pkt_pending || !afrx_running(&ops)) {
+        return false;
+    }
+    int n = m17_packet_sms(text, pkt, (int)sizeof(pkt));
+    if ((n == 0) || (n > 18 * 25)) {
+        return false;
+    }
+    pkt_len = n;
+    strncpy(pkt_dst, dst ? dst : "", sizeof(pkt_dst) - 1);
+    pkt_dst[sizeof(pkt_dst) - 1] = 0;
+    pkt_failed = false;
+    pkt_pending = true;
+    afrx_data();
+    return true;
+}
+
+bool m17_radio_sms_busy(void)
+{
+    return pkt_pending;
+}
+
+bool m17_radio_sms_failed(void)
+{
+    return pkt_failed;
+}
+
 void m17_radio_set_can(uint8_t can)
 {
     tx_can = can & 0x0F;
@@ -490,6 +577,7 @@ static const afrx_ops_t ops = {
     .poll = poll,
     .end_call = end_call,
     .transmit = transmit,
+    .data = data,
     .stats = {
         .halves = &m17_radio_stats.halves,
         .busy_us_max = &m17_radio_stats.busy_us_max,

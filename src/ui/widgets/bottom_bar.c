@@ -65,7 +65,11 @@ void bottom_bar_draw(const bottom_bar_data_t *data)
     }
 
     if (data->item1) {
+        int32_t widest = x + font_text_width(font, "500mW") + 12;
         x = font_draw_text(x, text_y, data->item1, font, FONT_ALIGN_LEFT, theme_colour(THEME_COLOUR_PANEL_TEXT)) + 12;
+        if (data->item2_fixed && (x < widest)) {
+            x = widest;
+        }
     }
 
     if (data->item2) {

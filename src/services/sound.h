@@ -38,6 +38,7 @@ extern const int16_t SOUND_KEY[];
 extern const int16_t SOUND_KEY_LONG[];
 extern const int16_t SOUND_KEY_FIRST_ITEM[];
 extern const int16_t SOUND_ACK[];
+extern const int16_t SOUND_SMS[]; // a text message came
 extern const int16_t SOUND_NACK[];
 extern const int16_t SOUND_ERROR[];
 extern const int16_t SOUND_TX_TIMEOUT[];

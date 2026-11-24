@@ -34,6 +34,7 @@
 #include "datetime.h"
 #include "settings.h"
 #include "gps.h"
+#include "sms.h"
 
 #define ICONS_WIDTH 20 // icons.h: all icons are 20 x 18
 
@@ -104,6 +105,15 @@ void status_bar_draw(const status_bar_data_t *data)
     if (data->scanning) {
         icons_draw(right - 18, (WIDGET_STATUS_BAR_HEIGHT - ICONS_SIZE) / 2, ICONS_SCAN, THEME_COLOUR_WARNING);
         right -= ICONS_WIDTH + 4;
+    }
+
+    // text messages not read yet: the envelope and how many (sms.h), before the screen's own items
+    int unread = sms_unread();
+    if (unread > 0) {
+        icons_draw(x, (WIDGET_STATUS_BAR_HEIGHT - ICONS_SIZE) / 2, ICONS_MAIL, text);
+        x += ICONS_WIDTH + 2;
+        snprintf(buffer, sizeof(buffer), "%d", (unread > 99) ? 99 : unread);
+        x = font_draw_text(x, text_y, buffer, &font_roboto17_bold, FONT_ALIGN_LEFT, theme_colour(text)) + 10;
     }
 
     if (data->item1) {

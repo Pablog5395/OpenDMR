@@ -49,6 +49,7 @@
 #include "calibration.h"
 #include "lock_screen.h"
 #include "last_heard_screen.h"
+#include "sms_screen.h"
 #include "key_settings.h"
 #include "menus.h"
 #include "lockouts.h"
@@ -339,6 +340,7 @@ static const ui_item_t main_menu_items[] = {
     {TEXT_RSSI, ICONS_SIGNAL, UI_ITEM_SCREEN, &rssi_screen, NULL},
     {TEXT_FM_RADIO, ICONS_FM_RADIO, UI_ITEM_SCREEN, &fm_radio_screen, NULL},
     {TEXT_FIRMWARE_INFO, ICONS_INFO, UI_ITEM_SCREEN, &firmware_info_screen, NULL},
+    {TEXT_SMS, ICONS_MAIL, UI_ITEM_CUSTOM, &sms_menu_entry, NULL},
     {TEXT_OPTIONS, ICONS_SETTINGS, UI_ITEM_LIST, &options, NULL},
     {TEXT_LAST_HEARD, ICONS_HISTORY, UI_ITEM_SCREEN, &last_heard_screen, NULL},
     {TEXT_RADIO_INFO, ICONS_RADIO_INFO, UI_ITEM_SCREEN, &radio_info_screen, NULL},
@@ -363,9 +365,9 @@ static const struct {
     uint8_t menu;
     const ui_item_t *item;
 } quick_menus[] = {
-    {1, &main_menu_items[1]},  {2, &main_menu_items[0]},  {3, &main_menu_items[7]},  {4, &main_menu_items[2]},
-    {5, &main_menu_items[6]},  {6, &main_menu_items[5]},  {7, &options_items[0]},    {8, &options_items[1]},
-    {9, &options_items[2]},    {10, &options_items[3]},   {11, &main_menu_items[8]}, {12, &main_menu_items[9]},
+    {1, &main_menu_items[1]},  {2, &main_menu_items[0]},  {3, &main_menu_items[8]},  {4, &main_menu_items[2]},
+    {5, &main_menu_items[7]},  {6, &main_menu_items[6]},  {7, &options_items[0]},    {8, &options_items[1]},
+    {9, &options_items[2]},    {10, &options_items[3]},   {11, &main_menu_items[9]}, {12, &main_menu_items[10]},
     {19, &options_items[6]},   {23, &channel_details_item}, {24, &main_menu_items[4]},
     {25, &options_items[7]},   {26, &main_menu_items[3]}, // 20, the theme: not here (the design's colours)
 };

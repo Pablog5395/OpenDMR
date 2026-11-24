@@ -32,6 +32,7 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include <string.h>
 #include "queue.h"
 #include "framebuffer.h"
 #include "theme.h"
@@ -39,6 +40,7 @@
 #include "sound.h"
 #include "radio.h"
 #include "ui.h"
+#include "widgets.h"
 
 #define STACK_DEPTH      8
 #define QUEUE_LENGTH     16
@@ -225,6 +227,20 @@ void ui_timer_stop(void)
     timer_running = false;
 }
 
+// ui_notify_text()'s line, from its task to the UI task's notice (a second one before the first is shown: its text)
+#define NOTICE_TEXT ((text_id_t)(TEXT_COUNT + 1))
+static char notice_text_asked[UI_NOTICE_TEXT_MAX + 1];
+static char notice_text[UI_NOTICE_TEXT_MAX + 1];
+
+bool ui_notify_text(text_id_t line1, const char *line2, ui_notice_kind_t kind, uint32_t ms)
+{
+    taskENTER_CRITICAL();
+    strncpy(notice_text_asked, line2 ? line2 : "", UI_NOTICE_TEXT_MAX);
+    notice_text_asked[UI_NOTICE_TEXT_MAX] = 0;
+    taskEXIT_CRITICAL();
+    return ui_notify(line1, NOTICE_TEXT, kind, ms);
+}
+
 bool ui_notify(text_id_t line1, text_id_t line2, ui_notice_kind_t kind, uint32_t ms)
 {
     ui_event_t ev = {.type = UI_EVENT_NOTICE, .key = (uint8_t)kind, .what = (uint16_t)line1, .steps = (int16_t)line2};
@@ -232,6 +248,17 @@ bool ui_notify(text_id_t line1, text_id_t line2, ui_notice_kind_t kind, uint32_t
     ms = (ms > UI_NOTICE_MS_MAX) ? UI_NOTICE_MS_MAX : ms;
     ev.modifiers = (uint8_t)((ms + 99) / 100);
     return ui_post(&ev);
+}
+
+static void (*notice_actions[UI_NOTICE_MAIL + 1])(void);
+static text_id_t notice_labels[UI_NOTICE_MAIL + 1];
+
+void ui_set_notice_action(ui_notice_kind_t kind, void (*action)(void), text_id_t label)
+{
+    if (kind <= UI_NOTICE_MAIL) {
+        notice_actions[kind] = action;
+        notice_labels[kind] = label;
+    }
 }
 
 // The notice's own events (true: taken): it shows one, or the user's key, knob step or PTT closes it (the PTT goes on
@@ -245,6 +272,11 @@ static bool notice_event(const ui_event_t *ev)
         notice.showing = true;
         notice.line1 = (text_id_t)ev->what;
         notice.line2 = (text_id_t)(uint16_t)ev->steps; // TEXT_COUNT and up: none
+        if (notice.line2 == NOTICE_TEXT) {
+            taskENTER_CRITICAL();
+            memcpy(notice_text, notice_text_asked, sizeof(notice_text));
+            taskEXIT_CRITICAL();
+        }
         notice.kind = (ui_notice_kind_t)ev->key;
         notice.due_ms = systime_get_ms() + (ev->modifiers * 100u);
         redraw = true;
@@ -259,6 +291,12 @@ static bool notice_event(const ui_event_t *ev)
     if (notice.showing && ((ev->type == UI_EVENT_KEY_PRESS) || (ev->type == UI_EVENT_ROTARY))) {
         notice.showing = false;
         redraw = true;
+        if ((ev->type == UI_EVENT_KEY_PRESS) && (ev->key == UI_KEY_GREEN) && !ev->modifiers &&
+            (notice.kind <= UI_NOTICE_MAIL) && notice_actions[notice.kind]) {
+            notice.swallowed_key = ev->key; // its release too
+            notice_actions[notice.kind]();
+            return true;
+        }
         if (ev->type == UI_EVENT_ROTARY) {
             return true;
         }
@@ -277,7 +315,10 @@ static void draw(void)
         top()->draw();
     }
     if (notice.showing) {
-        ui_notice_draw(notice.line1, notice.line2, notice.kind);
+        ui_notice_draw(notice.line1, notice.line2, (notice.line2 == NOTICE_TEXT) ? notice_text : NULL, notice.kind);
+        if ((notice.kind <= UI_NOTICE_MAIL) && notice_actions[notice.kind]) {
+            bottom_bar_draw_soft_keys(text(notice_labels[notice.kind]), text(TEXT_UI_CLOSE));
+        }
     }
     fb_flush();
 }

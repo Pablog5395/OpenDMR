@@ -114,6 +114,15 @@ void dmr_lc_parse(const uint8_t lc[9], dmr_lc_t *out);
 void dmr_lc_make(uint8_t lc[9], uint8_t flco, uint8_t options, uint32_t dst, uint32_t src);
 // the Full LC of a voice LC header or a terminator: its RS (12,9) parity, the data type's CRC mask applied
 void dmr_full_lc_make(const uint8_t lc[9], uint32_t mask, uint8_t out[12]);
+// The CRC-CCITT (B.3.8) of n bytes; a CSBK's or a data header's 10 bytes with it (big endian, the data type's mask
+// applied: B.3.12), checked
+#define DMR_MASK_CSBK        0xA5A5
+#define DMR_MASK_DATA_HEADER 0xCCCC
+uint16_t dmr_crc_ccitt(const uint8_t *d, int n);
+void dmr_crc_ccitt_make(const uint8_t d[10], uint16_t mask, uint8_t out[12]);
+bool dmr_crc_ccitt_check(const uint8_t d[12], uint16_t mask);
+// The message CRC-32 (B.3.9) of a packet's user data and pad octets; sent after them least significant octet first
+uint32_t dmr_crc32(const uint8_t *d, int n);
 // a data burst: the 12 information bytes through the BPTC (196,96), the Slot Type, the middle the SYNC of kind
 void dmr_burst_data(uint8_t b[DMR_BURST_BYTES], const uint8_t info[12], uint8_t cc, uint8_t data_type, int sync);
 // a voice burst: its 3 AMBE+2 frames, the middle the voice SYNC of kind (A) ...

@@ -36,7 +36,7 @@
 // The DMR call target of the channel or VFO shown: the talk group or private call and the timeslot (uiChannelMode.c
 // loadChannelData() and updateTrxID(), trx.c trxUpdateTsForCurrentChannelWithSpecifiedContact(), uiUtilities.c
 // tsSetManualOverride(), setOverrideTGorPC()). In this order:
-//   settings.override_tg       a TG / PC entered or picked (# entry, contacts, last heard)
+//   a TG / PC entered or picked (# entry, contacts, last heard): a channel's in RAM, the VFOs' settings.override_tg
 //   the RX group's TG          LEFT / RIGHT step through the channel's RX group list (current_index_in_trx_group_list)
 //   the channel's contact
 // The timeslot: the manual override of settings.ts_manual_override (* toggles it; a contact picked brings its own),
@@ -55,7 +55,7 @@ typedef enum {
 typedef struct {
     uint32_t id;     // TX_TARGET_PC_FLAG << 24 | the number for a private call; 0: none
     int timeslot;    // 1, 2
-    bool overridden; // from settings.override_tg
+    bool overridden; // a TG / PC entered or picked
     char name[48];   // the contact's name (UTF-8), or "TG 9" / "PC 123" without one
 } tx_target_t;
 

@@ -47,6 +47,7 @@ typedef struct {
     int since_sync;   // slots since the last burst with a sync (0: this one)
     int32_t mse;      // the symbols' mean squared distance from their levels (Q8, level^2)
     int32_t g;        // the gain (Q8, sample units per symbol level)
+    uint32_t at;      // its symbol 0's time: samples since dmr_demod_init(), Q4 (through the RRC: its delay included)
 } dmr_burst_t;
 
 typedef void (*dmr_demod_cb)(void *ctx, const dmr_burst_t *b);
@@ -70,6 +71,7 @@ typedef struct {
     int since_sync;
     dmr_demod_cb cb;
     void *ctx;
+    uint32_t rebased;          // samples taken off the times so far (fsk4_rebase())
     uint32_t syncs, lost, bursts, relocks; // counters (relocks: another time line found while locked)
 } dmr_demod;
 

@@ -51,6 +51,7 @@
 #include "radio_hooks.h"
 #include "display.h"
 #include "aprs.h"
+#include "sms.h"
 #include "input.h"
 
 #define INPUT_PERIOD_MS     10
@@ -193,6 +194,7 @@ static void input_task(void *arg)
 
         display_light_tick(INPUT_PERIOD_MS);
         aprs_tick();
+        sms_tick();
         systime_app_passes++; // alive, for the monitor (systime.c)
         vTaskDelayUntil(&wake, pdMS_TO_TICKS(INPUT_PERIOD_MS));
     }

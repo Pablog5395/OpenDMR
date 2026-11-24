@@ -42,12 +42,15 @@
 #define M17_SOFT_ERASED  (-128)
 #define M17_LSF_BYTES    30 // DST 6, SRC 6, TYPE 2, META 14, CRC 2
 #define M17_STREAM_BYTES 16 // two Codec 2 3200 frames
+#define M17_PACKET_MAX   450 // packet octets received at most (18 frames: an SMS of 140 characters of 3 octets)
+#define M17_PACKET_SMS   0x05 // a packet's type: a text message (UTF-8, NUL terminated)
 
 typedef enum {
     M17_RX_NONE,
     M17_RX_LSF,    // rx->lsf: a link setup frame with a good CRC (from the LSF itself or the LICH of 6 stream frames)
     M17_RX_STREAM, // rx->fn, rx->eos, rx->stream: a stream frame
     M17_RX_EOT,    // the end of transmission marker
+    M17_RX_PACKET, // rx->packet, rx->packet_len: a packet (its type, data; its CRC checked, left out) after rx->lsf
 } m17_rx_event_t;
 
 typedef struct {
@@ -73,8 +76,13 @@ typedef struct {
     // the LSF from the LICH: 6 chunks of 40 bits
     uint8_t lich_lsf[M17_LSF_BYTES];
     uint8_t lich_got;   // a bit per chunk
+    // packet mode: after an LSF of packet TYPE, its frames into packet
+    bool packet_mode;
+    uint8_t packet_frames;  // the next frame's number
+    uint16_t packet_len;
+    uint8_t packet[M17_PACKET_MAX];
     // counters
-    uint32_t lsfs, lsf_bad, streams, stream_bad, eots, lich_ok, lich_bad, syncs_lost;
+    uint32_t lsfs, lsf_bad, streams, stream_bad, eots, lich_ok, lich_bad, syncs_lost, packets, packets_bad;
 } m17_rx;
 
 void m17_rx_init(m17_rx *r);
@@ -88,6 +96,8 @@ void m17_rx_reset(m17_rx *r);
 void m17_address(const uint8_t addr[6], char out[10]);
 // The LSF's TYPE: stream mode, voice (3200 bps), not encrypted
 bool m17_lsf_voice(const uint8_t lsf[M17_LSF_BYTES]);
+// The LSF's TYPE: packet mode (v2; or the v3 draft's)
+bool m17_lsf_packet(const uint8_t lsf[M17_LSF_BYTES]);
 
 /* transmit: frames as dibits (192: 40 ms) */
 #define M17_FRAME_DIBITS 192
@@ -95,6 +105,12 @@ bool m17_lsf_voice(const uint8_t lsf[M17_LSF_BYTES]);
 // an LSF: to dst ("" or NULL: ALL, the broadcast) from src (callsigns, up to 9 characters), voice stream (3200),
 // the channel access number can (0 - 15)
 void m17_lsf_make(uint8_t lsf[M17_LSF_BYTES], const char *dst, const char *src, uint8_t can);
+// the same for a packet (TYPE: packet mode)
+void m17_lsf_make_packet(uint8_t lsf[M17_LSF_BYTES], const char *dst, const char *src, uint8_t can);
+// an SMS packet (type 0x05, the UTF-8 text, a NUL, the CRC-16): its octets (0: more than max)
+int m17_packet_sms(const char *text, uint8_t *out, int max);
+// frame number frame of a packet (length octets with its CRC): 2 sent and more follow, 1 the last, 0 none
+int m17_tx_packet_frame(const uint8_t *packet, int length, int frame, uint8_t out[M17_FRAME_DIBITS]);
 // the preamble before an LSF (+3, -3 ...), the LSF, a stream frame (its LICH: chunk fn % 6 of lsf), the EoT
 void m17_tx_preamble(uint8_t out[M17_FRAME_DIBITS]);
 void m17_tx_lsf(const uint8_t lsf[M17_LSF_BYTES], uint8_t out[M17_FRAME_DIBITS]);

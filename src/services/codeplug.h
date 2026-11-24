@@ -134,6 +134,13 @@ static inline uint16_t codeplug_p25_nac(const codeplug_channel_t *channel)
     }
     return (uint16_t)(((channel->unused2 & 0x0F) << 8) | channel->tx_colour);
 }
+// DMR's colour code: the low 4 bits of tx_colour, as the radio uses it (dmr_compat.c). The byte is P25's NAC (above)
+// or NXDN's RAN as well: a VFO used in P25 keeps 0x93 there (NAC 0x293), colour code 3; shown whole it was "CC147",
+// too wide for the status bar, nothing shown
+static inline uint8_t codeplug_colour_code(const codeplug_channel_t *channel)
+{
+    return channel->tx_colour & 0x0F;
+}
 static inline void codeplug_set_p25_nac(codeplug_channel_t *channel, uint16_t nac)
 {
     channel->tx_colour = (uint8_t)nac;

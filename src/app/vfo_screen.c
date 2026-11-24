@@ -861,23 +861,13 @@ static void draw_info_line(int32_t y, const char *label, const char *value)
 static void draw_status_bar(const codeplug_channel_t *v)
 {
     status_bar_data_t status = {0};
-    char ts_text[8];
-    char cc_text[16];
-
     s_meter_data_t meter = {0};
 
     vfo_screen_signal(&meter);
     status.state = meter.open ? STATUS_BAR_RECEIVING : STATUS_BAR_IDLE;
     status.signal_bars = s_meter_bars(&meter);
     status.scanning = scan.active || tone_scan.active;
-    if (v->mode == CODEPLUG_MODE_DMR) {
-        snprintf(ts_text, sizeof(ts_text), "TS%d", target.timeslot);
-        snprintf(cc_text, sizeof(cc_text), "CC%d", v->tx_colour);
-        status.item1 = ts_text;
-        status.item1_bold = true;
-        status.item2 = cc_text;
-    }
-    status_bar_draw(&status);
+    status_bar_draw(&status); // DMR's timeslot and colour code: in the bottom bar (draw_bottom())
 }
 
 // The power of the bottom bar; "Rx only" when the VFO can't transmit (AM, SSB, the aviation band)
@@ -957,7 +947,7 @@ static void draw(void)
 
     if ((v->mode == CODEPLUG_MODE_DMR) && !digit_entry_active(&entry) && dmr_call(&call)) {
         snprintf(buffer, sizeof(buffer), "VFO %c", (vfo_screen_current() == 0) ? 'A' : 'B');
-        qso_panel_draw(&call, buffer, v->tx_colour, power_text(v));
+        qso_panel_draw(&call, buffer, codeplug_colour_code(v), power_text(v));
         return;
     }
     if ((v->mode == CODEPLUG_MODE_P25) && !digit_entry_active(&entry) && p25_radio_call(&p25) && (p25.src != 0)) {
@@ -1066,6 +1056,12 @@ static void draw(void)
     bottom.mode = codeplug_mode_name(v->mode);
     bottom.item1 = power_text(v);
     bottom.item2 = ((v->mode == CODEPLUG_MODE_FM) && (v->flag4 & FLAG4_BANDWIDTH_25K)) ? "25K" : "12.5K";
+    static char ts_cc[16];
+    if (v->mode == CODEPLUG_MODE_DMR) { // the timeslot and the colour code (DMR's bandwidth is always 12.5K)
+        snprintf(ts_cc, sizeof(ts_cc), "TS%d  CC%d", target.timeslot, codeplug_colour_code(v));
+        bottom.item2 = NULL;
+        bottom.right = ts_cc; // right aligned
+    }
     if (v->mode == CODEPLUG_MODE_NXDN) {
         bottom.item2 = "6.25K"; // NXDN48
     }

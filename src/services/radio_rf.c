@@ -177,6 +177,8 @@ volatile uint32_t rf_gate_off_us = 28700, rf_gate_on_us = 26900; // tuned over t
 volatile uint32_t rf_gate_tune_us = 4000; // the FD6818 to the Tx frequency this much before the PA (0: just before it)
 static void rf_ask(uint32_t what);
 static volatile bool gate_on;
+static volatile bool pa_later;          // radio_phy_tx(): set up on the Tx frequency, the PA left to the gate
+static volatile uint32_t gate_first_pa; // radio_phy_tx_gate_at(): the PA on for the first burst at this time
 static bool wait_until(uint32_t at);
 
 // Until systime_get_us() reaches at: asleep while more than a tick and a bit is left, the rest busy (at most ~1.2 ms).
@@ -199,6 +201,14 @@ static bool wait_until(uint32_t at)
 static void rf_gate(void)
 {
     uint32_t done = UINT32_MAX;
+    uint32_t first = gate_first_pa;
+    if (first) { // the first burst's PA (set up without it: radio_phy_tx_pa_later())
+        gate_first_pa = 0;
+        if (!wait_until(first)) {
+            return;
+        }
+        rf_pa_up();
+    }
     while (gate_on && p25_phy_tx_active()) {
         uint32_t n = p25_phy_tx_isr_n, t = p25_phy_tx_isr_us, next = p25_phy_tx_isr_next;
         if ((n != p25_phy_tx_isr_n) || (n == UINT32_MAX) || (n == done)) {
@@ -242,6 +252,20 @@ void radio_phy_tx_gate(bool on)
     }
 }
 
+// The next radio_phy_tx(true): the transmitter set up on the Tx frequency, the PA off (repeater mode: no carrier before
+// our first burst, in the other timeslot) ...
+void radio_phy_tx_pa_later(bool on)
+{
+    pa_later = on;
+}
+
+// ... then the gate, its first burst's PA on at systime_get_us() pa_at
+void radio_phy_tx_gate_at(uint32_t pa_at)
+{
+    gate_first_pa = pa_at;
+    radio_phy_tx_gate(true);
+}
+
 static void rf_task_main(void *arg)
 {
     (void)arg;
@@ -267,7 +291,11 @@ static void rf_task_main(void *arg)
             dmr_modem_calibration();
             gpio_output(PIN_MIC_MUT, false);
         }
-        if (asked & (RF_SETUP | RF_ON)) {
+        if ((asked & RF_SETUP) && pa_later) {
+            pa_later = false;
+            lna(false, 0);
+            fd6818_dmr_burst_tx(rs.channel.tx_freq); // the PA by the gate (radio_phy_tx_gate_at())
+        } else if (asked & (RF_SETUP | RF_ON)) {
             rf_on();
         }
         if (asked & RF_GATE) {

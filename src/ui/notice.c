@@ -115,6 +115,17 @@ static void icon(ui_notice_kind_t kind, int32_t cx, int32_t cy, theme_colour_t c
             wave(cx, cy - 6, 15, c);
             break;
         }
+        case UI_NOTICE_MAIL: { // an envelope: its outline, the flap
+            uint16_t c = theme_colour(colour);
+
+            fb_fill(cx - 17, cy - 12, cx + 17, cy - 8, c);
+            fb_fill(cx - 17, cy + 8, cx + 17, cy + 12, c);
+            fb_fill(cx - 17, cy - 12, cx - 13, cy + 12, c);
+            fb_fill(cx + 13, cy - 12, cx + 17, cy + 12, c);
+            wide_line(cx - 14, cy - 9, cx, cy + 3, colour);
+            wide_line(cx, cy + 3, cx + 14, cy - 9, colour);
+            break;
+        }
         default: // an i in a ring
             draw_ring(cx, cy, 4 * 13, 4 * 3, colour);
             draw_fill_circle(cx, cy - 6, 4 * 2, colour);
@@ -123,14 +134,14 @@ static void icon(ui_notice_kind_t kind, int32_t cx, int32_t cy, theme_colour_t c
     }
 }
 
-void ui_notice_draw(text_id_t line1, text_id_t line2, ui_notice_kind_t kind)
+void ui_notice_draw(text_id_t line1, text_id_t line2, const char *line2_text, ui_notice_kind_t kind)
 {
     const font_t *font = &font_roboto20;
     bool dark = theme_dark();
     theme_colour_t card = THEME_COLOUR_ACCENT;
     theme_colour_t ink = THEME_COLOUR_ON_ACCENT;
     const char *t1 = text(line1);
-    const char *t2 = (line2 < TEXT_COUNT) ? text(line2) : NULL;
+    const char *t2 = line2_text ? line2_text : (line2 < TEXT_COUNT) ? text(line2) : NULL;
     char joined[TEXT_SIZE];
     const char *lines[2] = {t1, NULL};
     int32_t widest;
