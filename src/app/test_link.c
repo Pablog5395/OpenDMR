@@ -193,6 +193,15 @@ static uint32_t state(char *text, uint32_t size)
         put(&o, "zone", "%d", (int)settings.current_zone);
         put(&o, "scan", "%s", SCAN_STATES[channel_screen_scanning()]);
     }
+    {
+        // what the radio is on (the changes made with the keys and the timeslot of tx_target.c in it)
+        codeplug_channel_t r;
+
+        if (radio_get_channel(&r)) {
+            put(&o, "use", "mode=%s ts=%d sql=%u power=%u bw=%s", codeplug_mode_name(r.mode), (r.flag2 & 0x40) ? 2 : 1,
+                (unsigned)r.sql, (unsigned)r.libre_dmr_power, (r.flag4 & 0x02) ? "25" : "12.5");
+        }
+    }
     put(&o, "receiving", "%d", radio_is_receiving() ? 1 : 0);
     put(&o, "transmitting", "%d", radio_is_transmitting() ? 1 : 0);
     put(&o, "radio", "%s", radio_state_name());

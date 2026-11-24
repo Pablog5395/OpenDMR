@@ -62,6 +62,7 @@ void fd6818_transmit_prepare(void);
 void fd6818_transmit(bool wide);
 void fd6818_dmr_burst_tx(uint32_t frequency); // DMR, each burst (the stock RF task)
 void fd6818_dmr_burst_rx(uint32_t frequency);
+void fd6818_dmr_af(bool on); // the raw audio out of the digital modes (to the baseband), or muted
 // While transmitting: Tone1 (and Tone2, for DTMF) on the air, the mic off; 0 Hz: that one silent
 void fd6818_tx_tone(uint16_t hz1, uint16_t hz2, uint8_t gain);
 void fd6818_tx_tone_end(void);                  // the mic back

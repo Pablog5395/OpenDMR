@@ -347,6 +347,8 @@
     "TEXT_TX": "Tx",
     "TEXT_VOX": "VOX",
     "TEXT_FACTORY_TABLE": "Factory table",
+    "TEXT_CAL_COPY": "Copy",
+    "TEXT_CAL_DEFAULT": "Default",
     "TEXT_OSC_TUNE": "Osc tune",
     "TEXT_RX_LEVEL": "Rx level",
     "TEXT_CW_RX": "CW Rx",

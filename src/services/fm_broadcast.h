@@ -49,6 +49,7 @@ typedef struct {
 
 bool fm_broadcast_start(uint16_t frequency); // powers the receiver up, tunes, the speaker amplifier on; false: no chip
 void fm_broadcast_stop(void);
+void fm_broadcast_pause(bool pause); // muted, the amplifier off, the receiver kept on (tuned, RDS): the channel first
 bool fm_broadcast_is_on(void);
 void fm_broadcast_tune(uint16_t frequency); // wraps at the band edges
 void fm_broadcast_seek(bool up);            // returns at once; the status tells when it has finished

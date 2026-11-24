@@ -205,6 +205,8 @@ static void receive_work(void)
     vox_pass();
     read_signal();
     rx_beep_end_check();
+    quiet_check();
+    broadcast_check();
     eco_tick();
 }
 

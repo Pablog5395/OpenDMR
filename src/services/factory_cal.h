@@ -45,10 +45,17 @@
 //   0x20A, 0x20B   receive levels: analog (1 - 15), digital (1 - 63)
 //   0x300, 0x328   UHF, VHF calibration frequencies: 5 little endian BCD uint32 each, 10 Hz units
 // These are all the bytes that differ between two radios; the rest of the table holds the same defaults in both.
-// NOTHING IS WRITTEN: a wrong table would break the tuning of the radio.
+// THE FACTORY SECTOR IS NEVER WRITTEN: a wrong table would break the tuning of the radio.
+//
+// A copy of it is kept in the window of this firmware (FACTORY_CAL_COPY, the sector of the OpenGD77 calibration,
+// which the CPS never writes): written when the factory table differs from it, read when the factory table is gone
+// (another firmware or tool wrote over the stock area). Without either, a default table goes there (the two radios
+// here: the 4FSK bias averaged, the lower power of each point) and byte 0xFFE of the copy says so (0xFF in the
+// factory tables). The factory table always comes first: one put back is used, and copied, at the next start.
 
 #define FACTORY_CAL_POINTS 5
 #define FACTORY_CAL_LEVELS 3 // the stock Low, Middle, High: rated 1 W, 4 W, 10 W
+#define FACTORY_CAL_COPY   0x10000 // in the window (flash_read()): cable_link.c CPS_CALIBRATION
 
 enum {
     FACTORY_CAL_VHF,
@@ -56,9 +63,16 @@ enum {
     FACTORY_CAL_BANDS
 };
 
+typedef enum {
+    FACTORY_CAL_FROM_FACTORY, // the factory sector (sector: its address)
+    FACTORY_CAL_FROM_COPY,    // the copy of it in the window
+    FACTORY_CAL_FROM_DEFAULT  // the default table in the window
+} factory_cal_source_t;
+
 typedef struct {
-    bool valid;
-    uint32_t sector;
+    bool valid; // false only when even the default couldn't be written
+    factory_cal_source_t source;
+    uint32_t sector; // the 25Q128 address read
     uint8_t osc_tune;
     uint16_t rx_adjust; // osc_tune + 384 where the table doesn't have it
     uint8_t rx_levels[2];                                                     // analog, digital

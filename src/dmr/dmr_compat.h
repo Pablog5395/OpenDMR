@@ -266,6 +266,8 @@ extern rx_group_t currentRxGroupData;
 bool codeplugContactsContainsPC(uint32_t pc);
 int codeplugGetRepeaterWakeAttempts(void);
 double latLongFixed32ToDouble(uint32_t fixed);
+// The ETSI GPS Info embedded LC (FLCO 8, FID 0) from the settings' fixed-point position
+void dmr_gps_info_lc_make(uint8_t lc[9], uint32_t latitude, uint32_t longitude);
 
 /* The UI state the engine sets (uiDataGlobal, monitorModeData of the main firmware) */
 

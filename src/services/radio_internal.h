@@ -128,6 +128,8 @@ bool rx_noise_busy(void);
 void rx_settle(uint32_t ms);
 void rx_beep_cancel(void);
 void rx_beep_end_check(void);
+void quiet_check(void);
+void broadcast_check(void);
 void squelch_check(void);
 void dmr_signal(void);
 bool scan_sampling(void);

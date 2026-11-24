@@ -96,6 +96,7 @@ void HRC7000ClearTimecodeSynchronisation(void);
 void HRC7000ClearColorCodeSynchronisation(void);
 void HRC7000SetTalkerAlias(const char *text);
 void HRC7000SetTalkerAliasLocation(uint32_t Lat, uint32_t Lon);
+uint8_t getCurrentTATxFlag(void); // the channel's TA Tx setting (off, APRS, text, both)
 bool HRC7000IRQHandlerIsRunning(void);
 bool HRC7000HasGotSync(void);
 bool HRC7000CCIsHeld(void);

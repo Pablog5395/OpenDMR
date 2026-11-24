@@ -36,8 +36,13 @@ extern const ui_screen_t channel_screen;
 extern volatile int channel_screen_channel; // the channel number shown
 
 // The channel shown, for the channel details to change in place (the radio follows after each event); written to the
-// codeplug by them. NULL: none
+// codeplug by them. The changes made with the keys are dropped first: they edit the channel as it is. NULL: none
 codeplug_channel_t *channel_screen_edit(void);
+
+// The changes made with the keys on the channel screen (squelch, power, mode, bandwidth, the TG and timeslot picked)
+// dropped: the channel as it is in the codeplug again (the VFO shown); only the power (Power To All)
+void channel_screen_forget_changes(void);
+void channel_screen_forget_power(void);
 
 // A channel locked out of the scans for good: its Zone Skip, or All Skip in the all channels zone (scan lockouts)
 bool channel_screen_lock_out(int number);

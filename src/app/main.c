@@ -85,7 +85,7 @@ static bool screen_hooks(const ui_event_t *ev)
         (ui_top_screen() != &boot_screen)) {
         display_theme_apply(); // the auto theme: light by day, dark at night
     }
-    return (!security_secured() && hotspot_screen_hook(ev)) || cps_screen_hook(ev);
+    return (!security_secured() && hotspot_screen_hook(ev)) || cps_screen_hook(ev) || fm_radio_hook(ev);
 }
 
 int main(void)

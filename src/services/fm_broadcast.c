@@ -76,6 +76,7 @@
 #define RSSI_BLERB   0x0003 // block B errors (0: none)
 
 #define CRYSTAL_START_MS 500 // datasheet: 0.5 s after enabling, before the volume and the tune
+#define AMP_START_MS     75  // the amplifier on before the sound (voice_play.c): no click
 
 #define RDS_GROUP_PS        0 // programme service name
 #define RDS_GROUP_TEXT      2 // radio text
@@ -85,6 +86,7 @@
 
 static bool is_on = false;
 static bool seeking = false;
+static uint16_t seek_bits = 0; // CTRL_SEEK and its direction while seeking
 static bool muted = false;
 static uint16_t frequency = 999;
 
@@ -275,7 +277,7 @@ void fm_broadcast_mute(bool mute)
 {
     if (is_on && (mute != muted)) {
         muted = mute;
-        chip_write(REG_CTRL, ctrl() | (seeking ? CTRL_SEEK : 0));
+        chip_write(REG_CTRL, ctrl() | (seeking ? seek_bits : 0)); // a seek up goes on up
     }
 }
 
@@ -284,20 +286,37 @@ bool fm_broadcast_start(uint16_t start_frequency)
     if (!chip_write(REG_CTRL, CTRL_SOFT_RESET)) {
         return false;
     }
-    muted = false;
+    muted = true; // until the amplifier has started
     chip_write(REG_CTRL, ctrl());
     chip_wait_crystal();
     chip_write(REG_VOLUME, VOLUME_VALUE);
     is_on = true;
     seeking = false;
     fm_broadcast_tune(start_frequency);
-    audio_amplifier(true);
+    fm_broadcast_pause(false);
     return true;
+}
+
+// The amplifier on, then the sound; the sound off, then the amplifier (the caller sets the squelch's mute after)
+void fm_broadcast_pause(bool pause)
+{
+    if (!is_on) {
+        return;
+    }
+    if (pause) {
+        fm_broadcast_mute(true);
+        audio_amplifier(false);
+    } else {
+        audio_amplifier(true);
+        vTaskDelay(pdMS_TO_TICKS(AMP_START_MS));
+        fm_broadcast_mute(false);
+    }
 }
 
 void fm_broadcast_stop(void)
 {
     if (is_on) {
+        fm_broadcast_mute(true);
         audio_amplifier(false);
         chip_write(REG_CTRL, 0x0000); // powered down
         is_on = false;
@@ -328,7 +347,8 @@ void fm_broadcast_tune(uint16_t to)
 
 void fm_broadcast_seek(bool up)
 {
-    chip_write(REG_CTRL, ctrl() | CTRL_SEEK | (up ? CTRL_SEEKUP : 0)); // the chip wraps at the band edges
+    seek_bits = CTRL_SEEK | (up ? CTRL_SEEKUP : 0);
+    chip_write(REG_CTRL, ctrl() | seek_bits); // the chip wraps at the band edges
     seeking = true;
     rds_clear();
 }

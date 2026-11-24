@@ -37,6 +37,11 @@
  *   power off only) when the screen is left and at power off. So is "playing": switched off on this screen, the
  *   radio starts on it again (fm_radio_was_playing()).
  *
+ * The channel first (#135): a call on it (the squelch and tone open; on a digital channel any signal, which isn't
+ * received while the radio plays) takes the radio home, the receiver paused (muted, still tuned); once the channel is
+ * quiet (RADIO_QUIET_MS) the radio comes back. A key or the rotary in between, or another screen, switches it off.
+ * Busy already when the radio starts (a squelch always open) is no call: the radio stays.
+ *
  * The receiver is services/fm_broadcast.c (drivers/rda5807.c). Its status and RDS are read on the
  * screen's timer: the RDS group comes every 88 ms (read every 20 ms, none lost), the status is enough every 300 ms.
  */
@@ -54,6 +59,7 @@
 #include "power.h"
 #include "list_screen.h"
 #include "fm_radio.h"
+#include "radio.h"
 #include "sound.h"
 
 #define POLL_MS          20 // RDS: a group every 88 ms, the chip keeps the last one only
@@ -95,6 +101,9 @@ static struct {
 } saved;
 static bool saved_read = false;
 static bool playing = false;
+static bool interrupted = false;           // home for a call, back once the channel is quiet
+static const ui_screen_t *call_screen;     // the screen the call went to
+static bool heard = false;                 // the channel's audio when last looked
 
 static void load(void)
 {
@@ -193,7 +202,7 @@ static void enter_digit(int digit)
     }
 }
 
-// Pushed (its state 0) or back on top (the receiver was stopped when it was covered)
+// Pushed (its state 0) or back on top (the receiver was stopped when it was covered, paused for a call)
 static void enter(void *arg)
 {
     int32_t *started = ui_state();
@@ -205,7 +214,11 @@ static void enter(void *arg)
     }
     polls = 0;
     load();
-    if (!fm_broadcast_is_on() && !fm_broadcast_start(frequency)) {
+    interrupted = false;
+    heard = radio_channel_busy(); // busy already (a squelch always open): no call
+    if (fm_broadcast_is_on()) {
+        fm_broadcast_pause(false); // back after a call
+    } else if (!fm_broadcast_start(frequency)) {
         sound_play(SOUND_ERROR); // no receiver
         ui_pop();
         return;
@@ -217,12 +230,46 @@ static void enter(void *arg)
     ui_timer_start(POLL_MS);
 }
 
-// Popped, home, or covered: the receiver off, saved as not playing
-static void leave(void)
+// The receiver off, saved as not playing
+static void stop(void)
 {
+    interrupted = false;
     fm_broadcast_stop();
     playing = false;
     save();
+}
+
+// Popped, home, or covered: stopped; home for a call: paused
+static void leave(void)
+{
+    if (interrupted) {
+        fm_broadcast_pause(true);
+    } else {
+        stop();
+    }
+}
+
+bool fm_radio_hook(const ui_event_t *ev)
+{
+    bool now = radio_channel_busy();
+    bool call = now && !heard; // a squelch always open: no call
+    const ui_screen_t *top = ui_top_screen();
+
+    heard = now;
+    if (top == &fm_radio_screen) {
+        if (call) {
+            interrupted = true;
+            ui_home(); // leave(): paused
+            call_screen = ui_top_screen();
+        }
+    } else if (interrupted) {
+        if ((top != call_screen) || (ev->type == UI_EVENT_KEY_PRESS) || (ev->type == UI_EVENT_ROTARY)) {
+            stop(); // the channel taken (the PTT too), or another screen (a lock screen ...): the radio not back
+        } else if (radio_channel_quiet()) {
+            ui_push(&fm_radio_screen, NULL);
+        }
+    }
+    return false;
 }
 
 static bool handle(const ui_event_t *ev)

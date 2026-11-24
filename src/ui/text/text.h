@@ -350,6 +350,8 @@ typedef enum {
     TEXT_TX,
     TEXT_VOX,
     TEXT_FACTORY_TABLE,
+    TEXT_CAL_COPY,
+    TEXT_CAL_DEFAULT,
     TEXT_OSC_TUNE,
     TEXT_RX_LEVEL,
     TEXT_CW_RX,

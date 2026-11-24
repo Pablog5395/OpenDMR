@@ -33,9 +33,10 @@
  * left key go to a channel number of the zone, the left key opens the menu, the right key the VFO, the PTT transmits
  * (tx_screen.c). The shortcuts are the ones of keymap.c (OpenGD77: LEFT / RIGHT the TG or the squelch, SK2 + UP / DOWN
  * the zone, # the number entry, * the timeslot ...). The channel shown is the one the radio receives (radio.c), with
- * the timeslot and TG of tx_target.c; the squelch and the power changed here are the channel's (written into it at
- * power off: codeplug_set_channel_squelch()), the mode and bandwidth last until the channel changes. The screen doesn't tune the radio: it gives its channel (radio_channel()) when the UI task asks, after each
- * event (ui_tune()), also while screens without their own channel (the menus) are over it.
+ * the timeslot and TG of tx_target.c. The squelch, power, mode, bandwidth, timeslot and TG changed here with the keys
+ * are for now: never written, gone with another channel, the VFO, the channel details or power off (temp); only the
+ * channel details change the channel. The screen doesn't tune the radio: it gives its channel (radio_channel()) when
+ * the UI task asks, after each event (ui_tune()), also while screens without their own channel (the menus) are over it.
  */
 
 #include <math.h>
@@ -106,6 +107,22 @@ static last_heard_entry_t recent_entry; // 80 bytes: not on the UI task stack
 static char recent_name[CHANNEL_PANEL_RECENT][LAST_HEARD_TEXT_SIZE];
 static char recent_detail[CHANNEL_PANEL_RECENT][16];
 static char recent_when[CHANNEL_PANEL_RECENT][16];
+
+// The squelch, power, mode and bandwidth changed with the keys on this screen: the channel's for now, never written
+// (only the channel details write a channel). Gone with another channel, the VFO, the channel details or power off,
+// as the TG and timeslot picked here (tx_target_channel_forget()).
+#define TEMP_SQL   0x01
+#define TEMP_POWER 0x02
+#define TEMP_MODE  0x04
+#define TEMP_WIDE  0x08
+static struct {
+    int number; // the channel they belong to; 0: none
+    uint8_t what; // TEMP_x
+    uint8_t sql;
+    uint8_t power;
+    uint8_t mode;
+    bool wide;
+} temp;
 
 /* The scan (scan.c; uiChannelMode.c scanSearchForNextChannel()): the zone's channels in turn, skipping the ones
    marked (zone skip, or all-channels skip in the all channels zone) and the ones skipped with * (scan_skipped_channels,
@@ -271,12 +288,31 @@ static const codeplug_channel_t *radio_channel(void)
     return has_channel ? &radio_ch : NULL;
 }
 
-codeplug_channel_t *channel_screen_edit(void)
+void channel_screen_forget_changes(void)
 {
-    return has_channel ? &channel : NULL;
+    temp.number = 0;
+    temp.what = 0;
+    tx_target_channel_forget();
 }
 
-// The channel at the position read again (it may have been edited; a change made here is undone)
+void channel_screen_forget_power(void)
+{
+    temp.what &= (uint8_t)~TEMP_POWER;
+}
+
+// A change made with the keys, kept for this channel (temp)
+static void keep(uint8_t what)
+{
+    temp.number = channel_screen_channel;
+    temp.what |= what;
+    temp.sql = channel.sql;
+    temp.power = channel.libre_dmr_power;
+    temp.mode = channel.mode;
+    temp.wide = ((channel.flag4 & FLAG4_BANDWIDTH_25K) != 0);
+}
+
+// The channel at the position read again (it may have been edited), with the changes made here for it (temp); another
+// channel: they are gone
 static void load(void)
 {
     int number = zone_channel(position);
@@ -291,6 +327,34 @@ static void load(void)
         memset(&channel, 0, sizeof(channel));
         strcpy(channel.name, "--");
     }
+    if (number != temp.number) {
+        channel_screen_forget_changes();
+        temp.number = number;
+        return;
+    }
+    if (temp.what & TEMP_SQL) {
+        channel.sql = temp.sql;
+    }
+    if (temp.what & TEMP_POWER) {
+        channel.libre_dmr_power = temp.power;
+    }
+    if (temp.what & TEMP_MODE) {
+        channel.mode = temp.mode;
+    }
+    if (temp.what & TEMP_WIDE) {
+        channel.flag4 = (uint8_t)(temp.wide ? (channel.flag4 | FLAG4_BANDWIDTH_25K) : (channel.flag4 & ~FLAG4_BANDWIDTH_25K));
+    }
+}
+
+// For the channel details: the channel as it is in the codeplug (the changes made with the keys gone), changed there
+// in place and written by them
+codeplug_channel_t *channel_screen_edit(void)
+{
+    if (has_channel) {
+        channel_screen_forget_changes();
+        load();
+    }
+    return has_channel ? &channel : NULL;
 }
 
 static scan_kind_t scan_kind(void)
@@ -438,8 +502,8 @@ static void zone_step(int step)
     }
 }
 
-// increasePowerLevel(), decreasePowerLevel(): the channel's own power, written into it at power off (codeplug.c). A
-// channel without one (0: written so) starts from the radio's default power and has its own from then on
+// increasePowerLevel(), decreasePowerLevel(): the channel's power for now (temp; the channel details change its own).
+// A channel without one (0) starts from the radio's default power
 static void power_step(int direction, bool to_user)
 {
     int level = (channel.libre_dmr_power != 0) ? (channel.libre_dmr_power - 1) : settings.tx_power_level;
@@ -451,21 +515,20 @@ static void power_step(int direction, bool to_user)
     }
     if (channel.libre_dmr_power != (uint8_t)(level + 1)) {
         channel.libre_dmr_power = (uint8_t)(level + 1);
-        codeplug_set_channel_power(channel_screen_channel, channel.libre_dmr_power); // only it: others stay passing
+        keep(TEMP_POWER);
     }
     if (level == 0) {
         ui_key_beep(SOUND_KEY_FIRST_ITEM);
     }
 }
 
-// uiChannelMode.c: from the band's default when the channel has none (0); the channel's own from then on, written
-// into it at power off (codeplug.c)
+// uiChannelMode.c: from the band's default when the channel has none (0); the channel's for now (temp)
 static void squelch_step(int direction)
 {
     int sql = (channel.sql != 0) ? channel.sql : settings.squelch_defaults[radio_band_of(channel.rx_freq)];
 
     channel.sql = (uint8_t)CLAMP(sql + direction, SQUELCH_MIN, SQUELCH_MAX);
-    codeplug_set_channel_squelch(channel_screen_channel, channel.sql);
+    keep(TEMP_SQL);
     if (channel.sql == SQUELCH_MIN) {
         ui_key_beep(SOUND_KEY_FIRST_ITEM);
     }
@@ -513,6 +576,7 @@ static bool do_action(keymap_action_t action)
                 ui_key_beep((radio_ch.flag2 & FLAG2_TIMESLOT_2) ? SOUND_KEY_FIRST_ITEM : SOUND_KEY); // back to TS1
             } else if (channel.mode == CODEPLUG_MODE_FM) { // AM and SSB have their own filters
                 channel.flag4 ^= FLAG4_BANDWIDTH_25K;
+                keep(TEMP_WIDE);
                 ui_key_beep((channel.flag4 & FLAG4_BANDWIDTH_25K) ? SOUND_KEY_FIRST_ITEM : SOUND_KEY);
             }
             break;
@@ -523,6 +587,7 @@ static bool do_action(keymap_action_t action)
             break;
         case KEYMAP_MODE: // FM, AM, USB, LSB, DMR
             channel.mode = codeplug_mode_step(channel.mode, 1);
+            keep(TEMP_MODE);
             ui_key_beep((channel.mode == CODEPLUG_MODE_FM) ? SOUND_KEY_FIRST_ITEM : SOUND_KEY);
             break;
         case KEYMAP_TG_OR_SQUELCH_UP:

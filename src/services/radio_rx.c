@@ -164,13 +164,15 @@ void lna(bool on, uint32_t frequency)
 
 // The speaker amplifier: on for the received audio or for a beep (sound.c), off when neither needs it. The audio
 // switch: high in FM (the speaker from the FD6818), low during a beep (the beeps come from the baseband's DAC; with the
-// switch high they don't reach the speaker)
+// switch high they don't reach the speaker). The FM broadcast receiver is on the switch's FD6818 side too: on a
+// digital channel the switch is high for it (radio_broadcast_amp())
 static volatile bool beep_path = false; // the audio switch to the baseband for a beep
 static volatile bool audio_sw_fm = false;
+static volatile bool audio_sw_broadcast = false;
 
 static void audio_switch(void)
 {
-    gpio_output(PIN_AUDIO_SW, audio_sw_fm && !beep_path);
+    gpio_output(PIN_AUDIO_SW, (audio_sw_fm || audio_sw_broadcast) && !beep_path);
 }
 
 static void RAM_CODE audio_amp(bool on)
@@ -429,6 +431,60 @@ void rx_beep_end_check(void)
     }
 }
 
+// A digital channel with a signal on it (dmr_signal()): any, whatever its colour code or timeslot (the FM broadcast
+// radio makes way for it: the channel is not received while the radio plays, broadcast_check())
+#define DIGITAL_BUSY_DBM (-105)
+#define DIGITAL_FREE_DBM (-110)
+static volatile bool digital_carrier = false;
+
+bool radio_channel_busy(void)
+{
+    return rs.audio_needs_amp || (digital_carrier && !is_analog());
+}
+
+// The channel quiet: not busy for RADIO_QUIET_MS (radio_channel_quiet()); a UI_DATA_SIGNAL when that begins (the
+// digital receivers switch their audio without one)
+static bool quiet = true;
+static TickType_t heard_at;
+
+void quiet_check(void)
+{
+    bool busy = radio_channel_busy();
+    bool now;
+
+    if (busy) {
+        heard_at = xTaskGetTickCount();
+    }
+    now = !busy && ((xTaskGetTickCount() - heard_at) >= pdMS_TO_TICKS(RADIO_QUIET_MS));
+    if (now != quiet) {
+        quiet = now;
+        if (quiet) {
+            post_signal();
+        }
+    }
+}
+
+bool radio_channel_quiet(void)
+{
+    return quiet && !radio_channel_busy(); // busy just now: before quiet_check() sees it
+}
+
+// The end of a transmission (a beacon) sets the FD6818's audio out again (fd6818_dmr_burst_rx()): muted again while
+// the FM broadcast receiver has the audio switch (radio_broadcast_amp())
+void broadcast_check(void)
+{
+    static bool transmitted = false;
+
+    if (rs.is_transmitting) {
+        transmitted = true;
+    } else if (transmitted) {
+        transmitted = false;
+        if (audio_sw_broadcast) {
+            fd6818_dmr_af(false);
+        }
+    }
+}
+
 // DMR: the signal and the noise for the S meter and the engine's SNR check (trxGetSNRMargindBm()); the engine does
 // the rest (the green LED, the speaker). The receiver follows the timeslots: a reading in the other slot is the noise
 // floor, even under a steady carrier (measured: 120 and 85 in turn), so the S meter takes the highest of the last
@@ -452,6 +508,14 @@ void dmr_signal(void)
         peak = (recent[i] > peak) ? recent[i] : peak;
     }
     add_sample(peak);
+
+    int dbm = (int)peak - ((rs.channel.rx_freq >= UHF_FROM) ? 167 : 177);
+    bool carrier = (dbm >= DIGITAL_BUSY_DBM) || (digital_carrier && (dbm >= DIGITAL_FREE_DBM));
+
+    if (carrier != digital_carrier) {
+        digital_carrier = carrier;
+        post_signal();
+    }
 }
 
 void RAM_CODE squelch_check(void)
@@ -575,12 +639,38 @@ void radio_beep_amp(bool on)
     taskEXIT_CRITICAL();
 }
 
+// The FM broadcast receiver's amplifier, from its task (this waits). As the voice (voice_play.c): the path first, then
+// the amplifier; off, the amplifier first, then the path back (switched under a running amplifier: a click). On a
+// digital channel the path is the audio switch high, the FD6818's raw audio out muted before: the digital receivers
+// take it through the switch low (to the baseband); high, it would be heard (no squelch). The channel is not received
+// meanwhile (measured 2026-11-23: the switch high, no DMR call heard); radio_channel_busy() still sees a signal.
+#define BROADCAST_PATH_SETTLE_MS 10
+#define BROADCAST_AMP_STOP_MS    20
+
 void radio_broadcast_amp(bool on)
 {
+    if (on && rs.has_channel && !is_analog() && !audio_sw_broadcast) {
+        fd6818_dmr_af(false);
+        taskENTER_CRITICAL();
+        audio_sw_broadcast = true;
+        audio_switch();
+        taskEXIT_CRITICAL();
+        vTaskDelay(pdMS_TO_TICKS(BROADCAST_PATH_SETTLE_MS));
+    }
     taskENTER_CRITICAL();
     rs.broadcast_needs_amp = on;
     gpio_output(PIN_AUDIO_AMP, rs.audio_needs_amp || rs.beep_needs_amp || rs.broadcast_needs_amp);
     taskEXIT_CRITICAL();
+    if (!on && audio_sw_broadcast) {
+        vTaskDelay(pdMS_TO_TICKS(BROADCAST_AMP_STOP_MS));
+        taskENTER_CRITICAL();
+        audio_sw_broadcast = false;
+        audio_switch();
+        taskEXIT_CRITICAL();
+        if (rs.has_channel && !is_analog()) {
+            fd6818_dmr_af(true);
+        }
+    }
 }
 
 // FM: the noise under the squelch level (before the tone check)

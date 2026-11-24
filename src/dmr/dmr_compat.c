@@ -320,6 +320,26 @@ double latLongFixed32ToDouble(uint32_t fixed)
     return (fixed & 0x80000000) ? -value : value;
 }
 
+// The seven bytes of the ETSI GPS Info LC (TS 102 361-2 7.1.1.3), as the engine puts them in the talker alias' phase 4.
+// Shared with the software transmitter so DMO sends the caller's position too.
+void dmr_gps_info_lc_make(uint8_t lc[9], uint32_t latitude, uint32_t longitude)
+{
+    double longDouble = latLongFixed32ToDouble(longitude);
+    double latDouble = latLongFixed32ToDouble(latitude);
+    int32_t intLong = (int32_t)((33554432.0 * longDouble) / 360.0);
+    int32_t intLat = (int32_t)((16777216.0 * latDouble) / 180.0);
+
+    lc[0] = 8; // FLCO_GPS
+    lc[1] = 0; // FID_STANDARD
+    lc[2] = (uint8_t)((intLong >> 24) & 0x01);
+    lc[3] = (uint8_t)((intLong >> 16) & 0xFF);
+    lc[4] = (uint8_t)((intLong >> 8) & 0xFF);
+    lc[5] = (uint8_t)intLong;
+    lc[6] = (uint8_t)((intLat >> 16) & 0xFF);
+    lc[7] = (uint8_t)((intLat >> 8) & 0xFF);
+    lc[8] = (uint8_t)intLat;
+}
+
 /* The UI state */
 
 ui_data_global_t uiDataGlobal;

@@ -61,6 +61,34 @@
 #define PA_DRIVE_MAX       4095
 #define RX_ADJUST_FROM_TX  384 // RX Freq Adjust is near TX Freq Adjust + 384 (both radios here: exactly)
 
+#define COPY_SECTOR    (FLASH_WINDOW_BASE + FACTORY_CAL_COPY) // the 25Q128 address of the copy
+#define AT_SOURCE      0xFFE // in the copy: 0xFF the factory bytes as they are, SOURCE_DEFAULT the default table
+#define SOURCE_DEFAULT 'D'
+#define CHUNK          128 // the bytes copied at a time (the flash batch programs the sector once)
+
+// The default table: the fields read, at their places in the sector, the rest 0xFF. From the two radios here (green,
+// orange; docs/factory-calibration.md): the frequency adjust of one, the 4FSK bias averaged, the lower power of each
+// point (the orange one's), the calibration frequencies and receive levels as both have them.
+typedef struct {
+    uint16_t at;
+    uint8_t length;
+    uint8_t bytes[20];
+} default_field_t;
+
+static const default_field_t DEFAULT_TABLE[] = {
+    {AT_OSC_TUNE, 1, {110}},
+    {AT_UHF_BIAS, 5, {77, 74, 71, 68, 66}},
+    {AT_RX_ADJUST, 2, {0xEE, 0x01}}, // 494
+    {AT_UHF_POWER, 15, {107, 99, 108, 99, 99, 173, 158, 154, 137, 134, 203, 196, 188, 206, 196}},
+    {AT_VHF_BIAS, 5, {226, 213, 199, 188, 176}},
+    {AT_VHF_POWER, 15, {114, 114, 104, 108, 112, 136, 135, 134, 138, 148, 218, 189, 189, 164, 190}},
+    {AT_RX_LEVELS, 2, {DEFAULT_ANALOG_RX, DEFAULT_DIGITAL_RX}},
+    // 400, 417.5, 435, 452.5, 470 MHz and 136, 145.5, 155, 164.5, 174 MHz: little endian BCD, 10 Hz units
+    {AT_UHF_FREQS, 20, {0, 0, 0x00, 0x40, 0, 0, 0x75, 0x41, 0, 0, 0x50, 0x43, 0, 0, 0x25, 0x45, 0, 0, 0x00, 0x47}},
+    {AT_VHF_FREQS, 20, {0, 0, 0x60, 0x13, 0, 0, 0x55, 0x14, 0, 0, 0x50, 0x15, 0, 0, 0x45, 0x16, 0, 0, 0x40, 0x17}},
+    {AT_SOURCE, 2, {SOURCE_DEFAULT, SECTOR_TAG}},
+};
+
 static factory_cal_t cal;
 
 static uint32_t bcd_le(const uint8_t *bytes)
@@ -113,16 +141,66 @@ static bool read_sector(uint32_t sector)
            flash_read_raw(sector + AT_VHF_BIAS, cal.bias[FACTORY_CAL_VHF], sizeof(cal.bias[FACTORY_CAL_VHF]));
 }
 
+static bool is_table(uint32_t sector)
+{
+    uint8_t tag;
+
+    return flash_read_raw(sector + SECTOR_SIZE - 1, &tag, 1) && (tag == SECTOR_TAG) && read_sector(sector);
+}
+
+// The factory sector into the copy; nothing written when the copy has it already
+static bool copy_factory(uint32_t sector)
+{
+    uint8_t chunk[CHUNK];
+    bool ok = true;
+
+    flash_batch_start();
+    for (uint32_t at = 0; ok && (at < SECTOR_SIZE); at += CHUNK) {
+        ok = flash_read_raw(sector + at, chunk, CHUNK) && flash_write(FACTORY_CAL_COPY + at, chunk, CHUNK);
+    }
+    return flash_batch_end() && ok;
+}
+
+static bool write_default(void)
+{
+    uint8_t chunk[CHUNK];
+    bool ok = true;
+
+    memset(chunk, 0xFF, sizeof(chunk));
+    flash_batch_start();
+    for (uint32_t at = 0; ok && (at < SECTOR_SIZE); at += CHUNK) {
+        ok = flash_write(FACTORY_CAL_COPY + at, chunk, CHUNK);
+    }
+    for (size_t i = 0; ok && (i < (sizeof(DEFAULT_TABLE) / sizeof(DEFAULT_TABLE[0]))); i++) {
+        ok = flash_write(FACTORY_CAL_COPY + DEFAULT_TABLE[i].at, DEFAULT_TABLE[i].bytes, DEFAULT_TABLE[i].length);
+    }
+    return flash_batch_end() && ok;
+}
+
 void factory_cal_init(void)
 {
     memset(&cal, 0, sizeof(cal));
     for (uint32_t sector = SEARCH_START; sector < SEARCH_END; sector += SECTOR_SIZE) {
-        uint8_t tag;
-
-        if (flash_read_raw(sector + SECTOR_SIZE - 1, &tag, 1) && (tag == SECTOR_TAG) && read_sector(sector)) {
+        if (is_table(sector)) {
             cal.valid = true;
+            cal.source = FACTORY_CAL_FROM_FACTORY;
             cal.sector = sector;
             break;
+        }
+    }
+
+    if (cal.valid) {
+        (void)copy_factory(cal.sector);
+    } else {
+        uint8_t source;
+
+        if (!is_table(COPY_SECTOR)) {
+            (void)write_default();
+        }
+        if (is_table(COPY_SECTOR) && flash_read_raw(COPY_SECTOR + AT_SOURCE, &source, 1)) {
+            cal.valid = true;
+            cal.source = (source == SOURCE_DEFAULT) ? FACTORY_CAL_FROM_DEFAULT : FACTORY_CAL_FROM_COPY;
+            cal.sector = COPY_SECTOR;
         }
     }
 

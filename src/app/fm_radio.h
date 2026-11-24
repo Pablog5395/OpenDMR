@@ -34,5 +34,6 @@
 // The FM broadcast radio (main menu "FM radio"; SK1 on the channel screen, docs/ui-design.md 3)
 extern const ui_screen_t fm_radio_screen;
 bool fm_radio_was_playing(void); // switched off on its screen: the radio starts on it again
+bool fm_radio_hook(const ui_event_t *ev); // the channel first: away while it is heard, back once it is quiet
 
 #endif

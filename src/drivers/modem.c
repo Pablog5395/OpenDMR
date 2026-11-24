@@ -159,8 +159,10 @@ void modem_set_frequency_calibration(bool valid, uint8_t osc_tune, uint16_t rx_a
         SIG_CENTER = (osc << 24) | (osc << 16);                // Tx frequency
         mod_bias_set = ((uint32_t)rx_adjust << 16) | mod_bias; // Rx frequency, the 4FSK level
     } else {
+        // the default Rx frequency adjust; the 4FSK level given (factory_cal_mod_bias(): its default), not 0xFF, which
+        // tripled the deviation: no receiver decoded DMR or P25 (issue #142)
         SIG_CENTER = DEFAULT_SIG_CENTER;
-        mod_bias_set = DEFAULT_MOD_BIAS;
+        mod_bias_set = (DEFAULT_MOD_BIAS & 0xFFFF0000u) | mod_bias;
     }
     RF_MOD_BIAS_CTRL = scaled(mod_bias_set);
 }

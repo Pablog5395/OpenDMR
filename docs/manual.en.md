@@ -54,7 +54,7 @@ All of these can be changed in Options → Key settings (see [12](#12-lock-quick
 | SK2 + # | Contact list | DTMF contact list |
 | # long | Reverse repeater (channel mode only) | Same |
 | * | Timeslot | Bandwidth 12.5 / 25 kHz |
-| * long | Back to the channel's own timeslot | — |
+| * long | Back to the channel's (VFO's) own timeslot | — |
 | SK1 + * | Mode: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 | Same |
 | ▶ / ◀ | Talk group + / − (through the RX group list) | Squelch + / − |
 | SK2 + ▶ / ◀ | Power + / − | Same |
@@ -65,6 +65,12 @@ All of these can be changed in Options → Key settings (see [12](#12-lock-quick
 | SK1 + ▲ / ▼ | Scan up / down | Same |
 | SK1 + 1 | APRS on / off | Same |
 | SK1 + 3 | Send an APRS beacon now | Same |
+
+**What the keys change on a channel is for now**: squelch, power, timeslot, mode, bandwidth, and a talk group or
+contact picked go back to the channel's own after another channel, the VFO, the channel details or power off; nothing
+is written into the codeplug. To change a channel for good, use the channel details (SK2 + menu key). The timeslot is
+the channel's: its own contact doesn't change it; a contact picked for now (contacts, # entry, call back, stepping
+through the TG list) brings its own timeslot. On a VFO, what the keys change is kept.
 
 Also: SK2 + menu key opens the channel details directly; SK2 + a digit is a quick key (see [12](#12-lock-quick-keys-key-settings)).
 
@@ -257,9 +263,9 @@ comes the target, `ALL`, with the CAN on the right of its line (e.g. `CAN 0`).
   and name, how long ago, and the talk group or `PC` of each call). The caller shows there within about 0.7 s.
   Display options → **Recent callers** turns the block off (it is on by default); FM, AM, USB, LSB and NXDN channels never show it.
 - FM: audio when the squelch opens; ▶ ◀ change the squelch, shown on the screen for a moment. 0 % is always open
-  (the noise is heard); a receive tone still applies. The squelch and the power changed on a channel are that
-  channel's own (a VFO's likewise), written into the codeplug at power off; a channel without its own uses the
-  band's default squelch of Radio options.
+  (the noise is heard); a receive tone still applies. The squelch changed on a channel is for now (back to the
+  channel's own after another channel, the VFO or power off); on a VFO it is kept. A channel without its own squelch
+  uses the band's default squelch of Radio options.
 
 ---
 
@@ -340,7 +346,7 @@ Two paths watched at once, each **any channel or VFO A / B** (both may be the sa
 
 - **#** on a main screen. **#** cycles TG → PC → All Call → contact; ▲ ▼ add / subtract 1.
 - The menu key takes it: a TG, PC or the All Call (16777215, nothing to type) replaces the channel's contact for
-  now; a contact also brings its timeslot. Your own DMR ID is set in Settings (User DMR ID), not here.
+  now (on a channel: until another channel, the VFO or power off); a contact also brings its timeslot. Your own DMR ID is set in Settings (User DMR ID), not here.
 - In FM # is the DTMF entry: digits, * and # type the code, ◀ deletes, the menu key sends it.
 
 ### Contact list (SK2 + #)
@@ -486,7 +492,8 @@ these settings.**
 
 Power levels: 50mW, 500mW, 1W, 2W, 3W, 4W, 5W, 7W, 10W, +W-. 1W / 4W / 10W are the factory calibration of the stock
 Low / Middle / High; the others are estimated from them, not measured. Each channel, VFO A and VFO B has its own power:
-SK2 + ▶ ◀ changes the one in use, and it is kept.
+SK2 + ▶ ◀ changes the one in use; on a VFO it is kept, on a channel it is for now (the channel details change it
+for good).
 
 ### Display options
 
@@ -554,7 +561,15 @@ language's font is not in the radio, its text shows as "??" and the menu gives i
 <img src="manual/en/calibration.png" alt="Calibration">
 
 Read only: the factory calibration table (oscillator tune, receive level, power values at each frequency).
-**This firmware never changes the calibration.**
+**This firmware never changes the factory calibration.**
+
+The first row says where the calibration comes from:
+- An address (e.g. 0x0C0000): the stock calibration sector. The firmware also keeps a copy of it in its own area.
+- **Copy**: the stock sector is gone (another firmware or tool wrote over it); the copy kept earlier is used.
+- **Default**: neither the stock sector nor a copy exists; a generic default table is used (two radios averaged, the
+  lower power of the two). Digital modes transmit and receive, but frequency and power are not this radio's own.
+
+Once the stock sector is back (a backup written back, for example), it is used again from the next start.
 
 ### APRS options
 

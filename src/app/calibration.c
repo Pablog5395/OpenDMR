@@ -30,8 +30,9 @@
  * OpenDMR, screen: the factory calibration, read only (menuCalibration.c; the table as functions/calibration.c
  * dm32ReadFactory() reads it). UP / DOWN scroll, the right key goes back.
  *
- * The table and where it is: services/factory_cal.h. NOTHING IS WRITTEN. TODO: editing (power, oscillator) needs
- * the transmitter to measure against, and a copy in the window of this firmware rather than the factory sector.
+ * The table and where it is: services/factory_cal.h (the factory sector, else its copy or the default table in the
+ * window). NOTHING IS WRITTEN here. TODO: editing (power, oscillator) needs the transmitter to measure against; it
+ * would change the copy, never the factory sector.
  */
 
 #include <stdio.h>
@@ -105,7 +106,12 @@ static void row_text(int index, char *name, size_t name_size, char *value, size_
     switch (index) {
         case 0:
             snprintf(name, name_size, "%s", text(TEXT_FACTORY_TABLE));
-            snprintf(value, value_size, "0x%06lX", (unsigned long)cal.sector);
+            if (cal.source == FACTORY_CAL_FROM_FACTORY) {
+                snprintf(value, value_size, "0x%06lX", (unsigned long)cal.sector);
+            } else {
+                snprintf(value, value_size, "%s",
+                         text((cal.source == FACTORY_CAL_FROM_COPY) ? TEXT_CAL_COPY : TEXT_CAL_DEFAULT));
+            }
             return;
         case 1:
             snprintf(name, name_size, "%s", text(TEXT_OSC_TUNE));

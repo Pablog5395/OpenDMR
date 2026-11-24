@@ -424,6 +424,11 @@ void fd6818_dmr_burst_rx(uint32_t frequency)
     fd6818_write(0x50, DMR_50_RX);
 }
 
+void fd6818_dmr_af(bool on)
+{
+    fd6818_write(REG_AF, on ? DMR_AF_RX : AF_MUTED);
+}
+
 // docs/fd6818-registers.md; BK4819_TransmitTone() of the UV-K5 firmware does the same
 static uint16_t tone_word(uint16_t hz)
 {

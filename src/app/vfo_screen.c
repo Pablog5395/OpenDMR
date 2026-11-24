@@ -310,16 +310,20 @@ bool vfo_screen_is_home(void)
     return home_is_vfo;
 }
 
+// From the channel screen: the changes made there with the keys are gone (channel_screen_forget_changes())
 void vfo_screen_show(void)
 {
     ui_home();
+    channel_screen_forget_changes();
     ui_replace(&vfo_screen, NULL);
 }
 
+// To the channel screen: the channel as it is in the codeplug, without a TG or timeslot picked on the VFO
 void vfo_screen_leave(void)
 {
     ui_home(); // from the quick menu (VFO --> New Chan): back on this screen, whose enter() sets the VFO home
     set_home_mode(false);
+    channel_screen_forget_changes();
     ui_replace(&channel_screen, NULL);
 }
 

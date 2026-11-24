@@ -440,6 +440,16 @@ static void soft_transmit(void)
     uint8_t (*ambe)[DMR_AMBE_BYTES] = txm.ambe;
     uint8_t cc = trxGetDMRColourCode();
     bool pc = (trxTalkGroupOrPcId >> 24) == PC_CALL_FLAG;
+    // The engine inserts the ETSI GPS Info LC in DMR voice; do the same here (TA Tx = APRS/Both), so the other
+    // radios can show our distance. Without this, TA Tx was ignored on DMO's software transmitter.
+    uint8_t gps_lc[9], gps_frags[4][4];
+    bool send_gps = (settings.location_lat != SETTINGS_UNITIALISED_LOCATION_LAT) &&
+                    ((getCurrentTATxFlag() & TA_TX_APRS) != 0);
+
+    if (send_gps) {
+        dmr_gps_info_lc_make(gps_lc, settings.location_lat, settings.location_lon);
+        dmr_emb_lc_make(gps_lc, gps_frags);
+    }
 
     dmr_lc_make(lc, pc ? DMR_FLCO_UNIT : DMR_FLCO_GROUP, 0, trxTalkGroupOrPcId & 0xFFFFFF, trxDMRID);
     dmr_emb_lc_make(lc, frags);
@@ -456,7 +466,7 @@ static void soft_transmit(void)
     }
     bool keyed = false;
     int16_t *pcm = txm.pcm;
-    int halves = 0, nf = 0, pos = 0, tx_voice_logged = 0;
+    int halves = 0, nf = 0, pos = 0, sf = 0, tx_voice_logged = 0;
     bool ending = false;
     for (;;) {
         if (!afrx_ptt_held()) {
@@ -499,14 +509,21 @@ static void soft_transmit(void)
         if (pos == 0) {
             dmr_burst_voice_sync(b, (const uint8_t(*)[DMR_AMBE_BYTES])ambe, DMR_SYNC_MS_VOICE);
         } else {
+            // Alternate the base LC and the GPS Info LC in the embedded signalling, as the engine alternates its
+            // talker alias phases: every other superframe carries the four GPS fragments in bursts B - E.
+            const uint8_t (*emb)[4] = (send_gps && ((sf % 2) == 0)) ? gps_frags : frags;
+
             dmr_burst_voice_emb(b, (const uint8_t(*)[DMR_AMBE_BYTES])ambe, cc, 0, lcss[pos - 1],
-                                (pos < 5) ? frags[pos - 1] : null_frag);
+                                (pos < 5) ? emb[pos - 1] : null_frag);
         }
         put_burst(b);
         if (tx_voice_logged < 3) {
             p25_ev_log(34, (uint16_t)tx_voice_logged++); // a voice burst into the FIFO
         }
         pos = (pos + 1) % 6;
+        if (pos == 0) {
+            sf++; // a superframe finished (A + B - F)
+        }
     }
     if (keyed) {
         dmr_full_lc_make(lc, DMR_MASK_TERMINATOR_LC, full);

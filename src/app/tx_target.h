@@ -36,11 +36,13 @@
 // The DMR call target of the channel or VFO shown: the talk group or private call and the timeslot (uiChannelMode.c
 // loadChannelData() and updateTrxID(), trx.c trxUpdateTsForCurrentChannelWithSpecifiedContact(), uiUtilities.c
 // tsSetManualOverride(), setOverrideTGorPC()). In this order:
-//   settings.override_tg       a TG / PC entered or picked (# entry, contacts, last heard); kept across channels
+//   settings.override_tg       a TG / PC entered or picked (# entry, contacts, last heard)
 //   the RX group's TG          LEFT / RIGHT step through the channel's RX group list (current_index_in_trx_group_list)
 //   the channel's contact
-// The timeslot: the manual override of settings.ts_manual_override (* toggles it), else the contact's override, else
-// the channel's.
+// The timeslot: the manual override of settings.ts_manual_override (* toggles it; a contact picked brings its own),
+// else on a VFO the contact's override, else the channel's (VFO's). On a codeplug channel the channel's own contact
+// doesn't override its timeslot, and what is picked there lasts until another channel, the VFO, or power off
+// (tx_target_channel_forget(), from channel_screen.c); a VFO keeps it.
 
 #define TX_TARGET_PC_FLAG 0x03 // the top byte of a private call (HR_C7000 PC_CALL_FLAG)
 
@@ -69,5 +71,6 @@ void tx_target_set_timeslot(int timeslot);          // manual override, 1 / 2 (t
 void tx_target_toggle_timeslot(const codeplug_channel_t *channel);
 void tx_target_clear_timeslot(void);                                // long *: the contact's or channel's again
 int tx_target_step_group(const codeplug_channel_t *channel, int step); // the TG's position; -1: no group of 2+
+void tx_target_channel_forget(void); // a codeplug channel's TG, RX group TG and timeslot picked: back to its own
 
 #endif

@@ -121,8 +121,8 @@ SECTIONS
 	} > MEM1
 
 	/* Our DMR vocoder (vocoder/c/ambe) runs from RAM: its encoder code, the tables of the hot loops and its
-	   variables (zeros in the flash, so a load starts it afresh; the other tables stay in the flash), copied by
-	   dmr/vocoder.c vocoder_load(). The stock codec is not supported.
+	   variables (not in the flash: cleared by the load, so a load starts it afresh; the other tables stay in the
+	   flash), loaded by dmr/vocoder.c vocoder_load(). The stock codec is not supported.
 	   The update area: the RAM services/serial_update.c gives the update program (tools/debug/updater, linked at
 	   0x44400; fw_update.py checks the address and the size). Kept where and as large as it always was, so any
 	   version updates any other; the vocoder is in it, unused while the update runs.
@@ -136,10 +136,8 @@ SECTIONS
 			__vocoder_ram_start = . ;
 			*/vocoder/ambe_enc*(.text*)
 			*(.vocoder_rodata*) /* the tables of the hot loops (vocoder/c/ambe/ambe_tables.h AMBE_RAM_DATA) */
-			*/vocoder/ambe_*(.sbss* .bss* COMMON)
-			*(.vocoder_bss*)
 			. = ALIGN(0x4) ;
-			__vocoder_ram_end = . ;
+			__vocoder_load_end = . ;
 		}
 		.p25_overlay {
 			__p25_ram_start = . ;
@@ -148,24 +146,40 @@ SECTIONS
 			*/p25/imbe/imbe_enc*(.text*)   /* the encoder: its quantizer and analysis */
 			*/p25/imbe/imbe_ana.*(.text*)
 			*(.p25_rodata*) /* the IMBE tables of the hot loops (p25/c/imbe/imbe_tables.h IMBE_RAM_DATA) */
-			*/p25/imbe/imbe_dec*(.sbss* .bss* COMMON)
-			*/p25/imbe/imbe_parms*(.sbss* .bss* COMMON)
-			*/p25/imbe/imbe_enc*(.sbss* .bss* COMMON)
-			*/p25/imbe/imbe_ana.*(.sbss* .bss* COMMON)
-			*(.p25_bss*)
 			. = ALIGN(0x4) ;
-			__p25_ram_end = . ;
+			__p25_load_end = . ;
 		}
 		.m17_overlay {
 			__m17_ram_start = . ;
 			*/services/c2dec.o(.text* .rodata*) /* the Codec 2 decoder, its tables */
 			*/services/c2enc.o(.text* .rodata*) /* the encoder (M17 transmit) */
-			*/services/c2dec.o(.sbss* .bss* COMMON)
-			*/services/c2enc.o(.sbss* .bss* COMMON)
-			*(.m17_bss*)
 			. = ALIGN(0x4) ;
-			__m17_ram_end = . ;
+			__m17_load_end = . ;
 		}
+	}
+	/* Each overlay's variables, after its code and tables: not in the flash image (only zeros), cleared by the load
+	   (dmr/vocoder.c), so a load still starts it afresh. */
+	.vocoder_bss __vocoder_load_end (NOLOAD) : {
+		*/vocoder/ambe_*(.sbss* .bss* COMMON)
+		*(.vocoder_bss*)
+		. = ALIGN(0x4) ;
+		__vocoder_ram_end = . ;
+	}
+	.p25_bss __p25_load_end (NOLOAD) : {
+		*/p25/imbe/imbe_dec*(.sbss* .bss* COMMON)
+		*/p25/imbe/imbe_parms*(.sbss* .bss* COMMON)
+		*/p25/imbe/imbe_enc*(.sbss* .bss* COMMON)
+		*/p25/imbe/imbe_ana.*(.sbss* .bss* COMMON)
+		*(.p25_bss*)
+		. = ALIGN(0x4) ;
+		__p25_ram_end = . ;
+	}
+	.m17_bss __m17_load_end (NOLOAD) : {
+		*/services/c2dec.o(.sbss* .bss* COMMON)
+		*/services/c2enc.o(.sbss* .bss* COMMON)
+		*(.m17_bss*)
+		. = ALIGN(0x4) ;
+		__m17_ram_end = . ;
 	}
 	/* The software receivers' state that goes with the vocoder (NXDN, DMR: services/afrx.c runs one at a time): after
 	   the vocoder's own RAM, both at the same address, valid while the AMBE overlay is claimed; not loaded (each

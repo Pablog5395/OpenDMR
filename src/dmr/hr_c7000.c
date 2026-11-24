@@ -2900,19 +2900,10 @@ void HRC7000SetTalkerAlias(const char *text)
 
 void HRC7000SetTalkerAliasLocation(uint32_t Lat, uint32_t Lon)
 {
-	double longDouble = latLongFixed32ToDouble(Lon);
-	int32_t intLong = (33554432 * longDouble) / 360;
-	double latDouble = latLongFixed32ToDouble(Lat);
-	int32_t intLat = (16777216 * latDouble) / 180;
+	uint8_t lc[9];
 
-	hrc.talkAliasLocation[0] = (intLong >> 24) & 0x01;
-	hrc.talkAliasLocation[1] = (intLong >> 16) & 0xFF;
-	hrc.talkAliasLocation[2] = (intLong >> 8) & 0xFF;
-	hrc.talkAliasLocation[3] = (intLong ) & 0xFF;
-
-	hrc.talkAliasLocation[4] = (intLat >> 16) & 0xFF;
-	hrc.talkAliasLocation[5] = (intLat >> 8) & 0xFF;
-	hrc.talkAliasLocation[6] = (intLat >> 0) & 0xFF;
+	dmr_gps_info_lc_make(lc, Lat, Lon);
+	memcpy(&hrc.talkAliasLocation[0], &lc[2], 7);
 }
 
 bool HRC7000IRQHandlerIsRunning(void)

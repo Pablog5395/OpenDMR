@@ -41,6 +41,7 @@
 #include "message_box.h"
 #include "codeplug.h"
 #include "vfo_screen.h"
+#include "channel_screen.h"
 
 #define BAND_LIMITS_MODES     3 // off, on (the legacy bands), from the CPS
 #define CAPTURE_TIMEOUT_MIN   2 // s
@@ -270,6 +271,7 @@ static void power_to_all_answered(bool yes)
     }
     count = codeplug_set_all_power((uint8_t)(settings.tx_power_level + 1));
     vfo_screen_set_power((uint8_t)(settings.tx_power_level + 1));
+    channel_screen_forget_power(); // the channel screen's power set with the keys gives way to it
     snprintf(power_line, sizeof(power_line), "%s %d", text(TEXT_POWER_TO_ALL_DONE), (count < 0) ? 0 : count);
     power_result = (message_box_t){.title = text(TEXT_POWER_TO_ALL),
                                    .line1 = (count < 0) ? text(TEXT_ERROR) : power_line,

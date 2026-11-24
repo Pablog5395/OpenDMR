@@ -116,7 +116,11 @@ void tx_target_get(const codeplug_channel_t *channel, tx_target_t *target)
         contact_ts = codeplug_contact_timeslot(&contact);
     }
 
-    if (contact_ts != 0) { // the contact's own timeslot, unless * changed it
+    if (tx_target_source() == TX_TARGET_CHANNEL) {
+        // A codeplug channel: its own timeslot, unless one was set here for now (*, a contact picked, the RX group's
+        // TG stepped to: tx_target_channel_forget() drops it). The channel's contact doesn't override it.
+        target->timeslot = (manual != 0) ? manual : ((channel->flag2 & FLAG2_TIMESLOT_2) ? 2 : 1);
+    } else if (contact_ts != 0) { // a VFO: the contact's own timeslot, unless * changed it
         target->timeslot = (contact_overridden() && (manual != 0)) ? manual : contact_ts;
     } else {
         target->timeslot = (manual != 0) ? manual : ((channel->flag2 & FLAG2_TIMESLOT_2) ? 2 : 1);
@@ -191,7 +195,8 @@ void tx_target_toggle_timeslot(const codeplug_channel_t *channel)
 
     tx_target_get(channel, &target);
     tx_target_set_timeslot(3 - target.timeslot);
-    if ((settings.override_tg == 0) && channel_contact(channel, &contact) && (codeplug_contact_timeslot(&contact) != 0)) {
+    if ((tx_target_source() != TX_TARGET_CHANNEL) && (settings.override_tg == 0) && channel_contact(channel, &contact) &&
+        (codeplug_contact_timeslot(&contact) != 0)) {
         set_contact_overridden(true);
     }
 }
@@ -202,10 +207,12 @@ void tx_target_clear_timeslot(void)
     set_contact_overridden(false);
 }
 
-// LEFT / RIGHT (uiChannelMode.c): the next TG of the RX group list, and no override any more
+// LEFT / RIGHT (uiChannelMode.c): the next TG of the RX group list, and no override any more. On a codeplug channel
+// the TG stepped to is a pick for now, as one from the contacts: its own timeslot if it has one, else the channel's.
 int tx_target_step_group(const codeplug_channel_t *channel, int step)
 {
     codeplug_rx_group_t group;
+    codeplug_contact_t contact;
     int16_t *index = &settings.current_index_in_trx_group_list[(tx_target_source() + 1) % 3];
     int stepped = -1;
 
@@ -213,9 +220,27 @@ int tx_target_step_group(const codeplug_channel_t *channel, int step)
         (group.contact_count > 1) && (settings.override_tg == 0)) {
         *index = (int16_t)((((*index + step) % group.contact_count) + group.contact_count) % group.contact_count);
         stepped = *index;
+        if ((tx_target_source() == TX_TARGET_CHANNEL) && codeplug_get_contact(group.contacts[*index], &contact)) {
+            tx_target_set_timeslot(codeplug_contact_timeslot(&contact)); // 0: the channel's
+        }
     }
     settings.override_tg = 0;
     set_contact_overridden(false); // updateTrxID()
     settings_changed();
     return stepped;
+}
+
+// What was picked for a codeplug channel lasts until another channel, the VFO, or power off: the TG / PC picked, the
+// RX group's TG stepped to, the timeslot set (channel_screen.c). In the settings meanwhile, so dropped here.
+void tx_target_channel_forget(void)
+{
+    uint16_t channel_bits = (uint16_t)((TS_MASK << (2 * TX_TARGET_CHANNEL)) | (1U << (TS_CONTACT_SHIFT + TX_TARGET_CHANNEL)));
+    int16_t *index = &settings.current_index_in_trx_group_list[(TX_TARGET_CHANNEL + 1) % 3];
+
+    if ((settings.override_tg != 0) || ((settings.ts_manual_override & channel_bits) != 0) || (*index != 0)) {
+        settings.override_tg = 0;
+        settings.ts_manual_override = (uint16_t)(settings.ts_manual_override & ~channel_bits);
+        *index = 0;
+        settings_changed();
+    }
 }

@@ -112,6 +112,9 @@ radio_request_t radio_data_send(const radio_data_t *burst);
 bool radio_has_carrier(void);  // FM: a carrier (the noise squelch open)
 bool radio_audio_heard(void);  // a received signal plays (FM squelch and tone, or DMR audio)
 bool radio_is_receiving(void); // the squelch open or a digital call heard (the screens' green line, S meter)
+#define RADIO_QUIET_MS 3000     // a pause between the overs of a QSO is shorter
+bool radio_channel_busy(void);  // received audio, or on a digital channel any signal (-105 dBm, any CC / TS)
+bool radio_channel_quiet(void); // not busy for RADIO_QUIET_MS (a UI_DATA_SIGNAL when it becomes true)
 uint8_t radio_signal(void);    // RSSI, averaged for showing (dBm = value - 177 on VHF, - 167 on UHF)
 int radio_signal_dbm(void);
 uint8_t radio_signal_raw(void); // the last reading (the RSSI screen)

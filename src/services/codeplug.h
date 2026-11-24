@@ -192,12 +192,8 @@ void codeplug_set_last_used_channel(int zone_index, int value);
 
 int codeplug_channel_count(void);
 bool codeplug_channel_in_use(int number);
-bool codeplug_get_channel(int number, codeplug_channel_t *channel); // with its squelch and power set below
-// The squelch (codeplug sql) and the power (libre_dmr_power) of a channel changed on the channel screen: kept in RAM,
-// read with the channel, and written into it at power off, with the last used table: the one place they are written.
-// A channel written whole (codeplug_write_channel(): channel details, Power To All ...) keeps what is written
-void codeplug_set_channel_squelch(int number, uint8_t sql);
-void codeplug_set_channel_power(int number, uint8_t power);
+// As it is in the codeplug (the channel screen's changes with the keys are its own, never written: channel_screen.c)
+bool codeplug_get_channel(int number, codeplug_channel_t *channel);
 
 // ---- Contacts, DTMF contacts, RX group lists ----
 // Contacts (1 - 1024) in the flash part, their numbers and call types kept in RAM for the lists and the lookups;
