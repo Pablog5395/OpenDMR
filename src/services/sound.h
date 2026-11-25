@@ -52,14 +52,35 @@ extern const int16_t SOUND_DMR_TX_START[];
 extern const int16_t SOUND_DMR_TX_STOP[];
 extern const int16_t SOUND_1750[]; // heard while sending 1750 Hz (stopped with sound_play(NULL))
 
-// TX events that arm the DMR air chirp; the stock speaker beeps are unchanged.
+// Sound styles: alternative melodies for the carrier / talker / PTT beeps, synthesized like all the others (no
+// samples). The original beeps are kept as Classic; Chirp is a short double-beep alert. Key, error and boot sounds
+// never change.
 enum {
-    SOUND_EVENT_TX_START, // our own PTT (DMR)
-    SOUND_EVENT_TX_STOP
+    SOUND_STYLE_CLASSIC,
+    SOUND_STYLE_CHIRP,
+    SOUND_STYLES
 };
 
+enum {
+    SOUND_EVENT_RX_CARRIER_BEGIN, // a carrier opens (FM squelch, DMR carrier)
+    SOUND_EVENT_RX_CARRIER_END,
+    SOUND_EVENT_RX_TALKER_BEGIN, // a caller is identified (DMR)
+    SOUND_EVENT_RX_TALKER_END,
+    SOUND_EVENT_TX_START, // our own PTT (DMR)
+    SOUND_EVENT_TX_STOP,
+    SOUND_EVENTS
+};
+
+extern uint8_t sound_style; // SOUND_STYLE_x, loaded from the codeplug at boot
+
+const int16_t *sound_event_melody(uint8_t event); // the current style's melody, never NULL
+void sound_event_play(uint8_t event);             // play that melody
+void sound_style_set(uint8_t style);              // change it; sound_settings_save() writes it
+void sound_settings_save(void);                   // write the changed settings (menu leave / power off)
+
 // DMR over-the-air chirps: native AMBE tone frames (TIA-102.BABA-1), so any DMR radio hears a clean tone instead of a
-// sine pushed through the speech encoder. The pattern has its own menu row. Off by default.
+// sine pushed through the speech encoder. The pattern has its own menu row, separate from the speaker's sound style.
+// Off by default.
 enum {
     SOUND_DMR_AIR_OFF,
     SOUND_DMR_AIR_START,
@@ -90,7 +111,6 @@ bool sound_dmr_air_begin(uint8_t event);     // arm the melody for that TX event
 bool sound_dmr_air_active(void);             // frames still to send
 bool sound_dmr_air_tone(uint8_t out9[9]);    // next 9-byte AMBE tone frame; false: the beep is over
 void sound_dmr_air_cancel(void);             // aborted transmission: drop whatever was left
-void sound_settings_save(void);              // write the changed air settings (menu leave / power off)
 
 // settings.audio_prompt_mode (the main firmware's AUDIO_PROMPT_MODE_x)
 enum {

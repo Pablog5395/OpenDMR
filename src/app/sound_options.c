@@ -202,6 +202,34 @@ static const ui_custom_t rx_beep_item = {
     .change = rx_beep_change,
 };
 
+/* Sound style: Classic / Chirp; the choice is saved in the codeplug */
+
+static void style_format(char *buffer, size_t size)
+{
+    static const text_id_t styles[SOUND_STYLES] = {TEXT_CLASSIC, TEXT_CHIRP};
+
+    format_text((sound_style < SOUND_STYLES) ? styles[sound_style] : TEXT_CLASSIC, buffer, size);
+}
+
+static void style_change(int direction, uint8_t modifiers)
+{
+    uint8_t value = (uint8_t)CLAMP(sound_style + direction, 0, SOUND_STYLES - 1);
+
+    (void)modifiers;
+    if (value != sound_style) {
+        sound_style_set(value);
+        if (!silent()) { // hear the new style at once, not the key beep
+            ui_key_beep(NULL);
+            sound_event_play(SOUND_EVENT_RX_TALKER_BEGIN);
+        }
+    }
+}
+
+static const ui_custom_t sound_style_item = {
+    .format = style_format,
+    .change = style_change,
+};
+
 /* DMR air chirp: Off / Start / Stop / Both, sent as native AMBE tone frames so other radios hear the melody */
 
 static void dmr_air_format(char *buffer, size_t size)
@@ -550,6 +578,7 @@ static const ui_item_t sound_options_items[] = {
     {TEXT_BEEP_VOLUME, ICONS_COUNT, UI_ITEM_CUSTOM, &beep_volume, NULL},
     {TEXT_DMR_BEEP, ICONS_COUNT, UI_ITEM_CUSTOM, &dmr_beep, NULL},
     {TEXT_RX_BEEP, ICONS_COUNT, UI_ITEM_CUSTOM, &rx_beep_item, NULL},
+    {TEXT_SOUND_STYLE, ICONS_COUNT, UI_ITEM_CUSTOM, &sound_style_item, NULL},
     {TEXT_DMR_AIR_BEEP, ICONS_COUNT, UI_ITEM_CUSTOM, &dmr_air_item, NULL},
     {TEXT_ROGER_STYLE, ICONS_COUNT, UI_ITEM_CUSTOM, &roger_pattern_item, NULL},
     {TEXT_FM_TX_TONES, ICONS_COUNT, UI_ITEM_LIST, &tx_tones, NULL},
