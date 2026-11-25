@@ -539,6 +539,9 @@ these settings.**
 | DMR crc | Off: DMR data CRC errors are ignored |
 | DMR SMS format | The format DMR messages are sent in, see [Messages](#messages) |
 
+RAS repeaters need `DMR crc = Off`: their LC CRC is computed with a secret key, so the standard check fails on purpose.
+The FEC still runs; only the final CRC check is skipped.
+
 Power levels: 50mW, 500mW, 1W, 2W, 3W, 4W, 5W, 7W, 10W, +W-. 1W / 4W / 10W are the factory calibration of the stock
 Low / Middle / High; the others are estimated from them, not measured. Each channel, VFO A and VFO B has its own power:
 SK2 + ▶ ◀ changes the one in use; on a VFO it is kept, on a channel it is for now (the channel details change it
