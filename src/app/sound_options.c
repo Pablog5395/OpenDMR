@@ -230,6 +230,65 @@ static const ui_custom_t sound_style_item = {
     .change = style_change,
 };
 
+/* DMR air chirp: Off / Start / Stop / Both, sent as native AMBE tone frames so other radios hear the melody */
+
+static void dmr_air_format(char *buffer, size_t size)
+{
+    static const text_id_t modes[SOUND_DMR_AIR_MODES] = {TEXT_OFF, TEXT_START, TEXT_STOP, TEXT_BOTH};
+
+    format_text((sound_dmr_air < SOUND_DMR_AIR_MODES) ? modes[sound_dmr_air] : TEXT_OFF, buffer, size);
+}
+
+static void dmr_air_change(int direction, uint8_t modifiers)
+{
+    uint8_t value = (uint8_t)CLAMP(sound_dmr_air + direction, 0, SOUND_DMR_AIR_MODES - 1);
+
+    (void)modifiers;
+    if (value != sound_dmr_air) {
+        sound_dmr_air_set(value);
+        if ((value != SOUND_DMR_AIR_OFF) && !silent()) {
+            ui_key_beep(NULL);
+            sound_dmr_air_preview();
+        }
+    }
+}
+
+static const ui_custom_t dmr_air_item = {
+    .format = dmr_air_format,
+    .change = dmr_air_change,
+};
+
+/* DMR air melody: synthesized (Hz, ms) patterns authored for this feature, sent at both the start and the end */
+
+static void roger_pattern_format(char *buffer, size_t size)
+{
+    static const text_id_t patterns[SOUND_AIR_PATTERNS] = {
+        TEXT_ROGER_RISING, TEXT_ROGER_HIGH, TEXT_ROGER_850,
+        TEXT_ROGER_1150,   TEXT_ROGER_1850, TEXT_ROGER_DOUBLE,
+    };
+
+    format_text((dmr_air_pattern < SOUND_AIR_PATTERNS) ? patterns[dmr_air_pattern] : TEXT_ROGER_HIGH, buffer, size);
+}
+
+static void roger_pattern_change(int direction, uint8_t modifiers)
+{
+    uint8_t value = (uint8_t)CLAMP(dmr_air_pattern + direction, 0, SOUND_AIR_PATTERNS - 1);
+
+    (void)modifiers;
+    if (value != dmr_air_pattern) {
+        sound_dmr_air_pattern_set(value);
+        if (!silent()) {
+            ui_key_beep(NULL);
+            sound_dmr_air_preview();
+        }
+    }
+}
+
+static const ui_custom_t roger_pattern_item = {
+    .format = roger_pattern_format,
+    .change = roger_pattern_change,
+};
+
 // Taken at each transmission: DMR into the codec (HRC7000SetMicGainDMR()), FM into the FD6818
 static const ui_number_t mic_gain_dmr = {
     .value = &settings.mic_gain_dmr,
@@ -520,6 +579,8 @@ static const ui_item_t sound_options_items[] = {
     {TEXT_DMR_BEEP, ICONS_COUNT, UI_ITEM_CUSTOM, &dmr_beep, NULL},
     {TEXT_RX_BEEP, ICONS_COUNT, UI_ITEM_CUSTOM, &rx_beep_item, NULL},
     {TEXT_SOUND_STYLE, ICONS_COUNT, UI_ITEM_CUSTOM, &sound_style_item, NULL},
+    {TEXT_DMR_AIR_BEEP, ICONS_COUNT, UI_ITEM_CUSTOM, &dmr_air_item, NULL},
+    {TEXT_ROGER_STYLE, ICONS_COUNT, UI_ITEM_CUSTOM, &roger_pattern_item, NULL},
     {TEXT_FM_TX_TONES, ICONS_COUNT, UI_ITEM_LIST, &tx_tones, NULL},
     {TEXT_DMR_MIC_GAIN, ICONS_COUNT, UI_ITEM_NUMBER, &mic_gain_dmr, NULL},
     {TEXT_FM_MIC_GAIN, ICONS_COUNT, UI_ITEM_NUMBER, &mic_gain_fm, NULL},

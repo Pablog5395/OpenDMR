@@ -80,6 +80,7 @@
 #include "afrx.h"
 #include "radio_hooks.h"
 #include "voice_play.h"
+#include "sound.h"
 #include "dmr_demod.h"
 #include "dmr_l2.h"
 #include "dmr_soft.h"
@@ -670,28 +671,34 @@ static void soft_transmit(bool rmo, uint32_t reset_at)
     int halves = 0, nf = 0, pos = 0, sf = 0, tx_voice_logged = 0;
     bool ending = false;
     for (;;) {
-        if (rmo && !keyed) {
+        // Repeater mode: leave if the repeater never keyed us; when we are ending, let the air chirp finish first.
+        if (rmo && !keyed && !ending) {
             break;
         }
         if (!afrx_ptt_held()) {
-            ending = true;
+            ending = true; // the radio task armed the roger beep before it released the PTT
         }
-        if (ending && (nf == 0) && (pos == 0)) {
-            break; // the superframe finished
+        if (ending && (nf == 0) && (pos == 0) && !sound_dmr_air_active()) {
+            break; // the superframe finished and the air chirp (if any) was encoded
         }
         if (ending) {
-            memcpy(ambe[nf], silence, DMR_AMBE_BYTES);
+            // A native AMBE tone frame decodes as a clean sine; no speech encoder, no flushing frame needed.
+            if (!sound_dmr_air_tone(ambe[nf])) {
+                memcpy(ambe[nf], silence, DMR_AMBE_BYTES);
+            }
         } else if (sound_mic_take(&pcm[80 * halves])) {
             if (++halves < 2) {
                 continue;
             }
             halves = 0;
-            uint32_t enc_t0 = systime_get_us();
-            vocoderEncodeFrame(pcm, ambe[nf]);
-            if (dmr_soft_tx_stats[2] < 4) {
-                p25_ev_log(37, (uint16_t)((systime_get_us() - enc_t0) / 100)); // the delay log: a frame encoded (arg
-            }                                                                   // its time, 0.1 ms)
-            dmr_soft_tx_stats[2]++;
+            if (!sound_dmr_air_tone(ambe[nf])) {
+                uint32_t enc_t0 = systime_get_us();
+                vocoderEncodeFrame(pcm, ambe[nf]);
+                if (dmr_soft_tx_stats[2] < 4) {
+                    p25_ev_log(37, (uint16_t)((systime_get_us() - enc_t0) / 100)); // the delay log: a frame encoded
+                }                                                                   // (arg its time, 0.1 ms)
+                dmr_soft_tx_stats[2]++;
+            }
             if (!keyed && (nf + 1 >= TX_KEY_AFTER)) { // on the air now (the mic recording on meanwhile)
                 keyed = afrx_fifo_key(dmr_soft_tx_low_power != 0);
                 p25_ev_log(35, keyed); // the delay log: keyed
@@ -701,6 +708,7 @@ static void soft_transmit(bool rmo, uint32_t reset_at)
                 if (dmr_soft_tx_gate) {
                     radio_phy_tx_gate(true); // the PA on for our timeslot only
                 }
+                sound_dmr_air_begin(SOUND_EVENT_TX_START); // the selected chirp, now that the PA is on
             }
         } else {
             vTaskDelay(pdMS_TO_TICKS(2));

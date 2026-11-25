@@ -50,6 +50,7 @@
 #include "power.h"
 #include "sound.h"
 #include "voice_play.h"
+#include "ambe.h"
 
 #define SOUND_TASK_PRIORITY 3
 #define LOW_BATTERY_MS      (5 * 60 * 1000) // LOW_BATTERY_INTERVAL: the low battery beep again after this
@@ -98,12 +99,18 @@ static const int16_t *const style_melodies[SOUND_STYLES][SOUND_EVENTS] = {
 };
 
 // Unique "DT" blocks: 2 is the keymap, 3 the FM radio, 4 the old language code, 5 scan, 6 NXDN ID, 7 the theme, 8 the
-// language choice. The sound style is in 9 so it cannot be read back as another feature's settings.
+// language choice. Our settings use 9, 11 and 12 so none of them can be read back as another feature's settings.
 #define SOUND_TX_TONES_DATA_TYPE 0x44540001 // ("DT", 1): the FM transmit tones
 #define SOUND_STYLE_DATA_TYPE    0x44540009 // ("DT", 9): the sound style byte
+#define SOUND_DMR_AIR_DATA_TYPE  0x4454000B // ("DT", 11): DMR over-the-air chirp mode
+#define SOUND_AIR_PATTERN_TYPE   0x4454000C // ("DT", 12): the DMR air melody
 
-// The style changes in the menu but is written only when the menu is left, or at power off
-#define SOUND_DIRTY_STYLE (1 << 0)
+// These settings change in the menu but are written only when it is left, or at power off
+enum {
+    SOUND_DIRTY_STYLE   = 1 << 0,
+    SOUND_DIRTY_AIR     = 1 << 1,
+    SOUND_DIRTY_PATTERN = 1 << 2
+};
 static uint8_t sound_options_dirty;
 
 // The patterns of the FM transmit tones
@@ -119,6 +126,8 @@ static const int16_t *const tx_tones[SOUND_TX_TONE_PATTERNS] = {
 sound_tx_tones_t sound_tx_tones = {.air_level = 5, .local_volume = 2};
 static bool tx_tones_changed = false;
 uint8_t sound_style = SOUND_STYLE_CLASSIC;
+uint8_t sound_dmr_air = SOUND_DMR_AIR_OFF;
+uint8_t dmr_air_pattern = SOUND_AIR_HIGH; // default until a pattern is stored
 
 // The boot melody notes: semitones from 104 Hz (freqs[] of the main firmware), 0 a pause
 static const int16_t notes[64] = {
@@ -368,7 +377,7 @@ static void sound_task(void *arg)
 void sound_start(void)
 {
     sound_tx_tones_t stored;
-    uint8_t stored_style;
+    uint8_t stored_style, stored_air, stored_pattern;
 
     if (custom_data_read(SOUND_TX_TONES_DATA_TYPE, (uint8_t *)&stored, sizeof(stored))) {
         sound_tx_tones = stored;
@@ -376,6 +385,14 @@ void sound_start(void)
     if (custom_data_read(SOUND_STYLE_DATA_TYPE, &stored_style, sizeof(stored_style)) &&
         (stored_style < SOUND_STYLES)) {
         sound_style = stored_style;
+    }
+    if (custom_data_read(SOUND_DMR_AIR_DATA_TYPE, &stored_air, sizeof(stored_air)) &&
+        (stored_air < SOUND_DMR_AIR_MODES)) {
+        sound_dmr_air = stored_air;
+    }
+    if (custom_data_read(SOUND_AIR_PATTERN_TYPE, &stored_pattern, sizeof(stored_pattern)) &&
+        (stored_pattern < SOUND_AIR_PATTERNS)) {
+        dmr_air_pattern = stored_pattern;
     }
     power_off_save_register(sound_settings_save);
     task = xTaskCreateStatic(sound_task, "sound", sizeof(task_stack) / sizeof(task_stack[0]), NULL,
@@ -479,9 +496,132 @@ const int16_t *sound_event_melody(uint8_t event)
     return style_melodies[style][item];
 }
 
-void sound_event_play(uint8_t event)
+/* DMR over-the-air chirp. A sine pushed through AMBE's speech encoder sounds like a duck: the codec models a vocal
+   tract, not a pure tone. AMBE has a native tone frame instead (TIA-102.BABA-1, the 1031 Hz test vector in vocoder.c):
+   six ones, a 7-bit log amplitude, and the frequency index repeated four times. The decoder regenerates a clean sine,
+   so every DMR radio hears the same beep. The radio task arms a melody; the engine (codec.c) and the software
+   transmitter (dmr_soft.c) ask for one 9-byte frame at a time instead of calling vocoderEncodeFrame().
+
+   The air path has its own short patterns, authored here as (Hz, ms) pairs: a rising three-note alert, a single high
+   beep, three single tones and a double 1 kHz beep. No audio is stored. They are only what goes out over DMR; the
+   speaker still plays the selected style's own melody. */
+#define SOUND_DMR_AIR_AMP 104 // about -16 dBFS; 127 would be full scale
+#define SOUND_DMR_AIR_FADE 20 // softer first and last frame of a note: no click at the start or end
+
+static const int16_t AIR_RISING[] = {900, 40, 0, 20, 940, 40, 0, 20, 1060, 60, -1, -1};
+static const int16_t AIR_HIGH[]   = {2300, 150, -1, -1};
+static const int16_t AIR_850[]    = {850, 180, -1, -1};
+static const int16_t AIR_1150[]   = {1150, 180, -1, -1};
+static const int16_t AIR_1850[]   = {1850, 180, -1, -1};
+static const int16_t AIR_DOUBLE[] = {1000, 110, 0, 30, 1000, 120, -1, -1};
+static const int16_t *const air_patterns[SOUND_AIR_PATTERNS] = {
+    AIR_RISING, AIR_HIGH, AIR_850, AIR_1150, AIR_1850, AIR_DOUBLE,
+};
+
+static struct {
+    const int16_t *melody;
+    int pair;
+    int16_t hz;
+    int frames;      // 20 ms AMBE frames left in the current note
+    int note_frames; // the note's length, for the amplitude fade
+} air;
+static volatile bool air_busy;
+static volatile uint8_t air_pending; // event requested from the timeslot ISR, armed by the frame consumer
+
+// Build the 49 vocoder bits of a tone frame and encode them into the 9 channel bytes
+static void dmr_air_tone_frame(uint8_t out9[9], int16_t hz, int amp)
 {
-    sound_play(sound_event_melody(event));
+    uint8_t d49[49] = {0};
+    uint8_t idx;
+    int i, c;
+
+    if (hz == 0) {
+        idx = 255; // the tone frame's silence
+    } else {
+        uint32_t n = (((uint32_t)hz * 4U) + 62U) / 125U; // round(hz / 31.25)
+
+        if (n < 5) {
+            n = 5;
+        } else if (n > 122) {
+            n = 122;
+        }
+        idx = (uint8_t)n;
+    }
+    for (i = 0; i < 6; i++) {
+        d49[i] = 1;
+        d49[6 + i] = (amp >> (6 - i)) & 1; // amplitude bits 6 .. 1
+    }
+    for (c = 0; c < 4; c++) {
+        for (i = 0; i < 8; i++) {
+            d49[12 + 8 * c + i] = (idx >> (7 - i)) & 1;
+        }
+    }
+    d49[44] = amp & 1; // amplitude bit 0; 45 .. 48 stay 0
+    ambe_encode_frame(d49, out9);
+}
+
+static bool air_wanted(uint8_t event)
+{
+    return ((event == SOUND_EVENT_TX_START) &&
+            ((sound_dmr_air == SOUND_DMR_AIR_START) || (sound_dmr_air == SOUND_DMR_AIR_BOTH))) ||
+           ((event == SOUND_EVENT_TX_STOP) &&
+            ((sound_dmr_air == SOUND_DMR_AIR_STOP) || (sound_dmr_air == SOUND_DMR_AIR_BOTH)));
+}
+
+// Called with interrupts disabled by the two arming paths, and by the frame consumer
+static void dmr_air_next_locked(void)
+{
+    int16_t hz, ms;
+
+    if (air.melody == NULL) {
+        return;
+    }
+    hz = air.melody[air.pair];
+    ms = air.melody[air.pair + 1];
+    if ((hz < 0) || (ms < 0)) {
+        air.melody = NULL;
+        air.hz = 0;
+        air.frames = 0;
+        return;
+    }
+    air.hz = hz;
+    // Two frames (40 ms) is the minimum a native tone needs to be heard and open the other radio's squelch.
+    ms = (ms < 40) ? 40 : ms;
+    air.frames = (ms + 19) / 20;
+    air.note_frames = air.frames;
+    air.pair += 2;
+}
+
+// The whole state change, including the first note, is one atomic step. Stop the consumer first (air_busy = false)
+// so no frame can be stepped twice when Both is selected and the PTT is released mid-melody.
+static void air_arm_locked(uint8_t event)
+{
+    air_busy = false;
+    air.melody = air_patterns[(dmr_air_pattern < SOUND_AIR_PATTERNS) ? dmr_air_pattern : SOUND_AIR_HIGH];
+    air.pair = 0;
+    air.hz = 0;
+    air.frames = 0;
+    air.note_frames = 0;
+    dmr_air_next_locked();
+    air_busy = true;
+}
+
+void sound_dmr_air_set(uint8_t mode)
+{
+    if ((mode >= SOUND_DMR_AIR_MODES) || (mode == sound_dmr_air)) {
+        return;
+    }
+    sound_dmr_air = mode;
+    sound_options_dirty |= SOUND_DIRTY_AIR;
+}
+
+void sound_dmr_air_pattern_set(uint8_t pat)
+{
+    if ((pat >= SOUND_AIR_PATTERNS) || (pat == dmr_air_pattern)) {
+        return;
+    }
+    dmr_air_pattern = pat;
+    sound_options_dirty |= SOUND_DIRTY_PATTERN;
 }
 
 void sound_settings_save(void)
@@ -490,6 +630,99 @@ void sound_settings_save(void)
         custom_data_write(SOUND_STYLE_DATA_TYPE, &sound_style, sizeof(sound_style))) {
         sound_options_dirty &= (uint8_t)~SOUND_DIRTY_STYLE;
     }
+    if ((sound_options_dirty & SOUND_DIRTY_AIR) &&
+        custom_data_write(SOUND_DMR_AIR_DATA_TYPE, &sound_dmr_air, sizeof(sound_dmr_air))) {
+        sound_options_dirty &= (uint8_t)~SOUND_DIRTY_AIR;
+    }
+    if ((sound_options_dirty & SOUND_DIRTY_PATTERN) &&
+        custom_data_write(SOUND_AIR_PATTERN_TYPE, &dmr_air_pattern, sizeof(dmr_air_pattern))) {
+        sound_options_dirty &= (uint8_t)~SOUND_DIRTY_PATTERN;
+    }
+}
+
+void sound_dmr_air_preview(void)
+{
+    sound_play(air_patterns[(dmr_air_pattern < SOUND_AIR_PATTERNS) ? dmr_air_pattern : SOUND_AIR_HIGH]);
+}
+
+// From the timeslot ISR: no critical section, no state to touch. The frame consumer arms it in task context.
+void sound_dmr_air_request(uint8_t event)
+{
+    if (air_wanted(event)) {
+        air_pending = event;
+    }
+}
+
+bool sound_dmr_air_begin(uint8_t event)
+{
+    if (!air_wanted(event)) {
+        return false;
+    }
+    taskENTER_CRITICAL();
+    air_pending = 0;
+    air_arm_locked(event);
+    taskEXIT_CRITICAL();
+    return true;
+}
+
+bool sound_dmr_air_active(void)
+{
+    return air_busy;
+}
+
+bool sound_dmr_air_tone(uint8_t out9[9])
+{
+    int16_t hz;
+    int amp;
+
+    taskENTER_CRITICAL();
+    if (air_pending != 0) {
+        uint8_t pending = (uint8_t)air_pending;
+
+        air_pending = 0;
+        if (air_wanted(pending)) {
+            air_arm_locked(pending);
+        }
+    }
+    if (!air_busy) {
+        taskEXIT_CRITICAL();
+        return false;
+    }
+    if (air.frames <= 0) {
+        dmr_air_next_locked();
+        if (air.melody == NULL) {
+            air_busy = false;
+            taskEXIT_CRITICAL();
+            return false;
+        }
+    }
+    hz = air.hz;
+    amp = SOUND_DMR_AIR_AMP;
+    if ((air.frames == air.note_frames) ||
+        ((air.frames == 1) && (air.note_frames > 2))) {
+        amp -= SOUND_DMR_AIR_FADE;
+    }
+    air.frames--;
+    taskEXIT_CRITICAL();
+
+    dmr_air_tone_frame(out9, hz, amp);
+    return true;
+}
+
+void sound_dmr_air_cancel(void)
+{
+    taskENTER_CRITICAL();
+    air_pending = 0;
+    air.melody = NULL;
+    air.frames = 0;
+    air.note_frames = 0;
+    air_busy = false;
+    taskEXIT_CRITICAL();
+}
+
+void sound_event_play(uint8_t event)
+{
+    sound_play(sound_event_melody(event));
 }
 
 void sound_style_set(uint8_t style)
