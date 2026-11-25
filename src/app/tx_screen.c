@@ -223,7 +223,7 @@ static void start(void)
 {
     if ((tx.state == TX_STARTING) && dmr() && (settings.beep_options & BEEP_DMR_TX_START) &&
         (settings.audio_prompt_mode != SOUND_PROMPT_SILENT)) {
-        sound_play(SOUND_DMR_TX_START);
+        sound_event_play(SOUND_EVENT_TX_START);
         tx.state = TX_BEEPING;
         ui_timer_start(BEEP_POLL_MS);
         return;

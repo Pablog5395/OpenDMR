@@ -294,7 +294,7 @@ static void tx_dmr_finished(void)
     // the DMR Tx stop beep once the engine has finished (uiTxScreen.c), not after a repeater that didn't answer
     if ((settings.beep_options & BEEP_DMR_TX_STOP) && (settings.audio_prompt_mode != SOUND_PROMPT_SILENT) &&
         !hotspot_active() && !dmr_repeater_failed()) {
-        sound_play(SOUND_DMR_TX_STOP);
+        sound_event_play(SOUND_EVENT_TX_STOP);
     }
     post_signal();
 }

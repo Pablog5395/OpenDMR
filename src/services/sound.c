@@ -47,6 +47,7 @@
 #include "radio_hooks.h"
 #include "battery.h"
 #include "custom_data.h"
+#include "power.h"
 #include "sound.h"
 #include "voice_play.h"
 
@@ -81,7 +82,29 @@ const int16_t SOUND_DMR_TX_STOP[] = {500, 50, -1, -1};
 const int16_t SOUND_1750[] = {1750, 10000, -1, -1};
 static int16_t dtmf_melody[] = {0, 10000, -1, -1}; // sound_play_dtmf(): the low tone here, the high one aside
 
-#define SOUND_TX_TONES_DATA_TYPE 0x44540001 // a custom data block of this firmware ("DT", 1)
+// Chirp: a short double beep on an incoming call, a lower one when it ends, a short blip on our PTT. Synthesized from
+// the same sine table as everything else here, with no brand names or recorded audio.
+static const int16_t CHIRP_RX_BEGIN[] = {1050, 80, -1, -1};
+static const int16_t CHIRP_RX_END[] = {700, 80, -1, -1};
+static const int16_t CHIRP_TALKER_BEGIN[] = {1050, 70, 0, 60, 1050, 70, -1, -1};
+static const int16_t CHIRP_TALKER_END[] = {800, 60, 0, 50, 800, 60, -1, -1};
+static const int16_t CHIRP_TX_START[] = {1050, 60, -1, -1};
+static const int16_t CHIRP_TX_STOP[] = {700, 70, -1, -1};
+
+static const int16_t *const style_melodies[SOUND_STYLES][SOUND_EVENTS] = {
+    {SOUND_RX_BEGIN, SOUND_RX_END, SOUND_RX_TALKER_BEGIN, SOUND_RX_TALKER_END, SOUND_DMR_TX_START,
+     SOUND_DMR_TX_STOP},
+    {CHIRP_RX_BEGIN, CHIRP_RX_END, CHIRP_TALKER_BEGIN, CHIRP_TALKER_END, CHIRP_TX_START, CHIRP_TX_STOP},
+};
+
+// Unique "DT" blocks: 2 is the keymap, 3 the FM radio, 4 the old language code, 5 scan, 6 NXDN ID, 7 the theme, 8 the
+// language choice. The sound style is in 9 so it cannot be read back as another feature's settings.
+#define SOUND_TX_TONES_DATA_TYPE 0x44540001 // ("DT", 1): the FM transmit tones
+#define SOUND_STYLE_DATA_TYPE    0x44540009 // ("DT", 9): the sound style byte
+
+// The style changes in the menu but is written only when the menu is left, or at power off
+#define SOUND_DIRTY_STYLE (1 << 0)
+static uint8_t sound_options_dirty;
 
 // The patterns of the FM transmit tones
 static const int16_t TX_TONE_BEEP[] = {1000, 120, -1, -1};
@@ -95,6 +118,7 @@ static const int16_t *const tx_tones[SOUND_TX_TONE_PATTERNS] = {
 // Off but for the air level and the local volume, until set
 sound_tx_tones_t sound_tx_tones = {.air_level = 5, .local_volume = 2};
 static bool tx_tones_changed = false;
+uint8_t sound_style = SOUND_STYLE_CLASSIC;
 
 // The boot melody notes: semitones from 104 Hz (freqs[] of the main firmware), 0 a pause
 static const int16_t notes[64] = {
@@ -344,10 +368,16 @@ static void sound_task(void *arg)
 void sound_start(void)
 {
     sound_tx_tones_t stored;
+    uint8_t stored_style;
 
     if (custom_data_read(SOUND_TX_TONES_DATA_TYPE, (uint8_t *)&stored, sizeof(stored))) {
         sound_tx_tones = stored;
     }
+    if (custom_data_read(SOUND_STYLE_DATA_TYPE, &stored_style, sizeof(stored_style)) &&
+        (stored_style < SOUND_STYLES)) {
+        sound_style = stored_style;
+    }
+    power_off_save_register(sound_settings_save);
     task = xTaskCreateStatic(sound_task, "sound", sizeof(task_stack) / sizeof(task_stack[0]), NULL,
                              SOUND_TASK_PRIORITY, task_stack, &task_tcb);
 }
@@ -439,6 +469,36 @@ void sound_tx_tones_save(void)
         custom_data_write(SOUND_TX_TONES_DATA_TYPE, (const uint8_t *)&sound_tx_tones, sizeof(sound_tx_tones))) {
         tx_tones_changed = false;
     }
+}
+
+const int16_t *sound_event_melody(uint8_t event)
+{
+    uint8_t style = (sound_style < SOUND_STYLES) ? sound_style : SOUND_STYLE_CLASSIC;
+    uint8_t item = (event < SOUND_EVENTS) ? event : SOUND_EVENT_RX_CARRIER_BEGIN;
+
+    return style_melodies[style][item];
+}
+
+void sound_event_play(uint8_t event)
+{
+    sound_play(sound_event_melody(event));
+}
+
+void sound_settings_save(void)
+{
+    if ((sound_options_dirty & SOUND_DIRTY_STYLE) &&
+        custom_data_write(SOUND_STYLE_DATA_TYPE, &sound_style, sizeof(sound_style))) {
+        sound_options_dirty &= (uint8_t)~SOUND_DIRTY_STYLE;
+    }
+}
+
+void sound_style_set(uint8_t style)
+{
+    if ((style >= SOUND_STYLES) || (style == sound_style)) {
+        return;
+    }
+    sound_style = style;
+    sound_options_dirty |= SOUND_DIRTY_STYLE;
 }
 
 bool sound_is_playing(void)
