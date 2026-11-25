@@ -538,7 +538,7 @@ each in the source (`src/graphics/themes/`).
 | FM Tx tones | FM transmit tones (below) |
 | DMR mic / FM mic | Microphone gain of each mode |
 | VOX Thres. / VOX Tail | VOX: 0 = off, smaller is more sensitive; how long it keeps transmitting after you stop |
-| Prompt | Silent / Beep / No Keys (no voice prompts yet) |
+| Prompt | Silent (no key beeps, no prompt beeps) / Beep / No Keys (key beeps off, prompts still beep); no voice prompts yet |
 | DMR Rx AGC | Automatic gain of DMR receive (off / 0 – 21 dB) |
 
 <img src="manual/en/fm-tx-tones.png" alt="FM Tx tones">
