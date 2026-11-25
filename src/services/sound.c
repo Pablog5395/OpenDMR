@@ -47,6 +47,7 @@
 #include "radio_hooks.h"
 #include "battery.h"
 #include "custom_data.h"
+#include "power.h"
 #include "sound.h"
 #include "voice_play.h"
 #include "ambe.h"
@@ -82,16 +83,33 @@ const int16_t SOUND_DMR_TX_STOP[] = {500, 50, -1, -1};
 const int16_t SOUND_1750[] = {1750, 10000, -1, -1};
 static int16_t dtmf_melody[] = {0, 10000, -1, -1}; // sound_play_dtmf(): the low tone here, the high one aside
 
+// Chirp: a short double beep on an incoming call, a lower one when it ends, a short blip on our PTT. Synthesized from
+// the same sine table as everything else here, with no brand names or recorded audio.
+static const int16_t CHIRP_RX_BEGIN[] = {1050, 80, -1, -1};
+static const int16_t CHIRP_RX_END[] = {700, 80, -1, -1};
+static const int16_t CHIRP_TALKER_BEGIN[] = {1050, 70, 0, 60, 1050, 70, -1, -1};
+static const int16_t CHIRP_TALKER_END[] = {800, 60, 0, 50, 800, 60, -1, -1};
+static const int16_t CHIRP_TX_START[] = {1050, 60, -1, -1};
+static const int16_t CHIRP_TX_STOP[] = {700, 70, -1, -1};
+
+static const int16_t *const style_melodies[SOUND_STYLES][SOUND_EVENTS] = {
+    {SOUND_RX_BEGIN, SOUND_RX_END, SOUND_RX_TALKER_BEGIN, SOUND_RX_TALKER_END, SOUND_DMR_TX_START,
+     SOUND_DMR_TX_STOP},
+    {CHIRP_RX_BEGIN, CHIRP_RX_END, CHIRP_TALKER_BEGIN, CHIRP_TALKER_END, CHIRP_TX_START, CHIRP_TX_STOP},
+};
+
 // Unique "DT" blocks: 2 is the keymap, 3 the FM radio, 4 the old language code, 5 scan, 6 NXDN ID, 7 the theme, 8 the
-// language choice. Our settings use 11 and 12 so none of them can be read back as another feature's settings.
-#define SOUND_TX_TONES_DATA_TYPE 0x44540001 // a custom data block of this firmware ("DT", 1)
+// language choice. Our settings use 9, 11 and 12 so none of them can be read back as another feature's settings.
+#define SOUND_TX_TONES_DATA_TYPE 0x44540001 // ("DT", 1): the FM transmit tones
+#define SOUND_STYLE_DATA_TYPE    0x44540009 // ("DT", 9): the sound style byte
 #define SOUND_DMR_AIR_DATA_TYPE  0x4454000B // ("DT", 11): DMR over-the-air chirp mode
 #define SOUND_AIR_PATTERN_TYPE   0x4454000C // ("DT", 12): the DMR air melody
 
 // These settings change in the menu but are written only when it is left, or at power off
 enum {
-    SOUND_DIRTY_AIR     = 1 << 0,
-    SOUND_DIRTY_PATTERN = 1 << 1
+    SOUND_DIRTY_STYLE   = 1 << 0,
+    SOUND_DIRTY_AIR     = 1 << 1,
+    SOUND_DIRTY_PATTERN = 1 << 2
 };
 static uint8_t sound_options_dirty;
 
@@ -107,6 +125,7 @@ static const int16_t *const tx_tones[SOUND_TX_TONE_PATTERNS] = {
 // Off but for the air level and the local volume, until set
 sound_tx_tones_t sound_tx_tones = {.air_level = 5, .local_volume = 2};
 static bool tx_tones_changed = false;
+uint8_t sound_style = SOUND_STYLE_CLASSIC;
 uint8_t sound_dmr_air = SOUND_DMR_AIR_OFF;
 uint8_t dmr_air_pattern = SOUND_AIR_HIGH; // default until a pattern is stored
 
@@ -358,10 +377,14 @@ static void sound_task(void *arg)
 void sound_start(void)
 {
     sound_tx_tones_t stored;
-    uint8_t stored_air, stored_pattern;
+    uint8_t stored_style, stored_air, stored_pattern;
 
     if (custom_data_read(SOUND_TX_TONES_DATA_TYPE, (uint8_t *)&stored, sizeof(stored))) {
         sound_tx_tones = stored;
+    }
+    if (custom_data_read(SOUND_STYLE_DATA_TYPE, &stored_style, sizeof(stored_style)) &&
+        (stored_style < SOUND_STYLES)) {
+        sound_style = stored_style;
     }
     if (custom_data_read(SOUND_DMR_AIR_DATA_TYPE, &stored_air, sizeof(stored_air)) &&
         (stored_air < SOUND_DMR_AIR_MODES)) {
@@ -465,6 +488,14 @@ void sound_tx_tones_save(void)
     }
 }
 
+const int16_t *sound_event_melody(uint8_t event)
+{
+    uint8_t style = (sound_style < SOUND_STYLES) ? sound_style : SOUND_STYLE_CLASSIC;
+    uint8_t item = (event < SOUND_EVENTS) ? event : SOUND_EVENT_RX_CARRIER_BEGIN;
+
+    return style_melodies[style][item];
+}
+
 /* DMR over-the-air chirp. A sine pushed through AMBE's speech encoder sounds like a duck: the codec models a vocal
    tract, not a pure tone. AMBE has a native tone frame instead (TIA-102.BABA-1, the 1031 Hz test vector in vocoder.c):
    six ones, a 7-bit log amplitude, and the frequency index repeated four times. The decoder regenerates a clean sine,
@@ -473,7 +504,7 @@ void sound_tx_tones_save(void)
 
    The air path has its own short patterns, authored here as (Hz, ms) pairs: a rising three-note alert, a single high
    beep, three single tones and a double 1 kHz beep. No audio is stored. They are only what goes out over DMR; the
-   speaker keeps the stock beeps. */
+   speaker still plays the selected style's own melody. */
 #define SOUND_DMR_AIR_AMP 104 // about -16 dBFS; 127 would be full scale
 #define SOUND_DMR_AIR_FADE 20 // softer first and last frame of a note: no click at the start or end
 
@@ -595,7 +626,10 @@ void sound_dmr_air_pattern_set(uint8_t pat)
 
 void sound_settings_save(void)
 {
-    sound_tx_tones_save();
+    if ((sound_options_dirty & SOUND_DIRTY_STYLE) &&
+        custom_data_write(SOUND_STYLE_DATA_TYPE, &sound_style, sizeof(sound_style))) {
+        sound_options_dirty &= (uint8_t)~SOUND_DIRTY_STYLE;
+    }
     if ((sound_options_dirty & SOUND_DIRTY_AIR) &&
         custom_data_write(SOUND_DMR_AIR_DATA_TYPE, &sound_dmr_air, sizeof(sound_dmr_air))) {
         sound_options_dirty &= (uint8_t)~SOUND_DIRTY_AIR;
@@ -684,6 +718,20 @@ void sound_dmr_air_cancel(void)
     air.note_frames = 0;
     air_busy = false;
     taskEXIT_CRITICAL();
+}
+
+void sound_event_play(uint8_t event)
+{
+    sound_play(sound_event_melody(event));
+}
+
+void sound_style_set(uint8_t style)
+{
+    if ((style >= SOUND_STYLES) || (style == sound_style)) {
+        return;
+    }
+    sound_style = style;
+    sound_options_dirty |= SOUND_DIRTY_STYLE;
 }
 
 bool sound_is_playing(void)

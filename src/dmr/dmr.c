@@ -605,7 +605,7 @@ static bool must_beep(uint8_t option)
 
 static void carrier_end_beep(void)
 {
-    sound_play(SOUND_RX_END);
+    sound_event_play(SOUND_EVENT_RX_CARRIER_END);
 }
 
 static void rx_beeps(void)
@@ -616,7 +616,7 @@ static void rx_beeps(void)
         *state &= (uint8_t)~RX_BEEP_CARRIER_HAS_STARTED_EXEC;
         // a carrier end beep waiting: the same over, no beeps
         if (must_beep(BEEP_RX_CARRIER) && !cancelTimerCallback(carrier_end_beep, MENU_ANY)) {
-            sound_play(SOUND_RX_BEGIN);
+            sound_event_play(SOUND_EVENT_RX_CARRIER_BEGIN);
         }
     } else if (*state & RX_BEEP_TALKER_HAS_STARTED_EXEC) {
         if (sound_is_playing()) {
@@ -624,13 +624,13 @@ static void rx_beeps(void)
         }
         *state &= (uint8_t)~(RX_BEEP_TALKER_HAS_STARTED_EXEC | RX_BEEP_TALKER_HAS_ENDED | RX_BEEP_TALKER_HAS_ENDED_EXEC);
         if ((settings.beep_options & BEEP_RX_TALKER_BEGIN) && must_beep(BEEP_RX_TALKER)) {
-            sound_play(SOUND_RX_TALKER_BEGIN);
+            sound_event_play(SOUND_EVENT_RX_TALKER_BEGIN);
         }
     } else if (*state & RX_BEEP_TALKER_HAS_ENDED_EXEC) {
         *state &= (uint8_t)~(RX_BEEP_TALKER_HAS_ENDED_EXEC | RX_BEEP_TALKER_HAS_STARTED | RX_BEEP_TALKER_HAS_STARTED_EXEC |
                              RX_BEEP_TALKER_IDENTIFIED);
         if (must_beep(BEEP_RX_TALKER)) {
-            sound_play(SOUND_RX_TALKER_END);
+            sound_event_play(SOUND_EVENT_RX_TALKER_END);
         }
     } else if (*state & RX_BEEP_CARRIER_HAS_ENDED) {
         *state = RX_BEEP_UNSET;
