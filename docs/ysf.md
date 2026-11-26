@@ -1,8 +1,9 @@
 # YSF (Fusion / C4FM) en OpenDMR
 
-Esta página resume la implementación de YSF6148 (Yaesu Fusion, C4FM) en la rama `feature/ysf-mode`. El código del
-protocolo viene del fork [DM32-nxdn-p25](https://github.com/) (lyra XE1POC, GPL-3.0-or-later); la capa física y la
-integración con la radio son las de OpenDMR.
+Esta página resume la implementación de YSF6148 (Yaesu Fusion, C4FM) añadida a OpenDMR. El código del protocolo se
+portó desde el fork [DM32-nxdn-p25](https://github.com/donttellmeimcute/DM32-nxdn-p25) (lyra XE1POC,
+GPL-3.0-or-later); la capa física y la integración con la radio son las de OpenDMR. La procedencia detallada, los
+créditos y las licencias están al final de esta página.
 
 ## Modo y canal
 
@@ -15,7 +16,8 @@ integración con la radio son las de OpenDMR.
 - El destino de TX es el nombre del contacto (o `ALL`); la fuente es el indicativo (callsign) de «General» en el CPS,
   con un sufijo SSID opcional (`-1` … `-15`) por canal. El SSID se edita en la fila **SSID** de los detalles del canal
   (0 = sin sufijo) y se guarda en el byte que YSF no usa del codeplug; la llamada de grupo se envía como `ALL`, que en
-  el aire son diez asteriscos.
+  el aire son diez asteriscos. Con un hotspot Pi-Star, un sufijo en el indicativo del propio hotspot o `SelfOnly=1`
+  pueden rechazar fuentes con `-N`; para usar SSID hay que dejar el callsign del hotspot sin sufijo y `SelfOnly=0`.
 - El modo de voz del canal se elige en la fila **YSF Mode**: `V/D-1` (por defecto, también para un canal creado por el
   CPS), `DN` o `VW`. El DT se guarda en `flag3` del codeplug con la etiqueta `0xC0`; en TX manda el modo configurado,
   pero en RX manda el DT recibido: una llamada VW se descodifica con IMBE aunque el canal esté en V/D-1, y al terminar
@@ -57,7 +59,10 @@ digital y cambiar el modo en el editor del radio; el CPS 0.13.0 no tiene una eti
 La voz depende del DT de la trama:
 
 - **V/D-1 (DT 0)**: el campo VCH son 9 bytes de AMBE+2 directos, cinco por trama (el mismo formato que DMR).
-- **DN (DT 2)**: el campo de 13 bytes se convierte a 9 bytes de AMBE con `ysf_voice_dn_to_frame()` y viceversa.
+- **DN (DT 2)**: el campo de 13 bytes se convierte a 9 bytes de AMBE con `ysf_voice_dn_to_frame()` y viceversa. El
+  ciclo tiene siete tramas de comunicación (`FN 0..6`, `FT 6`) aunque no haya datos auxiliares: `FN0` destino, `FN1`
+  fuente, `FN2` downlink, `FN3` uplink, `FN4/5` los cuatro campos remotos (5+5) y `FN6` la unidad DT1. `FT` se
+  mantiene también en la cabecera y el terminador; en una llamada de voz `FN6` se rellena con ceros.
 - **VW (DT 3)**: el campo VCH es directamente una trama IMBE de 18 bytes por bloque; se codifica y descodifica con el
   vocoder IMBE del overlay P25. Sólo se carga el código/tablas del overlay, nunca su BSS: `ckcpu.ld` la comparte con
   `.ysf_rx`, así que borrarla destruiría el demodulador y la cola PCM en mitad de la llamada. El estado IMBE vive en
@@ -78,24 +83,60 @@ las tramas terminan en la FIFO 4FSK de `p25_phy.c`.
 - El estado del receptor (`ysf_demod`, buffers, PCM) vive en `.ysf_bss`, mapeado por `ckcpu.ld` a `.ysf_rx` en
   `__vocoder_ram_end`, compartiendo dirección con NXDN y el receptor DMR en software bajo `OVERLAY_AMBE`.
 
-## Verificación
+## Trabajo realizado
 
-- `python3 tools/ysf/run.py`: pruebas host de frame, secuencia TX, voz y demodulador C4FM (modulación RRC → samples →
-  dibits → tramas), incluido el round-trip VCH/IMBE de VW y la regresión cruzada V/D-1↔DN↔VW con PCM y PTT posterior.
-- `GCC=gcc python3 tools/radio_fsm/run.py`: regresión de la máquina de estados de radio.
-- `make -C src CROSS=<toolchain>`: firmware compilado y enlazado; el _target_ final `.elf.asm` falla en este entorno
-  porque el `objdump` del toolchain no encuentra `libdebuginfod.so.1` (ajeno al cambio).
+- Nuevo modo de canal, editor de DG-ID / SSID / YSF Mode, integración en pantallas (VFO, canal, TX, QSO), escaneo y
+  documentación del manual (en español e inglés).
+- Capa de trama (sync, FICH con CRC + Golay + convolución + interleave, DCH por modo), voice (AMBE+2 V/D-1 y DN,
+  IMBE en VW) y secuenciador de TX (cabecera, ciclos y terminador, preámbulo `0x77`).
+- Demodulador C4FM propio derivado del receptor P25: búsqueda de sync, ganancia/DC, ecualizador y salida de dibits.
+- Encaje en el firmware: `Makefile` y `ckcpu.ld` (RAM de overlays), `afrx`/`radio_rx`/`radio_tx`, `dmr_soft`,
+  `vocoder`, codeplug y last-heard; el camino de voz se restaura al terminar cada llamada.
+- Correcciones incluidas: destino `ALL` en el aire y en pantalla, preámbulo antes del primer frame, prevención de
+  bucles con sync inválida y `strlen()` sin límite en CSD, DG-ID 0/127 y SC desde el primer frame, mapa de bits b3/b4
+  del AMBE, mantenimiento de las mitades del micrófono entre ciclos, SSID por canal y selección de modo + codec
+  cruzado en RX.
+- El firmware compila y enlaza con el toolchain C-SKY. Los arneses de prueba de host no se incluyen en este envío: sus
+  tablas y tramas de referencia pertenecen a proyectos de terceros y no deben redistribuirse aquí.
 
 ## Límites
 
-No hay soporte para cifrado, trunking, datos YSF (DT 1 sólo se ignora) ni base de datos de callsigns. VW/IMBE está
-implementado y verificado en host, pero suena en el aire todavía no se ha confirmado con el Yaesu; lo mismo vale para
-la selección cruzada de codec. El hotspot MMDVM externo con YSF sí ha aceptado tramas V/D-1 en el parrot local;
-la redistribución en el reflector `AR-BELLVILLE-ARG` sigue sin verificarse.
+No hay soporte para cifrado, trunking, datos YSF (DT 1 sólo se ignora) ni base de datos de callsigns. La semántica de
+los 49 parámetros AMBE+2 en DN no está confirmada contra un vector público; la correspondencia de bits se sigue de la
+referencia indicada abajo. La selección cruzada de codec dentro del propio handy, VW contra una radio Yaesu y la
+interoperabilidad con hotspots o reflectores concretos quedan para quien pruebe el firmware en su equipo.
 
 Para un hotspot MMDVM/Pi-Star externo en YSF: el TX ya emite el preámbulo `0x77` de 200 ms y la trama sigue el formato
 de MMDVM (sync, whitening, FICH y DCH). Hay que igualar la desviación: un canal **narrow** de 12.5 kHz (±1350 Hz)
 necesita `LoDev=1` en MMDVMHost, si el hotspot está configurado para YSF **wide** (±2700 Hz). El offset de frecuencia
 del hotspot también es crítico: en narrow los niveles interiores son sólo ±450 Hz. El escalado de desviación del
-firmware asume que `MODEM_MOD_SCALE_ONE = 1024` es ±1800 Hz; si el modulo del radio da ±1944 Hz, los valores actuales
-quedan ~8% altos (medir con un discriminador antes de cambiar las constantes).
+firmware asume que `MODEM_MOD_SCALE_ONE = 1024` es ±1800 Hz; si el módulo del radio da ±1944 Hz, los valores actuales
+quedan ~8 % altos (medir con un discriminador antes de cambiar las constantes).
+
+El submódulo `vocoder` apunta a un commit local (`50ed497`) que corrige los bits finales b3/b4 del AMBE y aún no está
+publicado en [dmr-vocoder](https://github.com/va3bpf/dmr-vocoder). Hay que publicarlo antes de que otra persona pueda
+compilar esta rama desde cero.
+
+## Procedencia, créditos y licencias
+
+Código fuente del que salió esta implementación, y referencias de lectura (no se incluyen archivos ni datos de esos
+proyectos en este cambio):
+
+- **[DM32-nxdn-p25](https://github.com/donttellmeimcute/DM32-nxdn-p25)** — lyra XE1POC, GPL-3.0-or-later. Prototipo
+  de host del que se portaron la capa de trama, el secuenciador de TX y la conversión de voz YSF (archivos
+  `src/ysf/ysf_frame.*`, `ysf_tx.*`, `ysf_voice.*`). Los avisos de autoría y licencia se conservan en las cabeceras de
+  los archivos portados.
+- **[MMDVM-Host](https://github.com/g4klx/MMDVM-Host)** — Jonathan Naylor G4KLX, GPL-2.0-or-later según las
+  cabeceras de sus fuentes. Referencia de lectura para la sync, el formato del FICH, las cadenas FEC del DCH, la
+  codificación convolucional, el CRC y las tablas de interleave (`YSFFICH.cpp`, `YSFPayload.cpp`,
+  `YSFConvolution.cpp`, `CRC.cpp`, `Golay24128.cpp`, `AMBEFEC.cpp`). Los algoritmos se reimplementaron en C para el
+  firmware; no se copiaron archivos de ese repositorio.
+- **Yaesu, *Amateur Radio Digital Standards*, Rev. 1.02** — referencia de lectura del protocolo YSF (figuras 4-1,
+  4-3, 4-4 y 4-32), en especial para la secuencia de tramas y el mapa de bits de voz DN.
+- **[dmr-vocoder](https://github.com/va3bpf/dmr-vocoder)** — submódulo del proyecto, base del codec AMBE+2 y del
+  overlay IMBE; el cambio local de b3/b4 está documentado más arriba.
+- La capa física, el integrador de radio y el demodulador derivado de `p25_demod.c` siguen las licencias y avisos de
+  OpenDMR (Junqiang Shi, VA3BPF / BG8AM) y de [p25-core](https://github.com/va3bpf/p25-core).
+
+Los archivos portados conservan `SPDX-License-Identifier: GPL-3.0-or-later` y el copyright de lyra XE1POC; el resto
+mantiene la licencia de cada archivo en el árbol de OpenDMR.
