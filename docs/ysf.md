@@ -40,6 +40,7 @@ digital y cambiar el modo en el editor del radio; el CPS 0.13.0 no tiene una eti
 | Modulación | 4FSK (C4FM), 4800 símbolos/s, RRC α = 0.2 |
 | Ancho de canal | 12.5 kHz; desviación ±1350 Hz (narrow) o ±2700 Hz (wide) |
 | Trama | 100 ms = 480 dibits = 120 bytes = 5 bloques de 20 ms |
+| Preámbulo | 200 ms de `0x77` (960 dibits, `+3 -3 +3 -3…`) antes de la primera sync, como MMDVM/Yaesu |
 | Sync | `D471C9634D`, 20 símbolos, al inicio de cada trama (20 dibits con hasta 4 errores) |
 | FICH | 20 bytes con FEC, protegidos por interleave; DT, FI, FN, CM, SC (DG-ID), etc. |
 | DCH1 / DCH2 | 20 + 20 bytes por trama; CSD (10 bytes destino + 10 bytes fuente) y datos de voz |
@@ -75,3 +76,10 @@ las tramas terminan en la FIFO 4FSK de `p25_phy.c`.
 
 No hay soporte para VW/IMBE, cifrado, trunking, datos YSF ni base de datos de callsigns. El modo hotspot MMDVM sigue
 siendo sólo DMR. La recepción/transmisión YSF no ha sido probada en el aire todavía.
+
+Para un hotspot MMDVM/Pi-Star externo en YSF: el TX ya emite el preámbulo `0x77` de 200 ms y la trama sigue el formato
+de MMDVM (sync, whitening, FICH y DCH). Hay que igualar la desviación: un canal **narrow** de 12.5 kHz (±1350 Hz)
+necesita `LoDev=1` en MMDVMHost, si el hotspot está configurado para YSF **wide** (±2700 Hz). El offset de frecuencia
+del hotspot también es crítico: en narrow los niveles interiores son sólo ±450 Hz. El escalado de desviación del
+firmware asume que `MODEM_MOD_SCALE_ONE = 1024` es ±1800 Hz; si el modulo del radio da ±1944 Hz, los valores actuales
+quedan ~8% altos (medir con un discriminador antes de cambiar las constantes).

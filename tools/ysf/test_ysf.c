@@ -161,6 +161,22 @@ static void testDch(void)
 	}
 }
 
+static void testPreamble(void)
+{
+	// MMDVM's YSFTX.cpp sends 240 bytes of 0x77 (200 ms at 4800 symbols/s) before the first frame.
+	uint8_t bytes[YSF_PREAMBLE_DIBITS / 4], want[YSF_PREAMBLE_DIBITS], got[YSF_PREAMBLE_DIBITS];
+
+	CHECK(YSF_PREAMBLE_DIBITS == 960, "the YSF preamble must last 200 ms");
+	memset(bytes, 0x77, sizeof bytes);
+	ysf_bytes_to_dibits(bytes, sizeof bytes, want);
+	ysf_preamble_dibits(got, sizeof got);
+	CHECK(!memcmp(got, want, sizeof got), "preamble dibits differ from 0x77");
+	// Filling in chunks (as ysf_radio.c does) must not change the phase of the alternating pattern.
+	for (unsigned i = 1; i < sizeof got; i += YSF_FRAME_DIBITS) {
+		CHECK(got[i] == 3 && got[i - 1] == 1, "preamble phase at %u", i);
+	}
+}
+
 static void testSyncDibits(void)
 {
 	uint8_t bytes[8] = { 0xD4, 0x71, 0xC9, 0x63, 0x4D, 0xAA, 0x55, 0x00 };
@@ -593,6 +609,7 @@ int main(void)
 	testGolay();
 	testFich();
 	testDch();
+	testPreamble();
 	testSyncDibits();
 	testFrame();
 	testTx();

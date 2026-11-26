@@ -243,7 +243,9 @@ status bar.
   through the channel's RX group; `#` → All Call → menu key sends `ALL`. With no contact picked, the target is `ALL`.
   Use contacts with callsign names: a numeric TG/PC goes on the air as `TG n` / `PC n`.
 - Receive: the discriminator is recorded and demodulated in software, as NXDN; transmit: our own AMBE+2 encoder
-  and YSF V/D-1 frames, at ±1350 Hz deviation on narrow channels and ±2700 Hz on wide ones.
+  and YSF V/D-1 frames, at ±1350 Hz deviation on narrow channels and ±2700 Hz on wide ones, with the 200 ms `0x77`
+  preamble MMDVM expects. With an external MMDVM/Pi-Star hotspot in YSF mode, use `LoDev=1` for a narrow 12.5 kHz
+  channel and keep the hotspot's frequency offset calibrated.
 - V/D-1 and DN (V/D-2) voice are supported; VW (IMBE) is not, since this firmware has no IMBE vocoder. Wire
   mode order: FM, AM, USB, LSB, DMR, P25, NXDN, M17, YSF. See [docs/ysf.md](ysf.md) for the frame details.
 

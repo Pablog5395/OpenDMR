@@ -340,6 +340,17 @@ static void transmit(void)
     tx_setup();
     afrx_fifo_prepare(tx_dev);
 
+    // MMDVM (YSFTX.cpp) and the Yaesu air interface key up with 200 ms of 0x77 before the first frame sync;
+    // without it an external MMDVM/Pi-Star receiver may never start its sync hunt. Fill it in chunks so no
+    // extra overlay buffer is needed (the pattern repeats every two dibits).
+    for (unsigned sent = 0; sent < YSF_PREAMBLE_DIBITS; sent += YSF_FRAME_DIBITS) {
+        while (p25_phy_tx_room() < YSF_FRAME_DIBITS + 144) {
+            vTaskDelay(pdMS_TO_TICKS(2));
+        }
+        ysf_preamble_dibits(tx_dibits, YSF_FRAME_DIBITS);
+        p25_phy_tx_put(tx_dibits, YSF_FRAME_DIBITS);
+    }
+
     // The first encoder output lags one frame; these frames of silence cover it and the FIFO's lead-in.
     memset(mic, 0, sizeof(mic));
     for (unsigned b = 0; b < YSF_BLOCKS; b++) {

@@ -37,6 +37,7 @@ enum {
 	YSF_FRAME_BITS = 960,  // bits per frame
 	YSF_FRAME_BYTES = 120,  // 960 bits
 	YSF_FRAME_DIBITS = 480,  // 2 bits per symbol
+	YSF_PREAMBLE_DIBITS = 960,  // 200 ms at 4800 symbols/s: MMDVM's 0x77 key-up
 	YSF_SYNC_BITS = 40,
 	YSF_SYNC_BYTES = 5,
 	YSF_FICH_BITS = 200,
@@ -110,6 +111,10 @@ void ysf_whitening_generate(uint8_t out[20]);
 // Dibits <-> bytes, MSB first (dibit 0 = bits 7..6 of byte 0).
 void ysf_bytes_to_dibits(const uint8_t *bytes, size_t nbytes, uint8_t *dibits);
 void ysf_dibits_to_bytes(const uint8_t *dibits, size_t ndibits, uint8_t *bytes);
+
+// The 200 ms of 0x77 (dibits 1, 3, 1, 3, ... = +3, -3, +3, -3) that MMDVM and Yaesu send before the first
+// frame's sync. The pattern repeats every two dibits, so it can be filled in chunks.
+void ysf_preamble_dibits(uint8_t *dibits, size_t ndibits);
 
 // Frame sync search in a dibit stream: the first position whose 20 sync
 // dibits differ from D471C9634D in at most max_errors bits (each dibit can

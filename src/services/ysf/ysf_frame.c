@@ -471,6 +471,14 @@ void ysf_dibits_to_bytes(const uint8_t *dibits, size_t ndibits, uint8_t *bytes)
 	}
 }
 
+void ysf_preamble_dibits(uint8_t *dibits, size_t ndibits)
+{
+	// 0x77 = 01 11 01 11; dibit 1 is +3 and dibit 3 is -3 (ysf_demod.c's level table).
+	for (size_t i = 0; i < ndibits; i++) {
+		dibits[i] = (i & 1u) ? 3 : 1;
+	}
+}
+
 // --- sync search ---
 static const uint8_t sync_dibits[20] = { 3, 1, 1, 0, 1, 3, 0, 1, 3, 0, 2, 1, 1, 2, 0, 3, 1, 0, 3, 1 };
 
