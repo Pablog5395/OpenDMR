@@ -10,7 +10,8 @@ integración con la radio son las de OpenDMR.
   otros modos muestran el colour code / NAC / RAN / CAN: el byte se comparte en la estructura del codeplug.
 - Ciclo de la tecla de modo: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 → **YSF**.
 - DG-ID 0 – 127 en el editor (un Yaesu usa 0 – 99; 0 = «recibir todo», transmitir 0). Se envía en el FICH (`SC`) de
-  cada trama; en recepción actúa como un squelch digital.
+  cada trama; en recepción actúa como un squelch digital. Con un DG-ID seleccionado también se abren las tramas con
+  `SC = 0` (sin DG-ID) y `SC = 127` (Break Out), como en un Yaesu.
 - El destino de TX es el nombre del contacto (o `ALL`); la fuente es el indicativo (callsign) de «General» en el CPS.
   Elegir **All Call** con `#` envía `ALL` (no el texto traducido de la UI).
 - El panel QSO muestra el callsign en grande, el destino sobre el S-meter y el DG-ID en la barra de estado. El

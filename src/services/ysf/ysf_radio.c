@@ -192,15 +192,15 @@ static void receive(void)
         return;
     }
     ysf_radio_stats.frames++;
-    if (rx_dgid && (f.sc != rx_dgid)) {
+    // SC 0 is "no DG-ID" and SC 127 is Break Out: both open the squelch even on a channel with a DG-ID selected
+    // (Yaesu's convention, as in the fork's ysf_engine.c).
+    if (rx_dgid && (f.sc != rx_dgid) && (f.sc != 0) && (f.sc != 127)) {
         return; // DG-ID squelch: like CTCSS for the digital mode
     }
     last_frame_at = xTaskGetTickCount();
     heard_at = last_frame_at;
     heard = true;
     radio_eco_activity();
-    call.dgid = f.sc;
-    call.dt = f.dt;
 
     if (f.fi == YSF_FI_TERMINATOR) {
         call_end();
@@ -210,6 +210,8 @@ static void receive(void)
         return;
     }
     call_begin();
+    call.dgid = f.sc; // call_begin() clears the struct: set the received SC after it, not before
+    call.dt = f.dt;
     receive_csd(&f, dch, dch_len);
 
     if ((f.dt != YSF_DT_VD_MODE1) && (f.dt != YSF_DT_VD_MODE2)) {
