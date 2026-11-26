@@ -64,6 +64,7 @@ static uint8_t tx_ambe[YSF_BLOCKS][9] OVERLAY_BSS;
 static uint8_t tx_field[YSF_BLOCKS][13] OVERLAY_BSS;
 
 static volatile unsigned rx_start, rx_head, rx_count;
+static volatile bool frame_pending; // a sync was found; wait for the rest of its 480 dibits
 static ysf_call_t call;
 static volatile TickType_t last_frame_at, heard_at;
 static volatile bool heard;
@@ -140,7 +141,9 @@ static void voice(const uint8_t ambe[9])
 }
 
 // A ten-character field on the air: pad with spaces, cut longer names (codeplug callsigns are at most nine).
-static void call_field(char *out, const char *in)
+// The ysf_tx_config fields are exactly YSF_CALLSIGN_LEN bytes, without room for a NUL: writing one there used to
+// spill into the next field.
+static void call_field_air(char out[YSF_CALLSIGN_LEN], const char *in)
 {
     size_t n = strlen(in);
 
@@ -151,16 +154,30 @@ static void call_field(char *out, const char *in)
     memset(out + n, ' ', YSF_CALLSIGN_LEN - n);
 }
 
+// Local, NUL-terminated copy (our call struct and tx_dest have one extra byte).
+static void call_field(char out[YSF_CALLSIGN_LEN + 1], const char *in)
+{
+    call_field_air(out, in);
+    out[YSF_CALLSIGN_LEN] = '\0';
+}
+
+// Received CSD units are fixed-width, space-padded and NOT NUL-terminated: never strlen() them.
+static void call_field_fixed(char out[YSF_CALLSIGN_LEN + 1], const uint8_t in[YSF_CALLSIGN_LEN])
+{
+    memcpy(out, in, YSF_CALLSIGN_LEN);
+    out[YSF_CALLSIGN_LEN] = '\0';
+}
+
 // Calls from the header or from CSD1/DN's first data units (DN carries one ten-byte unit per frame).
 static void receive_csd(const ysf_fich *f, const uint8_t *dch, unsigned dch_len)
 {
     if (f->fi == YSF_FI_HEADER || (f->dt == YSF_DT_VD_MODE1 && f->fn == 0)) {
         if (dch_len >= 20) {
-            call_field(call.dst, (const char *)dch);
-            call_field(call.src, (const char *)(dch + 10));
+            call_field_fixed(call.dst, dch);
+            call_field_fixed(call.src, dch + 10);
         }
     } else if (f->dt == YSF_DT_VD_MODE2 && f->fn <= 1 && dch_len >= 10) {
-        call_field(f->fn == 0 ? call.dst : call.src, (const char *)dch);
+        call_field_fixed(f->fn == 0 ? call.dst : call.src, dch);
     }
 }
 
@@ -214,23 +231,54 @@ static void receive(void)
     }
 }
 
+// Check the last 20 dibits of the ring for the frame sync, without rebuilding a whole 480-dibit frame. Keeping this
+// O(20) per symbol matters: the old code rebuilt 480 dibits on every symbol until it found a boundary, which could
+// keep the afrx task busy for hundreds of thousands of operations on a marginal signal and starve the firmware.
+static bool sync_at(unsigned start)
+{
+    uint8_t sync[YSF_SYNC_BYTES];
+
+    for (unsigned i = 0; i < YSF_SYNC_BYTES; i++) {
+        uint8_t b = 0;
+
+        for (unsigned j = 0; j < 4; j++) {
+            b = (uint8_t)((b << 2) | rx_dibits[(start + 4 * i + j) % YSF_FRAME_DIBITS]);
+        }
+        sync[i] = b;
+    }
+    return ysf_sync_errors(sync) <= YSF_SYNC_MAX_ERRORS;
+}
+
 static void on_dibit(void *ctx, int dibit)
 {
     (void)ctx;
 
     if (dibit == YSF_DEMOD_LOST) {
         rx_start = rx_head = rx_count = 0;
+        frame_pending = false;
         call_end();
         return;
     }
     rx_dibits[rx_head] = (uint8_t)dibit;
     rx_head = (rx_head + 1) % YSF_FRAME_DIBITS;
+    // ysf_demod.c only emits dibits once it has locked on a sync, but check the 20-dibit window every time: after a
+    // relock the first dibit is not necessarily ours, and a false sync in the data must not cost a whole frame.
+    if (sync_at((rx_head + YSF_FRAME_DIBITS - 20) % YSF_FRAME_DIBITS)) {
+        rx_start = (rx_head + YSF_FRAME_DIBITS - 20) % YSF_FRAME_DIBITS;
+        rx_count = 20;
+        frame_pending = true;
+    }
+    if (!frame_pending) {
+        return;
+    }
     if (rx_count < YSF_FRAME_DIBITS) {
         rx_count++;
     }
     if (rx_count < YSF_FRAME_DIBITS) {
         return;
     }
+    frame_pending = false;
+    rx_count = 0;
     for (unsigned i = 0; i < YSF_FRAME_BYTES; i++) {
         uint8_t b = 0;
 
@@ -239,14 +287,6 @@ static void on_dibit(void *ctx, int dibit)
         }
         rx_frame[i] = b;
     }
-    if (ysf_sync_errors(rx_frame) > YSF_SYNC_MAX_ERRORS) {
-        // Not on a frame boundary: slide one dibit and look for the next sync.
-        rx_start = (rx_start + 1) % YSF_FRAME_DIBITS;
-        rx_count = YSF_FRAME_DIBITS - 1;
-        return;
-    }
-    rx_start = rx_head;
-    rx_count = 0;
     receive();
 }
 
@@ -254,6 +294,7 @@ static void rx_init(void)
 {
     ysf_demod_init(&dm, on_dibit, NULL);
     rx_start = rx_head = rx_count = 0;
+    frame_pending = false;
     memset(&call, 0, sizeof(call));
     memset(rx_dibits, 0, sizeof(rx_dibits));
     last_frame_at = xTaskGetTickCount();
@@ -303,15 +344,15 @@ static void tx_setup(void)
     tx_cfg.dgid = tx_dgid;
     tx_cfg.cycles = 1;
     tx_cfg.voice = voice_cb;
-    call_field(tx_cfg.dest, tx_dest[0] ? tx_dest : "ALL");
+    call_field_air(tx_cfg.dest, tx_dest[0] ? tx_dest : "ALL");
     codeplug_get_radio_name(own);
-    call_field(tx_cfg.src, own);
-    call_field(tx_cfg.down, "");
-    call_field(tx_cfg.up, "");
-    call_field(tx_cfg.rem1, "");
-    call_field(tx_cfg.rem2, "");
-    call_field(tx_cfg.rem3, "");
-    call_field(tx_cfg.rem4, "");
+    call_field_air(tx_cfg.src, own);
+    call_field_air(tx_cfg.down, "");
+    call_field_air(tx_cfg.up, "");
+    call_field_air(tx_cfg.rem1, "");
+    call_field_air(tx_cfg.rem2, "");
+    call_field_air(tx_cfg.rem3, "");
+    call_field_air(tx_cfg.rem4, "");
     tx_dev = tx_cfg.dev ? TX_DEV_NARROW : TX_DEV_WIDE;
     tx_total = ysf_tx_total_frames(&tx_cfg);
     tx_frame_no = 0;
