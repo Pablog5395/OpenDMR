@@ -419,15 +419,21 @@ static void transmit(void)
         if (!afrx_ptt_held()) {
             ending = true;
         }
-        memset(mic, 0, sizeof(mic));
-        for (; halves < 10; halves++) {
-            if (!ending && !sound_mic_take(&mic[80 * halves])) {
-                vTaskDelay(pdMS_TO_TICKS(2)); // the mic has no buffer yet: don't spin waiting for it
-                break;
+        if (ending) {
+            memset(mic + 80 * halves, 0, sizeof(mic) - 80 * halves);
+            halves = 10;
+        } else {
+            for (; halves < 10; halves++) {
+                if (!sound_mic_take(&mic[80 * halves])) {
+                    vTaskDelay(pdMS_TO_TICKS(2)); // the mic has no buffer yet: don't spin waiting for it
+                    break;
+                }
             }
         }
-        if (halves < 10 && !ending) {
-            continue; // the next pass adds the rest of this frame's 10 ms buffers
+        if (halves < 10) {
+            // Keep the halves already taken: the next pass adds the rest. Clearing mic here threw away the
+            // audio collected so far, leaving each 100 ms block mostly silence -- heard as a buzzing/helicopter.
+            continue;
         }
         halves = 0;
         for (unsigned b = 0; b < YSF_BLOCKS; b++) {
