@@ -113,9 +113,12 @@ del hotspot también es crítico: en narrow los niveles interiores son sólo ±4
 firmware asume que `MODEM_MOD_SCALE_ONE = 1024` es ±1800 Hz; si el módulo del radio da ±1944 Hz, los valores actuales
 quedan ~8 % altos (medir con un discriminador antes de cambiar las constantes).
 
-El submódulo `vocoder` apunta a un commit local (`50ed497`) que corrige los bits finales b3/b4 del AMBE y aún no está
-publicado en [dmr-vocoder](https://github.com/va3bpf/dmr-vocoder). Hay que publicarlo antes de que otra persona pueda
-compilar esta rama desde cero.
+El submódulo `vocoder` apunta al commit `50ed497`, que corrige los bits finales b3/b4 del AMBE. Ese commit está
+publicado en la rama `fix/ambe-b3b4-tails` del fork
+[Pablog5395/dmr-vocoder](https://github.com/Pablog5395/dmr-vocoder/tree/fix/ambe-b3b4-tails), y `.gitmodules` apunta
+a ese fork para que la rama se pueda compilar completa. Cuando el cambio se integre en
+[va3bpf/dmr-vocoder](https://github.com/va3bpf/dmr-vocoder), conviene volver a apuntar el submódulo al repositorio
+original; el contenido del commit es el mismo en ambos.
 
 ## Procedencia, créditos y licencias
 
@@ -133,8 +136,9 @@ proyectos en este cambio):
   firmware; no se copiaron archivos de ese repositorio.
 - **Yaesu, *Amateur Radio Digital Standards*, Rev. 1.02** — referencia de lectura del protocolo YSF (figuras 4-1,
   4-3, 4-4 y 4-32), en especial para la secuencia de tramas y el mapa de bits de voz DN.
-- **[dmr-vocoder](https://github.com/va3bpf/dmr-vocoder)** — submódulo del proyecto, base del codec AMBE+2 y del
-  overlay IMBE; el cambio local de b3/b4 está documentado más arriba.
+- **[dmr-vocoder](https://github.com/Pablog5395/dmr-vocoder/tree/fix/ambe-b3b4-tails)** — fork del submódulo original
+  [va3bpf/dmr-vocoder](https://github.com/va3bpf/dmr-vocoder), base del codec AMBE+2 y del overlay IMBE; contiene el
+  cambio de b3/b4 documentado más arriba.
 - La capa física, el integrador de radio y el demodulador derivado de `p25_demod.c` siguen las licencias y avisos de
   OpenDMR (Junqiang Shi, VA3BPF / BG8AM) y de [p25-core](https://github.com/va3bpf/p25-core).
 
