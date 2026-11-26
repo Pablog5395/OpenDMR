@@ -27,7 +27,7 @@
  */
 
 /*
- * OpenDMR, screen: the channel details (menuChannelDetails.c, docs/ui-design.md 5.6). The 26 items of the
+ * OpenDMR, screen: the channel details (menuChannelDetails.c, docs/ui-design.md 5.6). The 27 items of the
  * channel (or VFO) of the home screen, in a list as the settings: UP / DOWN move, LEFT / RIGHT (and the rotary) change
  * the value of the channel itself (the home screen's, channel_screen_edit() / vfo_screen_vfo()): the radio follows after
  * the event (ui_tune()). A change is kept only with OK (the left key: written to the codeplug, a VFO saved, home);
@@ -67,6 +67,7 @@ enum {
     ITEM_MODE,
     ITEM_DMR_ID,
     ITEM_COLOUR_CODE,
+    ITEM_YSF_SSID,
     ITEM_TIMESLOT,
     ITEM_TG_LIST,
     ITEM_CONTACT,
@@ -338,6 +339,7 @@ static void change(int item, int direction, bool fast, uint8_t modifiers)
             }
             if (edit->mode == CODEPLUG_MODE_YSF) {
                 codeplug_set_ysf_dgid(edit, codeplug_ysf_dgid(edit)); // another mode's byte: a DG-ID
+                codeplug_set_ysf_ssid(edit, codeplug_ysf_ssid(edit)); // and the unused byte: an SSID
             }
             break;
         case ITEM_COLOUR_CODE:
@@ -359,6 +361,14 @@ static void change(int item, int direction, bool fast, uint8_t modifiers)
                 uint8_t cc = codeplug_colour_code(edit); // from the colour code in use (the byte may hold a NAC)
                 step_value(&cc, direction, 0, COLOUR_CODE_MAX);
                 edit->tx_colour = cc;
+            }
+            break;
+        case ITEM_YSF_SSID:
+            if (is_ysf()) {
+                uint8_t ssid = codeplug_ysf_ssid(edit);
+
+                step_value(&ssid, direction, 0, CODEPLUG_YSF_SSID_MAX);
+                codeplug_set_ysf_ssid(edit, ssid);
             }
             break;
         case ITEM_TIMESLOT:
@@ -475,6 +485,7 @@ static void format_item(int item, char *label, size_t label_size, char *out, siz
         [ITEM_DMR_ID] = TEXT_DMR_ID,
         [ITEM_COLOUR_CODE] = TEXT_COLOUR_CODE,
         [ITEM_TIMESLOT] = TEXT_TIMESLOT,
+        [ITEM_YSF_SSID] = TEXT_N_A,
         [ITEM_TG_LIST] = TEXT_TG_LIST,
         [ITEM_CONTACT] = TEXT_CONTACT,
         [ITEM_BANDWIDTH] = TEXT_BANDWIDTH,
@@ -554,6 +565,16 @@ static void format_item(int item, char *label, size_t label_size, char *out, siz
                 snprintf(out, size, "%s", na);
             } else {
                 snprintf(out, size, "%u", codeplug_colour_code(edit));
+            }
+            break;
+        case ITEM_YSF_SSID:
+            snprintf(label, label_size, "SSID");
+            if (!is_ysf()) {
+                snprintf(out, size, "%s", na);
+            } else if (codeplug_ysf_ssid(edit)) {
+                snprintf(out, size, "-%u", codeplug_ysf_ssid(edit));
+            } else {
+                snprintf(out, size, "%s", text(TEXT_NONE));
             }
             break;
         case ITEM_TIMESLOT:

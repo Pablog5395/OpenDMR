@@ -12,8 +12,10 @@ integración con la radio son las de OpenDMR.
 - DG-ID 0 – 127 en el editor (un Yaesu usa 0 – 99; 0 = «recibir todo», transmitir 0). Se envía en el FICH (`SC`) de
   cada trama; en recepción actúa como un squelch digital. Con un DG-ID seleccionado también se abren las tramas con
   `SC = 0` (sin DG-ID) y `SC = 127` (Break Out), como en un Yaesu.
-- El destino de TX es el nombre del contacto (o `ALL`); la fuente es el indicativo (callsign) de «General» en el CPS.
-  Elegir **All Call** con `#` envía `ALL` (no el texto traducido de la UI).
+- El destino de TX es el nombre del contacto (o `ALL`); la fuente es el indicativo (callsign) de «General» en el CPS,
+  con un sufijo SSID opcional (`-1` … `-15`) por canal. El SSID se edita en la fila **SSID** de los detalles del canal
+  (0 = sin sufijo) y se guarda en el byte que YSF no usa del codeplug; la llamada de grupo se envía como `ALL`, que en
+  el aire son diez asteriscos.
 - El panel QSO muestra el callsign en grande, el destino sobre el S-meter y el DG-ID en la barra de estado. El
   escaneo usa `SCAN_YSF` (mismo `heard_within()` que NXDN).
 
@@ -23,6 +25,7 @@ integración con la radio son las de OpenDMR.
 |---|---|
 | Llegar al modo YSF desde la pantalla principal | `SK1 + *` hasta `YSF` (orden: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 → YSF) |
 | Editar el DG-ID del canal | Menú → detalles del canal → fila **DG-ID** (donde otros modos ponen el colour code): `▲ ▼` elige la fila, `◀ ▶` o el knob cambia de 1 en 1, `menú` guarda, `volver` descarta |
+| Añadir el SSID al indicativo | Menú → detalles del canal → fila **SSID** (sólo en YSF): `◀ ▶` o el knob recorren 0 – 15, `menú` guarda, `volver` descarta |
 | Elegir a quién llamar | `SK2 + #` → lista de contactos → `menú`: el **nombre del contacto** se envía como destino |
 | Recorrer los contactos del grupo RX del canal | `▶ ◀` en la pantalla principal |
 | Poner `ALL` (llamada de grupo) | Sin contacto seleccionado, o `#` → **All Call** → `menú` (envía `ALL`) |

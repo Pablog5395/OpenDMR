@@ -186,6 +186,22 @@ static inline void codeplug_set_ysf_dgid(codeplug_channel_t *channel, uint8_t dg
     channel->tx_colour = (dgid <= CODEPLUG_YSF_DGID_MAX) ? dgid : CODEPLUG_YSF_DGID_DEFAULT;
 }
 
+// The YSF SSID appended to the callsign as the source ("LU8HPA-1"), 0 = none, 1 .. 15 = "-N". It goes in the byte
+// the GD-77 format leaves unused, tagged with 0xB0 (P25 uses 0xA0 there for its NAC): a CPS channel (0x00 / 0xFF)
+// starts with no SSID. Like the DG-ID, the CPS does not write it.
+#define CODEPLUG_YSF_SSID_DEFAULT 0
+#define CODEPLUG_YSF_SSID_MAX     15
+#define CODEPLUG_YSF_SSID_TAG     0xB0
+static inline uint8_t codeplug_ysf_ssid(const codeplug_channel_t *channel)
+{
+    return ((channel->unused2 & 0xF0) == CODEPLUG_YSF_SSID_TAG) ? (uint8_t)(channel->unused2 & 0x0F)
+                                                                : CODEPLUG_YSF_SSID_DEFAULT;
+}
+static inline void codeplug_set_ysf_ssid(codeplug_channel_t *channel, uint8_t ssid)
+{
+    channel->unused2 = (uint8_t)(CODEPLUG_YSF_SSID_TAG | ((ssid <= CODEPLUG_YSF_SSID_MAX) ? ssid : 0));
+}
+
 typedef struct {
     char name[CODEPLUG_NAME_LENGTH];
     uint16_t channels[CODEPLUG_ZONE_CHANNELS]; // channel numbers (1 ..), 0 after the last one

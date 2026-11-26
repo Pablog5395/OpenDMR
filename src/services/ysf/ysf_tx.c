@@ -50,6 +50,30 @@ static unsigned voice_off(uint8_t dt, unsigned b)
 	}
 }
 
+void ysf_tx_source_field(char out[YSF_CALLSIGN_LEN], const char *call, unsigned ssid)
+{
+	char suffix[4];
+	size_t suffix_len = 0;
+	size_t call_len = strlen(call);
+	size_t room;
+
+	if (ssid && ssid <= 15) {
+		suffix[suffix_len++] = '-';
+		if (ssid >= 10)
+			suffix[suffix_len++] = (char)('0' + (ssid / 10));
+		suffix[suffix_len++] = (char)('0' + (ssid % 10));
+	}
+	suffix[suffix_len] = '\0';
+
+	room = YSF_CALLSIGN_LEN - suffix_len;
+	if (call_len > room)
+		call_len = room;
+	memcpy(out, call, call_len);
+	if (suffix_len)
+		memcpy(out + call_len, suffix, suffix_len);
+	memset(out + call_len + suffix_len, ' ', YSF_CALLSIGN_LEN - call_len - suffix_len);
+}
+
 // Yaesu puts ten asterisks in Dest for a direct Group/CQ call. ALL is the
 // codeplug/UI spelling; accepting it on the air makes MMDVM decode the call,
 // but is not the wire representation used by Yaesu radios.

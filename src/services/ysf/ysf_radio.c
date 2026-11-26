@@ -351,7 +351,7 @@ static void tx_setup(void)
     tx_cfg.voice = voice_cb;
     call_field_air(tx_cfg.dest, tx_dest[0] ? tx_dest : "ALL");
     codeplug_get_radio_name(own);
-    call_field_air(tx_cfg.src, own);
+    ysf_tx_source_field(tx_cfg.src, own, codeplug_ysf_ssid(&rs.channel));
     call_field_air(tx_cfg.down, "");
     call_field_air(tx_cfg.up, "");
     call_field_air(tx_cfg.rem1, "");

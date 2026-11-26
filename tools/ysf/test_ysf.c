@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "codeplug.h"
 #include "ysf/ysf_frame.h"
 #include "ysf/ysf_tx.h"
 #include "ysf/ysf_voice.h"
@@ -617,6 +618,36 @@ static void testAmbeBitMap(void)
 	CHECK(b[3] == 66 && b[4] == 17, "AMBE b3/b4 tails must match mbelib (%d, %d)", b[3], b[4]);
 }
 
+// The SSID is stored in the YSF channel's unused byte and sent as "-N" after the CPS callsign, within the ten-byte
+// on-air field.
+static void testYsfSsid(void)
+{
+	codeplug_channel_t c;
+	char out[YSF_CALLSIGN_LEN];
+
+	memset(&c, 0, sizeof c);
+	CHECK(codeplug_ysf_ssid(&c) == 0, "a blank channel has no YSF SSID");
+	c.unused2 = 0xFF;
+	CHECK(codeplug_ysf_ssid(&c) == 0, "a CPS channel has no YSF SSID");
+	for (unsigned ssid = 0; ssid <= CODEPLUG_YSF_SSID_MAX; ssid++) {
+		codeplug_set_ysf_ssid(&c, (uint8_t)ssid);
+		CHECK(codeplug_ysf_ssid(&c) == ssid, "YSF SSID %u round-trip", ssid);
+	}
+	codeplug_set_ysf_ssid(&c, CODEPLUG_YSF_SSID_MAX + 1);
+	CHECK(codeplug_ysf_ssid(&c) == 0, "an out-of-range YSF SSID becomes none");
+
+	ysf_tx_source_field(out, "LU8HPA", 0);
+	CHECK(!memcmp(out, "LU8HPA    ", 10), "no SSID: padded callsign");
+	ysf_tx_source_field(out, "LU8HPA", 1);
+	CHECK(!memcmp(out, "LU8HPA-1  ", 10), "one-digit SSID");
+	ysf_tx_source_field(out, "LU8HPA", 15);
+	CHECK(!memcmp(out, "LU8HPA-15 ", 10), "two-digit SSID");
+	ysf_tx_source_field(out, "ABCDEFGH", 15);
+	CHECK(!memcmp(out, "ABCDEFG-15", 10), "the callsign is cut to leave room for the SSID");
+	ysf_tx_source_field(out, "ABCDEFGHIJ", 0);
+	CHECK(!memcmp(out, "ABCDEFGHIJ", 10), "a ten-character callsign is kept whole");
+}
+
 int main(void)
 {
 	testWhitening();
@@ -631,6 +662,7 @@ int main(void)
 	testTxVoiceSequence();
 	testVoiceDn();
 	testAmbeBitMap();
+	testYsfSsid();
 	printf("ysfTest: %d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;
 }

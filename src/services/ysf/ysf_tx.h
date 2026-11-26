@@ -89,6 +89,10 @@ typedef struct {
 	void *ctx;
 } ysf_tx_config;
 
+// Source callsign field: the CPS callsign with "-N" appended when an SSID is set, space padded to ten characters.
+// A long callsign is cut to leave room for the suffix.
+void ysf_tx_source_field(char out[YSF_CALLSIGN_LEN], const char *call, unsigned ssid);
+
 // Total frames: header + cycles of the mode's CSD/data sequence + terminator.
 // Voice-only V/D-1 cycles have 3 CC frames; DN has 6; cycles with data and the
 // FR modes have 8.
