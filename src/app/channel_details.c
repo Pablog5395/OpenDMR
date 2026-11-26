@@ -174,6 +174,11 @@ static bool is_m17(void)
     return edit->mode == CODEPLUG_MODE_M17;
 }
 
+static bool is_ysf(void)
+{
+    return edit->mode == CODEPLUG_MODE_YSF;
+}
+
 // P25's NAC (codeplug.h): LEFT / RIGHT 1, held 0x10 (0x000 - 0xFFF; 0xF7E receives any)
 static void step_nac(int direction, bool fast)
 {
@@ -322,7 +327,7 @@ static void change(int item, int direction, bool fast, uint8_t modifiers)
         case ITEM_MODE: // FM, AM, USB, LSB, DMR (DMR is 12.5 kHz)
             edit->mode = codeplug_mode_step(edit->mode, direction);
             if ((edit->mode == CODEPLUG_MODE_DMR) || (edit->mode == CODEPLUG_MODE_NXDN) ||
-                (edit->mode == CODEPLUG_MODE_M17)) {
+                (edit->mode == CODEPLUG_MODE_M17) || (edit->mode == CODEPLUG_MODE_YSF)) {
                 set_bit(&edit->flag4, FLAG4_BANDWIDTH_25K, false);
             }
             if (edit->mode == CODEPLUG_MODE_NXDN) {
@@ -330,6 +335,9 @@ static void change(int item, int direction, bool fast, uint8_t modifiers)
             }
             if (edit->mode == CODEPLUG_MODE_M17) {
                 codeplug_set_m17_can(edit, codeplug_m17_can(edit)); // another mode's byte: a CAN
+            }
+            if (edit->mode == CODEPLUG_MODE_YSF) {
+                codeplug_set_ysf_dgid(edit, codeplug_ysf_dgid(edit)); // another mode's byte: a DG-ID
             }
             break;
         case ITEM_COLOUR_CODE:
@@ -343,6 +351,10 @@ static void change(int item, int direction, bool fast, uint8_t modifiers)
                 uint8_t can = codeplug_m17_can(edit);
                 step_value(&can, direction, 0, CODEPLUG_M17_CAN_MAX);
                 codeplug_set_m17_can(edit, can);
+            } else if (is_ysf()) {
+                uint8_t dgid = codeplug_ysf_dgid(edit);
+                step_value(&dgid, direction, 0, CODEPLUG_YSF_DGID_MAX);
+                codeplug_set_ysf_dgid(edit, dgid);
             } else if (!fm) {
                 uint8_t cc = codeplug_colour_code(edit); // from the colour code in use (the byte may hold a NAC)
                 step_value(&cc, direction, 0, COLOUR_CODE_MAX);
@@ -356,7 +368,7 @@ static void change(int item, int direction, bool fast, uint8_t modifiers)
             break;
         case ITEM_RX_CSS:
         case ITEM_TX_CSS:
-            if (fm && !aprs && !is_nxdn() && !is_m17()) {
+            if (fm && !aprs && !is_nxdn() && !is_m17() && !is_ysf()) {
                 {
                     uint16_t *tone = ((item == ITEM_RX_CSS) ? &edit->rx_tone : &edit->tx_tone);
 
@@ -365,7 +377,7 @@ static void change(int item, int direction, bool fast, uint8_t modifiers)
             }
             break;
         case ITEM_BANDWIDTH:
-            if (fm && !is_nxdn() && !is_m17()) {
+            if (fm && !is_nxdn() && !is_m17() && !is_ysf()) {
                 set_bit(&edit->flag4, FLAG4_BANDWIDTH_25K, on);
             }
             break;
@@ -535,6 +547,9 @@ static void format_item(int item, char *label, size_t label_size, char *out, siz
             } else if (is_m17()) {
                 snprintf(label, label_size, "CAN");
                 snprintf(out, size, "%u", codeplug_m17_can(edit));
+            } else if (is_ysf()) {
+                snprintf(label, label_size, "DG-ID");
+                snprintf(out, size, "%u", codeplug_ysf_dgid(edit));
             } else if (fm) {
                 snprintf(out, size, "%s", na);
             } else {
@@ -577,13 +592,13 @@ static void format_item(int item, char *label, size_t label_size, char *out, siz
         }
         case ITEM_RX_CSS:
             format_css(text(TEXT_RX), edit->rx_tone, label, label_size, out, size);
-            if (is_nxdn() || is_m17()) {
+            if (is_nxdn() || is_m17() || is_ysf()) {
                 snprintf(out, size, "%s", na);
             }
             break;
         case ITEM_TX_CSS:
             format_css(text(TEXT_TX), edit->tx_tone, label, label_size, out, size);
-            if (is_nxdn() || is_m17()) {
+            if (is_nxdn() || is_m17() || is_ysf()) {
                 snprintf(out, size, "%s", na);
             }
             break;
@@ -592,7 +607,7 @@ static void format_item(int item, char *label, size_t label_size, char *out, siz
                 snprintf(out, size, "6.25kHz");
                 break;
             }
-            snprintf(out, size, "%s", ((!fm || is_m17()) ? (is_m17() ? "12.5kHz" : na)
+            snprintf(out, size, "%s", ((!fm || is_m17() || is_ysf()) ? ((is_m17() || is_ysf()) ? "12.5kHz" : na)
                                                        : ((edit->flag4 & FLAG4_BANDWIDTH_25K) ? "25kHz" : "12.5kHz")));
             break;
         case ITEM_STEP: {
