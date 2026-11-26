@@ -464,7 +464,12 @@ void RAM_CODE p25_phy_rx_slot_isr(void)
 volatile uint32_t p25_phy_tx_state;
 volatile uint32_t p25_phy_tx_blocks;
 volatile uint32_t p25_phy_tx_underrun;
-volatile uint32_t p25_phy_tx_xor; // each dibit sent XOR this: 2 turns the symbols over (+3 <-> -3, +1 <-> -1), a test
+volatile uint32_t p25_phy_tx_xor; // each dibit sent XOR this: 2 turns the symbols over (+3 <-> -3, +1 <-> -1)
+
+void p25_phy_tx_set_xor(uint32_t x)
+{
+    p25_phy_tx_xor = x & 3u;
+}
 volatile uint32_t p25_phy_tx_isr_n = UINT32_MAX, p25_phy_tx_isr_us, p25_phy_tx_isr_next;
 volatile uint32_t p25_phy_tx_isr_first[4]; // the first interrupts' times (tests)
 

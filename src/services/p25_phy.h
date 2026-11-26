@@ -102,6 +102,9 @@ extern volatile uint32_t p25_phy_tx_underrun; // blocks sent as zeros, the strea
 // blocks from the FIFO into the send RAM, the modem sending; -1 if the physical layer is busy. p25_phy_tx_end(): the
 // modem as it was, back to receive.
 void p25_phy_tx_reset(void); // the FIFO emptied, the counters zeroed
+// The modem's dibits 0..3 are +1,+3,-1,-3; YSF and P25 on the air use -1,-3,+1,+3. XOR 2 before the modem makes
+// them agree (the two inner and the two outer levels swap over). Set for the length of one transmission only.
+void p25_phy_tx_set_xor(uint32_t x);
 void p25_phy_tx_put(const uint8_t *dibits, int n);
 uint32_t p25_phy_tx_level(void); // dibits in the FIFO
 void p25_phy_tx_pad(void);        // zeros up to a whole block (after the last data unit)

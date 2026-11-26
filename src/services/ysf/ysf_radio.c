@@ -472,6 +472,10 @@ static void transmit(void)
     if (vw_tx) {
         imbe_enc_init(&vw_codec.enc); // the overlay code is loaded; the state is in normal .bss
     }
+    // The modem maps its dibits 0..3 to +1,+3,-1,-3; Yaesu/MMDVM C4FM maps 0..3 to -1,-3,+1,+3. XOR 2 on the way
+    // into the modem (p25_phy_tx_set_xor) sends the levels the standard expects; without it every received dibit
+    // comes back flipped in its top bit, the 20-symbol sync never matches and the hotspot never decodes a frame.
+    p25_phy_tx_set_xor(2);
     afrx_fifo_prepare(tx_dev);
 
     // MMDVM (YSFTX.cpp) and the Yaesu air interface key up with 200 ms of 0x77 before the first frame sync;
@@ -537,6 +541,7 @@ static void transmit(void)
         vw_tx = false;
     }
     ysf_radio_stats.tx_underruns = afrx_fifo_finish(keyed);
+    p25_phy_tx_set_xor(0);
 }
 
 /* ---- the afrx service ---- */
