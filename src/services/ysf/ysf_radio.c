@@ -214,6 +214,9 @@ static void receive(void)
     call.dt = f.dt;
     receive_csd(&f, dch, dch_len);
 
+    if (f.fi != YSF_FI_COMMUNICATION) {
+        return; // the header carries CSD only: its DCH bytes are not voice (the fork does the same)
+    }
     if ((f.dt != YSF_DT_VD_MODE1) && (f.dt != YSF_DT_VD_MODE2)) {
         return; // VW needs full-rate IMBE, which this tree does not have
     }

@@ -603,6 +603,20 @@ static void testVoiceDn(void)
 	}
 }
 
+// The 1031 Hz AMBE vector from nxdn/README.md: mbelib extracts b3=66 and b4=17 from it. Keeping the two tails in
+// B_BITS swapped made both our encoder and decoder agree with each other, but produced metallic, unintelligible
+// audio; this pins the map to an external reference.
+static void testAmbeBitMap(void)
+{
+	static const uint8_t tone[9] = { 0xCE, 0xA8, 0xFE, 0x83, 0xAC, 0xC4, 0x58, 0x20, 0x0A };
+	uint8_t d49[AMBE_PARAM_BITS];
+	int b[9];
+
+	CHECK(ambe_decode_frame(tone, d49) == 0, "the known AMBE tone frame must decode without errors");
+	ambe_unpack_b(d49, b);
+	CHECK(b[3] == 66 && b[4] == 17, "AMBE b3/b4 tails must match mbelib (%d, %d)", b[3], b[4]);
+}
+
 int main(void)
 {
 	testWhitening();
@@ -616,6 +630,7 @@ int main(void)
 	testTxGroupDest();
 	testTxVoiceSequence();
 	testVoiceDn();
+	testAmbeBitMap();
 	printf("ysfTest: %d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;
 }
