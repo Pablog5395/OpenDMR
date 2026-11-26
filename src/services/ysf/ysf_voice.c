@@ -86,6 +86,49 @@ void ysf_voice_dn_to_frame(const uint8_t field[13], uint8_t frame9[9], unsigned 
 	ambe_encode_frame(params, frame9);
 }
 
+ysf_codec_t ysf_codec_for_dt(uint8_t dt)
+{
+    if (dt == YSF_DT_VD_MODE1 || dt == YSF_DT_VD_MODE2) {
+        return YSF_CODEC_AMBE;
+    }
+    if (dt == YSF_DT_VOICE_FR) {
+        return YSF_CODEC_IMBE;
+    }
+    return YSF_CODEC_NONE;
+}
+
+static uint8_t voice_mode_dt(uint8_t dt)
+{
+    return ysf_codec_for_dt(dt) == YSF_CODEC_NONE ? YSF_DT_VD_MODE1 : dt;
+}
+
+void ysf_voice_path_init(ysf_voice_path_t *p, uint8_t configured_dt)
+{
+    p->configured = voice_mode_dt(configured_dt);
+    p->active = 0xFF;
+}
+
+ysf_codec_t ysf_voice_path_rx(ysf_voice_path_t *p, uint8_t received_dt)
+{
+    ysf_codec_t codec = ysf_codec_for_dt(received_dt);
+
+    if (codec != YSF_CODEC_NONE) {
+        p->active = received_dt;
+    }
+    return codec;
+}
+
+ysf_codec_t ysf_voice_path_end(ysf_voice_path_t *p)
+{
+    p->active = 0xFF;
+    return ysf_codec_for_dt(p->configured);
+}
+
+ysf_codec_t ysf_voice_path_tx(const ysf_voice_path_t *p)
+{
+    return ysf_codec_for_dt(p->configured);
+}
+
 void ysf_voice_dn_from_frame(const uint8_t frame9[9], uint8_t field[13])
 {
 	uint8_t params[AMBE_PARAM_BITS];

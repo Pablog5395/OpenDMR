@@ -18,6 +18,7 @@
 #include "ysf/ysf_tx.h"
 #include "ysf/ysf_voice.h"
 #include "ambe.h"
+#include "imbe.h"
 
 #define AMBE_PARAM_BITS 49
 
@@ -280,6 +281,7 @@ static void tx_data_cb(void *ctx, unsigned index, uint8_t out[20])
 }
 
 static uint8_t tx_voice_frame[8][YSF_BLOCKS][9];
+static uint8_t tx_voice_vw[8][YSF_BLOCKS][18];
 static unsigned tx_voice_seen;
 
 static void tx_voice_cb(void *ctx, unsigned frame_no, unsigned block, uint8_t *vch, unsigned vch_len)
@@ -292,7 +294,7 @@ static void tx_voice_cb(void *ctx, unsigned frame_no, unsigned block, uint8_t *v
 		else if (vch_len == 13)
 			ysf_voice_dn_from_frame(tx_voice_frame[frame_no - 1][block], vch);
 		else if (vch_len == 18)
-			memset(vch, 0, 18);
+			memcpy(vch, tx_voice_vw[frame_no - 1][block], 18);
 	}
 }
 
@@ -648,6 +650,140 @@ static void testYsfSsid(void)
 	CHECK(!memcmp(out, "ABCDEFGHIJ", 10), "a ten-character callsign is kept whole");
 }
 
+// A complete VW frame: the IMBE bytes survive the VCH, and imbe_decode_frame
+// recovers the same u88 parameters from them.
+static void testVoiceVw(void)
+{
+	ysf_tx_config c;
+	uint8_t frame[YSF_FRAME_BYTES], out[18], air[18], u88[88], back[88];
+	ysf_fich f;
+	uint8_t dch[20], dch2[20];
+	unsigned dch_len = 0;
+	imbe_errors err;
+
+	make_tx_cfg(&c, YSF_DT_VOICE_FR);
+	for (unsigned fn = 0; fn < 8; fn++) {
+		for (unsigned b = 0; b < YSF_BLOCKS; b++) {
+			for (unsigned k = 0; k < 18; k++)
+				tx_voice_vw[fn][b][k] = (uint8_t)(0x40u + fn * 18 + b * 18 + k);
+		}
+	}
+	CHECK(ysf_tx_frame_build(&c, 1, frame), "build VW frame");
+	CHECK(ysf_frame_decode(frame, &f, dch, dch2, &dch_len), "decode VW frame");
+	CHECK(f.dt == YSF_DT_VOICE_FR && f.fi == YSF_FI_COMMUNICATION, "VW FICH");
+	for (unsigned b = 0; b < YSF_BLOCKS; b++) {
+		CHECK(ysf_voice_get(frame, f.dt, b, out) == 18, "VW block %u length", b);
+		CHECK(!memcmp(out, tx_voice_vw[0][b], 18), "VW block %u VCH bytes", b);
+	}
+
+	for (unsigned k = 0; k < sizeof u88; k++)
+		u88[k] = (uint8_t)(rng() & 1u);
+	imbe_encode_frame(u88, air);
+	for (unsigned fn = 0; fn < 8; fn++) {
+		for (unsigned b = 0; b < YSF_BLOCKS; b++)
+			memcpy(tx_voice_vw[fn][b], air, 18);
+	}
+	CHECK(ysf_tx_frame_build(&c, 2, frame), "build VW frame with IMBE");
+	CHECK(ysf_frame_decode(frame, &f, dch, dch2, &dch_len) && f.dt == YSF_DT_VOICE_FR, "decode VW IMBE frame");
+	CHECK(ysf_voice_get(frame, f.dt, 4, out) == 18 && !memcmp(out, air, 18), "IMBE frame survives block 4");
+	imbe_decode_frame(out, back, &err);
+	CHECK(!memcmp(back, u88, sizeof u88), "IMBE u88 after a YSF VCH round-trip");
+}
+
+// The channel's mode lives in flag3, tagged; a channel made by the CPS starts
+// in V/D-1.
+static void testYsfMode(void)
+{
+	codeplug_channel_t c;
+	static const uint8_t modes[] = { CODEPLUG_YSF_MODE_VD1, CODEPLUG_YSF_MODE_DN, CODEPLUG_YSF_MODE_VW };
+
+	memset(&c, 0, sizeof c);
+	CHECK(codeplug_ysf_mode(&c) == CODEPLUG_YSF_MODE_VD1, "blank channel is V/D-1");
+	c.flag3 = 0xFF;
+	CHECK(codeplug_ysf_mode(&c) == CODEPLUG_YSF_MODE_VD1, "CPS channel is V/D-1");
+	for (unsigned i = 0; i < sizeof modes; i++) {
+		codeplug_set_ysf_mode(&c, modes[i]);
+		CHECK(codeplug_ysf_mode(&c) == modes[i], "YSF mode %u round-trip", modes[i]);
+		CHECK(c.flag3 == (uint8_t)(CODEPLUG_YSF_MODE_TAG | modes[i]), "YSF mode %u tag", modes[i]);
+	}
+	codeplug_set_ysf_mode(&c, 9);
+	CHECK(codeplug_ysf_mode(&c) == CODEPLUG_YSF_MODE_VD1, "invalid mode falls back");
+}
+
+// RX follows the DT on the air even when TX is configured for another mode;
+// ending the call and starting a PTT give the configured path back.
+static void testYsfVoicePath(void)
+{
+	ysf_voice_path_t p;
+
+	CHECK(ysf_codec_for_dt(YSF_DT_VD_MODE1) == YSF_CODEC_AMBE, "V/D-1 is AMBE");
+	CHECK(ysf_codec_for_dt(YSF_DT_VD_MODE2) == YSF_CODEC_AMBE, "DN is AMBE");
+	CHECK(ysf_codec_for_dt(YSF_DT_VOICE_FR) == YSF_CODEC_IMBE, "VW is IMBE");
+	CHECK(ysf_codec_for_dt(YSF_DT_DATA_FR) == YSF_CODEC_NONE, "Data FR has no voice");
+
+	ysf_voice_path_init(&p, CODEPLUG_YSF_MODE_VD1);
+	CHECK(ysf_voice_path_tx(&p) == YSF_CODEC_AMBE, "V/D-1 channel transmits AMBE");
+	CHECK(ysf_voice_path_rx(&p, YSF_DT_VOICE_FR) == YSF_CODEC_IMBE, "VW call on a V/D-1 channel decodes IMBE");
+	CHECK(p.active == YSF_DT_VOICE_FR, "the received DT is remembered");
+	CHECK(ysf_voice_path_tx(&p) == YSF_CODEC_AMBE, "PTT still uses the configured V/D-1");
+	CHECK(ysf_voice_path_rx(&p, YSF_DT_DATA_FR) == YSF_CODEC_NONE, "Data FR carries no voice");
+	CHECK(ysf_voice_path_rx(&p, YSF_DT_VD_MODE2) == YSF_CODEC_AMBE, "DN after VW decodes AMBE");
+	CHECK(ysf_voice_path_end(&p) == YSF_CODEC_AMBE && p.active == 0xFF, "end restores V/D-1");
+
+	ysf_voice_path_init(&p, CODEPLUG_YSF_MODE_VW);
+	CHECK(ysf_voice_path_tx(&p) == YSF_CODEC_IMBE, "VW channel transmits IMBE");
+	CHECK(ysf_voice_path_rx(&p, YSF_DT_VD_MODE2) == YSF_CODEC_AMBE, "DN call on a VW channel decodes AMBE");
+	CHECK(ysf_voice_path_end(&p) == YSF_CODEC_IMBE, "end restores the configured VW path");
+}
+
+// Cross-mode regression: a call whose DT differs from the channel's mode must
+// produce PCM from the received DT's codec, and the following PTT must use the
+// configured mode again (both directions). The PCM here is real IMBE output;
+// the AMBE half is checked as a full DN voice-field round-trip.
+static void testCrossModePcmPtt(void)
+{
+	ysf_voice_path_t p;
+	imbe_decoder dec;
+	imbe_errors err;
+	uint8_t u88[88], air[18], back[88], params[AMBE_PARAM_BITS], frame9[9], field[13], back9[9], params2[AMBE_PARAM_BITS];
+	int16_t pcm[IMBE_N];
+	int peak = 0;
+
+	for (unsigned k = 0; k < sizeof u88; k++)
+		u88[k] = (uint8_t)(rng() & 1u);
+	imbe_encode_frame(u88, air);
+
+	// V/D-1 channel, VW comes in: decode IMBE into PCM, then release the path.
+	ysf_voice_path_init(&p, CODEPLUG_YSF_MODE_VD1);
+	CHECK(ysf_voice_path_rx(&p, YSF_DT_VOICE_FR) == YSF_CODEC_IMBE, "VW on V/D-1 channel selects IMBE");
+	imbe_dec_init(&dec);
+	imbe_decode_frame(air, back, &err);
+	CHECK(!memcmp(back, u88, sizeof u88), "VW u88 before synthesis");
+	imbe_dec_frame(&dec, air, pcm);
+	for (unsigned k = 0; k < IMBE_N; k++)
+		peak = peak < (pcm[k] < 0 ? -pcm[k] : pcm[k]) ? (pcm[k] < 0 ? -pcm[k] : pcm[k]) : peak;
+	CHECK(peak > 0, "VW produces PCM audio");
+	CHECK(ysf_voice_path_end(&p) == YSF_CODEC_AMBE && ysf_voice_path_tx(&p) == YSF_CODEC_AMBE,
+	      "PTT after VW RX on a V/D-1 channel is AMBE");
+
+	// DN in that same channel: a whole 9-byte AMBE frame survives the DN field.
+	CHECK(ysf_voice_path_rx(&p, YSF_DT_VD_MODE2) == YSF_CODEC_AMBE, "DN selects AMBE");
+	for (unsigned k = 0; k < AMBE_PARAM_BITS; k++)
+		params[k] = (uint8_t)(rng() & 1u);
+	ambe_encode_frame(params, frame9);
+	ysf_voice_dn_from_frame(frame9, field);
+	ysf_voice_dn_to_frame(field, back9, NULL);
+	ambe_decode_frame(back9, params2);
+	CHECK(!memcmp(frame9, back9, 9) && !memcmp(params, params2, AMBE_PARAM_BITS), "DN audio after VW");
+	CHECK(ysf_voice_path_end(&p) == YSF_CODEC_AMBE, "DN release restores V/D-1");
+
+	// Reverse: VW channel, DN comes in on AMBE, PTT must still be VW/IMBE.
+	ysf_voice_path_init(&p, CODEPLUG_YSF_MODE_VW);
+	CHECK(ysf_voice_path_rx(&p, YSF_DT_VD_MODE2) == YSF_CODEC_AMBE, "DN on a VW channel selects AMBE");
+	CHECK(ysf_voice_path_end(&p) == YSF_CODEC_IMBE && ysf_voice_path_tx(&p) == YSF_CODEC_IMBE,
+	      "PTT after DN RX on a VW channel is IMBE");
+}
+
 int main(void)
 {
 	testWhitening();
@@ -661,8 +797,12 @@ int main(void)
 	testTxGroupDest();
 	testTxVoiceSequence();
 	testVoiceDn();
+	testVoiceVw();
 	testAmbeBitMap();
 	testYsfSsid();
+	testYsfMode();
+	testYsfVoicePath();
+	testCrossModePcmPtt();
 	printf("ysfTest: %d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;
 }

@@ -16,6 +16,10 @@ integración con la radio son las de OpenDMR.
   con un sufijo SSID opcional (`-1` … `-15`) por canal. El SSID se edita en la fila **SSID** de los detalles del canal
   (0 = sin sufijo) y se guarda en el byte que YSF no usa del codeplug; la llamada de grupo se envía como `ALL`, que en
   el aire son diez asteriscos.
+- El modo de voz del canal se elige en la fila **YSF Mode**: `V/D-1` (por defecto, también para un canal creado por el
+  CPS), `DN` o `VW`. El DT se guarda en `flag3` del codeplug con la etiqueta `0xC0`; en TX manda el modo configurado,
+  pero en RX manda el DT recibido: una llamada VW se descodifica con IMBE aunque el canal esté en V/D-1, y al terminar
+  (o antes del siguiente PTT) el camino de TX vuelve al modo del canal.
 - El panel QSO muestra el callsign en grande, el destino sobre el S-meter y el DG-ID en la barra de estado. El
   escaneo usa `SCAN_YSF` (mismo `heard_within()` que NXDN).
 
@@ -26,6 +30,7 @@ integración con la radio son las de OpenDMR.
 | Llegar al modo YSF desde la pantalla principal | `SK1 + *` hasta `YSF` (orden: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 → YSF) |
 | Editar el DG-ID del canal | Menú → detalles del canal → fila **DG-ID** (donde otros modos ponen el colour code): `▲ ▼` elige la fila, `◀ ▶` o el knob cambia de 1 en 1, `menú` guarda, `volver` descarta |
 | Añadir el SSID al indicativo | Menú → detalles del canal → fila **SSID** (sólo en YSF): `◀ ▶` o el knob recorren 0 – 15, `menú` guarda, `volver` descarta |
+| Elegir V/D-1, DN o VW | Menú → detalles del canal → fila **YSF Mode** (sólo en YSF): `◀ ▶` o el knob recorren `V/D-1 → DN → VW`, `menú` guarda, `volver` descarta |
 | Elegir a quién llamar | `SK2 + #` → lista de contactos → `menú`: el **nombre del contacto** se envía como destino |
 | Recorrer los contactos del grupo RX del canal | `▶ ◀` en la pantalla principal |
 | Poner `ALL` (llamada de grupo) | Sin contacto seleccionado, o `#` → **All Call** → `menú` (envía `ALL`) |
@@ -49,11 +54,15 @@ digital y cambiar el modo en el editor del radio; el CPS 0.13.0 no tiene una eti
 | FICH | 20 bytes con FEC, protegidos por interleave; DT, FI, FN, CM, SC (DG-ID), etc. |
 | DCH1 / DCH2 | 20 + 20 bytes por trama; CSD (10 bytes destino + 10 bytes fuente) y datos de voz |
 
-La voz es AMBE+2 de 9 bytes por bloque, el mismo formato que DMR en este firmware:
+La voz depende del DT de la trama:
 
-- **V/D-1 (V/D Mode 1)**: el campo VCH son 9 bytes de AMBE directos, cinco por trama.
-- **DN (V/D-2)**: el campo de 13 bytes se convierte a 9 bytes de AMBE con `ysf_voice_dn_to_frame()` y viceversa.
-- **VW** no se soporta: necesita IMBE de 55 bits y este firmware sólo tiene el vocoder AMBE+2 de 9 bytes.
+- **V/D-1 (DT 0)**: el campo VCH son 9 bytes de AMBE+2 directos, cinco por trama (el mismo formato que DMR).
+- **DN (DT 2)**: el campo de 13 bytes se convierte a 9 bytes de AMBE con `ysf_voice_dn_to_frame()` y viceversa.
+- **VW (DT 3)**: el campo VCH es directamente una trama IMBE de 18 bytes por bloque; se codifica y descodifica con el
+  vocoder IMBE del overlay P25. Sólo se carga el código/tablas del overlay, nunca su BSS: `ckcpu.ld` la comparte con
+  `.ysf_rx`, así que borrarla destruiría el demodulador y la cola PCM en mitad de la llamada. El estado IMBE vive en
+  `.bss` normal; al terminar el frame se devuelve el código AMBE al overlay.
+- **Data FR (DT 1)** no lleva voz.
 
 La secuencia de TX construye cabecera, tramas de comunicación y terminador, con CSD en la cabecera y `ysf_tx_frame_build()`;
 las tramas terminan en la FIFO 4FSK de `p25_phy.c`.
@@ -63,23 +72,26 @@ las tramas terminan en la FIFO 4FSK de `p25_phy.c`.
 - RX: `afrx.c` graba el discriminador a 8 kHz y `ysf_demod.c` (derivado de `p25_demod.c`) busca la sync de 20
   símbolos, con fit de ganancia/DC y ecualizador de 3 taps. Emite dibits alineados al primer símbolo de la sync.
   `ysf_radio.c` los coloca en un anillo de 480, comprueba la sync con `ysf_sync_errors()` y descodifica FICH/DCH.
-- TX: el micrófono se codifica en AMBE+2 (5 bloques por trama) y se envía por la FIFO 4FSK compartida con P25, con
-  el escalado de desviación propio de YSF.
+- TX: el micrófono se codifica en el modo del canal (AMBE+2 para V/D-1 y DN, IMBE para VW; 5 bloques por trama) y se
+  envía por la FIFO 4FSK compartida con P25, con el escalado de desviación propio de YSF. RX elige el codec por el DT
+  recibido (incluso si el canal transmite otro modo) y restaura el camino de TX al terminar la llamada.
 - El estado del receptor (`ysf_demod`, buffers, PCM) vive en `.ysf_bss`, mapeado por `ckcpu.ld` a `.ysf_rx` en
   `__vocoder_ram_end`, compartiendo dirección con NXDN y el receptor DMR en software bajo `OVERLAY_AMBE`.
 
 ## Verificación
 
 - `python3 tools/ysf/run.py`: pruebas host de frame, secuencia TX, voz y demodulador C4FM (modulación RRC → samples →
-  dibits → tramas).
+  dibits → tramas), incluido el round-trip VCH/IMBE de VW y la regresión cruzada V/D-1↔DN↔VW con PCM y PTT posterior.
 - `GCC=gcc python3 tools/radio_fsm/run.py`: regresión de la máquina de estados de radio.
 - `make -C src CROSS=<toolchain>`: firmware compilado y enlazado; el _target_ final `.elf.asm` falla en este entorno
   porque el `objdump` del toolchain no encuentra `libdebuginfod.so.1` (ajeno al cambio).
 
 ## Límites
 
-No hay soporte para VW/IMBE, cifrado, trunking, datos YSF ni base de datos de callsigns. El modo hotspot MMDVM sigue
-siendo sólo DMR. La recepción/transmisión YSF no ha sido probada en el aire todavía.
+No hay soporte para cifrado, trunking, datos YSF (DT 1 sólo se ignora) ni base de datos de callsigns. VW/IMBE está
+implementado y verificado en host, pero suena en el aire todavía no se ha confirmado con el Yaesu; lo mismo vale para
+la selección cruzada de codec. El hotspot MMDVM externo con YSF sí ha aceptado tramas V/D-1 en el parrot local;
+la redistribución en el reflector `AR-BELLVILLE-ARG` sigue sin verificarse.
 
 Para un hotspot MMDVM/Pi-Star externo en YSF: el TX ya emite el preámbulo `0x77` de 200 ms y la trama sigue el formato
 de MMDVM (sync, whitening, FICH y DCH). Hay que igualar la desviación: un canal **narrow** de 12.5 kHz (±1350 Hz)

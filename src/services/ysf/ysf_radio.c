@@ -5,9 +5,11 @@
  *
  * Receive: the modem's discriminator is recorded at 8 kHz by afrx.c; ysf_demod.c (derived from p25_demod.c) locks
  * onto the 20-symbol frame sync and gives one 4-level dibit at a time. 480 dibits make a 100 ms frame, decoded by
- * ysf_frame.c; FICH SC is the DG-ID, and V/D-1 and DN voice blocks (9 bytes of DMR-format AMBE+2, or a DN field
- * converted by ysf_voice.c) go through our vocoder into voice_play.c's 20 ms queue. The demodulator, frame buffers
- * and voice queue live in the vocoder's overlay RAM, as NXDN's do (afrx claims OVERLAY_AMBE).
+ * ysf_frame.c; FICH SC is the DG-ID. V/D-1 and DN voice blocks (9 bytes of DMR-format AMBE+2, or a DN field
+ * converted by ysf_voice.c) go through AMBE; VW's 18-byte blocks go through IMBE. RX follows the DT on the air even
+ * when the channel transmits another mode, and the configured TX path is back before the next PTT. The demodulator,
+ * frame buffers and voice queue live in the vocoder's overlay RAM, as NXDN's do (afrx claims OVERLAY_AMBE): only the
+ * P25 overlay's code is borrowed for IMBE, never its BSS (dmr/vocoder.c overlay_imbe_enter()).
  *
  * Transmit: the mic's 20 ms frames through our AMBE+2 encoder, five per YSF frame, into ysf_tx.c's frame builder
  * (header, communication frames, terminator, CSD callsigns and DG-ID). The 480 dibits of each frame go into the P25
@@ -25,6 +27,7 @@
 #include "radio_hooks.h"
 #include "radio_internal.h"
 #include "p25_phy.h"
+#include "imbe.h"
 #include "codeplug.h"
 #include "ui.h"
 #include "last_heard.h"
@@ -62,6 +65,17 @@ static uint8_t tx_frame[YSF_FRAME_BYTES] OVERLAY_BSS;
 static uint8_t tx_dibits[YSF_FRAME_DIBITS] OVERLAY_BSS;
 static uint8_t tx_ambe[YSF_BLOCKS][9] OVERLAY_BSS;
 static uint8_t tx_field[YSF_BLOCKS][13] OVERLAY_BSS;
+static uint8_t tx_imbe[YSF_BLOCKS][18] OVERLAY_BSS; // VW: one 18-byte IMBE frame per block
+
+// IMBE state must be outside .p25_bss: the code-only overlay load does not clear that RAM, and it overlaps .ysf_rx.
+// Normal .bss, so it survives both overlay loads. RX and TX never run at once in afrx: one union holds either codec.
+static union {
+    imbe_decoder dec;
+    imbe_encoder enc;
+} vw_codec;
+static ysf_voice_path_t voice_path;
+static uint8_t last_codec = YSF_CODEC_NONE;
+static bool vw_tx;
 
 static volatile unsigned rx_start, rx_head, rx_count;
 static volatile bool frame_pending; // a sync was found; wait for the rest of its 480 dibits
@@ -122,6 +136,8 @@ static void call_end(void)
 {
     if (call.active) {
         call.active = false;
+        ysf_voice_path_end(&voice_path); // RX in another mode must not change the configured TX path
+        last_codec = YSF_CODEC_NONE;
         voice_play_end();
         call_publish();
     }
@@ -136,6 +152,21 @@ static void voice(const uint8_t ambe[9])
         return;
     }
     vocoderDecodeFrame(ambe, out);
+    ysf_radio_stats.voice_blocks++;
+    voice_play_put();
+}
+
+// VW: the VCH is already a full 18-byte IMBE frame (Golay/Hamming FEC included). Decode it with the P25 codec,
+// loaded code-only so the YSF buffers in the overlay RAM survive.
+static void voice_vw(const uint8_t imbe18[18])
+{
+    int16_t *out = voice_play_frame();
+
+    if (!out) {
+        ysf_radio_stats.pcm_drops++;
+        return;
+    }
+    imbe_dec_frame(&vw_codec.dec, imbe18, out);
     ysf_radio_stats.voice_blocks++;
     voice_play_put();
 }
@@ -217,22 +248,46 @@ static void receive(void)
     if (f.fi != YSF_FI_COMMUNICATION) {
         return; // the header carries CSD only: its DCH bytes are not voice (the fork does the same)
     }
-    if ((f.dt != YSF_DT_VD_MODE1) && (f.dt != YSF_DT_VD_MODE2)) {
-        return; // VW needs full-rate IMBE, which this tree does not have
+    ysf_codec_t codec = ysf_voice_path_rx(&voice_path, f.dt);
+
+    if (codec == YSF_CODEC_NONE) {
+        return; // Data FR: no voice blocks
+    }
+    // The received DT, not the channel's configured mode, selects the decoder. Borrow the P25 code for VW and put
+    // AMBE back before returning, so a following call or a PTT always finds the normal path (and the PLL/DMR safe).
+    if (codec == YSF_CODEC_IMBE && !overlay_imbe_enter()) {
+        ysf_radio_stats.vw_fails++;
+        return;
+    }
+    if (codec != last_codec) {
+        if (codec == YSF_CODEC_IMBE) {
+            imbe_dec_init(&vw_codec.dec); // overlay code: the state itself lives in normal .bss
+        } else {
+            vocoderReset();
+        }
+        last_codec = (uint8_t)codec;
     }
     for (unsigned b = 0; b < YSF_BLOCKS; b++) {
-        uint8_t ambe[9];
         unsigned len = ysf_voice_get(rx_frame, f.dt, b, rx_voice);
 
         if (!len) {
             continue;
         }
-        if (f.dt == YSF_DT_VD_MODE2) {
-            ysf_voice_dn_to_frame(rx_voice, ambe, NULL);
+        if (codec == YSF_CODEC_IMBE) {
+            voice_vw(rx_voice);
         } else {
-            memcpy(ambe, rx_voice, 9);
+            uint8_t ambe[9];
+
+            if (f.dt == YSF_DT_VD_MODE2) {
+                ysf_voice_dn_to_frame(rx_voice, ambe, NULL);
+            } else {
+                memcpy(ambe, rx_voice, 9);
+            }
+            voice(ambe);
         }
-        voice(ambe);
+    }
+    if (codec == YSF_CODEC_IMBE) {
+        overlay_imbe_exit();
     }
 }
 
@@ -297,11 +352,14 @@ static void on_dibit(void *ctx, int dibit)
 
 static void rx_init(void)
 {
+    overlay_imbe_exit(); // a VW transmission must not leave the IMBE code in the overlay RAM
     ysf_demod_init(&dm, on_dibit, NULL);
     rx_start = rx_head = rx_count = 0;
     frame_pending = false;
     memset(&call, 0, sizeof(call));
     memset(rx_dibits, 0, sizeof(rx_dibits));
+    ysf_voice_path_init(&voice_path, codeplug_ysf_mode(&rs.channel));
+    last_codec = YSF_CODEC_NONE;
     last_frame_at = xTaskGetTickCount();
 }
 
@@ -327,7 +385,9 @@ static void voice_cb(void *ctx, unsigned frame_no, unsigned block, uint8_t *vch,
     if (block >= YSF_BLOCKS) {
         return;
     }
-    if (tx_cfg.dt == YSF_DT_VD_MODE2 && vch_len >= 13) {
+    if (tx_cfg.dt == YSF_DT_VOICE_FR && vch_len >= 18) {
+        memcpy(vch, tx_imbe[block], 18);
+    } else if (tx_cfg.dt == YSF_DT_VD_MODE2 && vch_len >= 13) {
         memcpy(vch, tx_field[block], 13);
     } else if (tx_cfg.dt == YSF_DT_VD_MODE1 && vch_len >= 9) {
         memcpy(vch, tx_ambe[block], 9);
@@ -337,9 +397,11 @@ static void voice_cb(void *ctx, unsigned frame_no, unsigned block, uint8_t *vch,
 static void tx_setup(void)
 {
     char own[YSF_CALLSIGN_LEN + 1];
+    uint8_t mode = codeplug_ysf_mode(&rs.channel);
 
+    ysf_voice_path_init(&voice_path, mode); // TX always uses the channel's mode, never the last RX's
     memset(&tx_cfg, 0, sizeof(tx_cfg));
-    tx_cfg.dt = YSF_DT_VD_MODE1;
+    tx_cfg.dt = mode;
     tx_cfg.dev = (uint8_t)((rs.channel.flag4 & FLAG4_WIDE) ? 0 : 1);
     tx_cfg.cm = YSF_CM_GROUP;
     tx_cfg.mr = YSF_MR_DIRECT;
@@ -377,6 +439,22 @@ static void send_frame(unsigned frame_no)
     ysf_radio_stats.tx_frames++;
 }
 
+// One 100 ms of mic into five voice blocks. VW uses the IMBE code borrowed from the P25 overlay; V/D-1 and DN
+// our AMBE encoder, DN converted into its interleave/whitening by ysf_voice.c.
+static void encode_blocks(void)
+{
+    for (unsigned b = 0; b < YSF_BLOCKS; b++) {
+        if (vw_tx) {
+            imbe_enc_frame18(&vw_codec.enc, &mic[160 * b], tx_imbe[b]);
+        } else {
+            vocoderEncodeFrame(&mic[160 * b], tx_ambe[b]);
+            if (tx_cfg.dt == YSF_DT_VD_MODE2) {
+                ysf_voice_dn_from_frame(tx_ambe[b], tx_field[b]);
+            }
+        }
+    }
+}
+
 static void transmit(void)
 {
     int halves = 0;
@@ -384,6 +462,16 @@ static void transmit(void)
 
     vocoderReset();
     tx_setup();
+    vw_tx = (tx_cfg.dt == YSF_DT_VOICE_FR);
+    if (vw_tx && !overlay_imbe_enter()) { // e.g. another service still owns the overlay: fall back to V/D-1
+        ysf_radio_stats.vw_fails++;
+        tx_cfg.dt = YSF_DT_VD_MODE1;
+        tx_total = ysf_tx_total_frames(&tx_cfg);
+        vw_tx = false;
+    }
+    if (vw_tx) {
+        imbe_enc_init(&vw_codec.enc); // the overlay code is loaded; the state is in normal .bss
+    }
     afrx_fifo_prepare(tx_dev);
 
     // MMDVM (YSFTX.cpp) and the Yaesu air interface key up with 200 ms of 0x77 before the first frame sync;
@@ -399,12 +487,7 @@ static void transmit(void)
 
     // The first encoder output lags one frame; these frames of silence cover it and the FIFO's lead-in.
     memset(mic, 0, sizeof(mic));
-    for (unsigned b = 0; b < YSF_BLOCKS; b++) {
-        vocoderEncodeFrame(&mic[160 * b], tx_ambe[b]);
-        if (tx_cfg.dt == YSF_DT_VD_MODE2) {
-            ysf_voice_dn_from_frame(tx_ambe[b], tx_field[b]);
-        }
-    }
+    encode_blocks(); // the encoder's one-frame lag and the FIFO lead-in
     send_frame(0); // header
     for (unsigned i = 0; i < TX_PREFILL; i++) {
         while ((tx_frame_no + 2) >= tx_total) { // keep a terminator slot after the communication frames
@@ -436,12 +519,7 @@ static void transmit(void)
             continue;
         }
         halves = 0;
-        for (unsigned b = 0; b < YSF_BLOCKS; b++) {
-            vocoderEncodeFrame(&mic[160 * b], tx_ambe[b]);
-            if (tx_cfg.dt == YSF_DT_VD_MODE2) {
-                ysf_voice_dn_from_frame(tx_ambe[b], tx_field[b]);
-            }
-        }
+        encode_blocks();
         while ((tx_frame_no + 2) >= tx_total) {
             tx_cfg.cycles++;
             tx_total = ysf_tx_total_frames(&tx_cfg);
@@ -453,6 +531,10 @@ static void transmit(void)
     }
     if (keyed) {
         send_frame(tx_total - 1); // terminator
+    }
+    if (vw_tx) {
+        overlay_imbe_exit(); // restore the configured/AMBE path before rx_init() and the next PTT
+        vw_tx = false;
     }
     ysf_radio_stats.tx_underruns = afrx_fifo_finish(keyed);
 }

@@ -68,6 +68,7 @@ enum {
     ITEM_DMR_ID,
     ITEM_COLOUR_CODE,
     ITEM_YSF_SSID,
+    ITEM_YSF_MODE,
     ITEM_TIMESLOT,
     ITEM_TG_LIST,
     ITEM_CONTACT,
@@ -340,6 +341,7 @@ static void change(int item, int direction, bool fast, uint8_t modifiers)
             if (edit->mode == CODEPLUG_MODE_YSF) {
                 codeplug_set_ysf_dgid(edit, codeplug_ysf_dgid(edit)); // another mode's byte: a DG-ID
                 codeplug_set_ysf_ssid(edit, codeplug_ysf_ssid(edit)); // and the unused byte: an SSID
+                codeplug_set_ysf_mode(edit, codeplug_ysf_mode(edit)); // flag3: V/D-1, DN or VW
             }
             break;
         case ITEM_COLOUR_CODE:
@@ -369,6 +371,22 @@ static void change(int item, int direction, bool fast, uint8_t modifiers)
 
                 step_value(&ssid, direction, 0, CODEPLUG_YSF_SSID_MAX);
                 codeplug_set_ysf_ssid(edit, ssid);
+            }
+            break;
+        case ITEM_YSF_MODE:
+            if (is_ysf()) {
+                static const uint8_t modes[] = { CODEPLUG_YSF_MODE_VD1, CODEPLUG_YSF_MODE_DN, CODEPLUG_YSF_MODE_VW };
+                uint8_t mode = codeplug_ysf_mode(edit);
+                unsigned i = 0;
+
+                while ((i < sizeof(modes)) && (modes[i] != mode)) {
+                    i++;
+                }
+                if (i == sizeof(modes)) {
+                    i = 0;
+                }
+                i = (i + (direction > 0 ? 1 : sizeof(modes) - 1)) % sizeof(modes);
+                codeplug_set_ysf_mode(edit, modes[i]);
             }
             break;
         case ITEM_TIMESLOT:
@@ -486,6 +504,7 @@ static void format_item(int item, char *label, size_t label_size, char *out, siz
         [ITEM_COLOUR_CODE] = TEXT_COLOUR_CODE,
         [ITEM_TIMESLOT] = TEXT_TIMESLOT,
         [ITEM_YSF_SSID] = TEXT_N_A,
+        [ITEM_YSF_MODE] = TEXT_N_A,
         [ITEM_TG_LIST] = TEXT_TG_LIST,
         [ITEM_CONTACT] = TEXT_CONTACT,
         [ITEM_BANDWIDTH] = TEXT_BANDWIDTH,
@@ -575,6 +594,17 @@ static void format_item(int item, char *label, size_t label_size, char *out, siz
                 snprintf(out, size, "-%u", codeplug_ysf_ssid(edit));
             } else {
                 snprintf(out, size, "%s", text(TEXT_NONE));
+            }
+            break;
+        case ITEM_YSF_MODE:
+            snprintf(label, label_size, "YSF Mode");
+            if (!is_ysf()) {
+                snprintf(out, size, "%s", na);
+            } else {
+                uint8_t mode = codeplug_ysf_mode(edit);
+
+                snprintf(out, size, "%s", (mode == CODEPLUG_YSF_MODE_VD1) ? "V/D-1" :
+                                          (mode == CODEPLUG_YSF_MODE_DN) ? "DN" : "VW");
             }
             break;
         case ITEM_TIMESLOT:

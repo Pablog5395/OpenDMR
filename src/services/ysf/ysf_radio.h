@@ -31,6 +31,7 @@ typedef struct {
     uint32_t underruns;    // playback underruns
     uint32_t tx_frames;    // frames put into the transmit FIFO
     uint32_t tx_underruns; // transmit FIFO underruns
+    uint32_t vw_fails;     // VW frames dropped: the IMBE overlay could not be loaded
 } ysf_radio_stats_t;
 
 extern volatile ysf_radio_stats_t ysf_radio_stats;

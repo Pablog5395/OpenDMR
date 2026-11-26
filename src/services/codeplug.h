@@ -202,6 +202,29 @@ static inline void codeplug_set_ysf_ssid(codeplug_channel_t *channel, uint8_t ss
     channel->unused2 = (uint8_t)(CODEPLUG_YSF_SSID_TAG | ((ssid <= CODEPLUG_YSF_SSID_MAX) ? ssid : 0));
 }
 
+// The YSF voice/data mode: the FICH DT itself (0 = V/D-1, 2 = DN, 3 = VW), tagged with 0xC0 in flag3, a byte
+// nothing else in the firmware or the CPS writes. A blank/CPS channel starts in V/D-1. Data FR (DT 1) carries no
+// voice and is not offered; an unknown value falls back to V/D-1.
+#define CODEPLUG_YSF_MODE_TAG     0xC0
+#define CODEPLUG_YSF_MODE_VD1     0 // YSF_DT_VD_MODE1
+#define CODEPLUG_YSF_MODE_DN      2 // YSF_DT_VD_MODE2
+#define CODEPLUG_YSF_MODE_VW      3 // YSF_DT_VOICE_FR
+#define CODEPLUG_YSF_MODE_DEFAULT CODEPLUG_YSF_MODE_VD1
+static inline uint8_t codeplug_ysf_mode(const codeplug_channel_t *channel)
+{
+    uint8_t mode = (channel->flag3 & 0xF0) == CODEPLUG_YSF_MODE_TAG ? (uint8_t)(channel->flag3 & 0x0F) : 0;
+
+    return (mode == CODEPLUG_YSF_MODE_VD1 || mode == CODEPLUG_YSF_MODE_DN || mode == CODEPLUG_YSF_MODE_VW)
+               ? mode : CODEPLUG_YSF_MODE_DEFAULT;
+}
+static inline void codeplug_set_ysf_mode(codeplug_channel_t *channel, uint8_t mode)
+{
+    if (mode != CODEPLUG_YSF_MODE_DN && mode != CODEPLUG_YSF_MODE_VW) {
+        mode = CODEPLUG_YSF_MODE_DEFAULT;
+    }
+    channel->flag3 = (uint8_t)(CODEPLUG_YSF_MODE_TAG | mode);
+}
+
 typedef struct {
     char name[CODEPLUG_NAME_LENGTH];
     uint16_t channels[CODEPLUG_ZONE_CHANNELS]; // channel numbers (1 ..), 0 after the last one

@@ -16,8 +16,9 @@
 // proven against MMDVMHost (see the test), the parameter semantics are not:
 // no public YSF voice vector or air capture exists to prove them against.
 //
-// VW (DT 3) is not ported: it needs IMBE full-rate voice, which opendmr's
-// vocoder tree does not expose (only the AMBE+2 half-rate frame layer).
+// VW (DT 3) carries one 18-byte IMBE full-rate frame per block, straight from
+// the VCH. On the radio it is decoded/encoded by the P25 overlay's IMBE codec
+// (dmr/vocoder.c overlay_imbe_enter()); the host tests use p25/c/imbe.
 #ifndef YSF_VOICE_H
 #define YSF_VOICE_H
 #include <stdbool.h>
@@ -47,6 +48,24 @@ void ysf_voice_dn_to_frame(const uint8_t field[13], uint8_t frame9[9], unsigned 
 // 9-byte DMR-format AMBE frame -> DN voice field: ambeFecDecode, triplicate
 // the first 27 parameters, whiten, interleave. The pad bit is sent as 0.
 void ysf_voice_dn_from_frame(const uint8_t frame9[9], uint8_t field[13]);
+
+// Which vocoder a data type needs: V/D-1 and DN are half-rate AMBE+2, VW is
+// full-rate IMBE, Data FR has no voice at all.
+typedef enum { YSF_CODEC_NONE = 0, YSF_CODEC_AMBE, YSF_CODEC_IMBE } ysf_codec_t;
+ysf_codec_t ysf_codec_for_dt(uint8_t dt);
+
+// The receive path follows the DT on the air even when this channel transmits
+// another mode. Ending the call (or starting a PTT) gives the configured path
+// back. The switching itself is in ysf_radio.c; keeping the decision here lets
+// the host tests exercise cross-mode calls without the radio's overlay RAM.
+typedef struct {
+    uint8_t configured; // channel DT
+    uint8_t active;     // DT of the call being received, 0xFF between calls
+} ysf_voice_path_t;
+void ysf_voice_path_init(ysf_voice_path_t *p, uint8_t configured_dt);
+ysf_codec_t ysf_voice_path_rx(ysf_voice_path_t *p, uint8_t received_dt);
+ysf_codec_t ysf_voice_path_end(ysf_voice_path_t *p);
+ysf_codec_t ysf_voice_path_tx(const ysf_voice_path_t *p);
 
 #ifdef __cplusplus
 }
