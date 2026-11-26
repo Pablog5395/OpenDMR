@@ -10,14 +10,16 @@
 #include "ysf_tx.h"
 #include <string.h>
 
-// Number of communication frames in one cycle. With no auxiliary data,
-// Yaesu Tables 4-3/4-4 rotate only the CSD frames; adding empty DT frames
-// would misstate FT and delay the repeated source callsign.
+// Number of communication frames in one cycle. V/D-1 with no auxiliary data
+// rotates only CSD1/CSD2/CSD3 (FN0..2). DN always includes one DT1 unit,
+// even on a voice-only call: a real Yaesu-originated DN frame uses FN0..6
+// with FT=6, where FN6 is DT1. Without it our DN cycle had FT=5 and repeated
+// the source callsign one frame early.
 static unsigned cc_frames(const ysf_tx_config *cfg)
 {
 	switch (cfg->dt) {
 	case YSF_DT_VD_MODE1: return cfg->data ? 8u : 3u;
-	case YSF_DT_VD_MODE2: return cfg->data ? 8u : 6u;
+	case YSF_DT_VD_MODE2: return 7u;
 	case YSF_DT_DATA_FR: case YSF_DT_VOICE_FR: return 8u;
 	default: return 0;
 	}
@@ -140,9 +142,13 @@ bool ysf_tx_frame_build(const ysf_tx_config *cfg, unsigned frame_no, uint8_t fra
 	f.sql = cfg->sql;
 	f.sc = cfg->dgid;
 // Header and terminator: FI 0 / 2, FN 0, CSD1 + CSD2, mode-independent.
+// FT still announces this mode's last FN (6 for DN);
+// VW's header/terminator keep FT=0, as its cycle has no data units.
 	if (frame_no == 0 || frame_no == total - 1) {
 		f.fi = frame_no == 0 ? YSF_FI_HEADER : YSF_FI_TERMINATOR;
 		f.fn = 0;
+		if (cfg->dt != YSF_DT_VOICE_FR)
+			f.ft = (uint8_t)(cc_count - 1u);
 		uint8_t d1[20], d2[20];
 		csd1(cfg, d1);
 		csd2(cfg, d2);

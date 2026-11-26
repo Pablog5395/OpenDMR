@@ -18,10 +18,11 @@
 // sending silence when the talker has not spoken yet.
 //
 // Frame sequence (Yaesu Fig. 4-1; MMDVM YSFControl.cpp / YSFPayload.cpp):
-// one header (FI 0), eight communication frames (FI 1, FN 0..7), one
+// one header (FI 0), a mode-dependent communication block (FI 1), one
 // terminator (FI 2). Longer transmissions repeat the communication block
-// (cycles > 1). FICH: FT gives the last FN and BN/BT are 0; DT is
-// the configured mode on every frame; Dev selects Wide (0) / Narrow (1);
+// (cycles > 1). FICH: FT gives the last FN of the cycle (also on the header
+// and terminator, as observed in DN frames), BN/BT are 0; DT is the
+// configured mode on every frame; Dev selects Wide (0) / Narrow (1);
 // SC is the DG-ID.
 //
 // DCH rotation per mode (Yaesu Tables 4-3/4-4; MMDVM processVDMode1Data /
@@ -29,7 +30,8 @@
 //   V/D-1 (DT 0): FN0=CSD1 (Dest+Src), FN1=CSD2 (Down+Up), FN2=CSD3
 //     (Rem1+Rem2), FN3..7 = data DT1..DT5 (20 bytes each).
 //   DN (DT 2): FN0=Dest, FN1=Src, FN2=Down, FN3=Up, FN4=Rem1+Rem2 (5 bytes
-//     each), FN5=Rem3+Rem4, FN6/7 = data DT1/DT2 (10 bytes each).
+//     each), FN5=Rem3+Rem4, FN6=data DT1 (10 bytes). A voice-only call still
+//     sends FN6, so the cycle is FN0..6 / FT=6; a DT1 callback fills it.
 //   Data FR (DT 1): FN0: DCH-1=CSD1, DCH-2=CSD2; FN1: DCH-1=CSD3,
 //     DCH-2=DT1; FN2..7: DCH-1/DCH-2 = DT2/DT3 .. DT12/DT13 (20 bytes each).
 //   VW (DT 3): optionally send CSD3 and two voice blocks in the first CC
@@ -56,8 +58,8 @@ extern "C" {
 #endif
 
 // Data units: the data callback fills one unit (20 bytes; DN uses the first
-// 10). index counts DT units from 0 (DT1): V/D-1 FN3..7 -> 0..4, DN FN6/7 ->
-// 0..1, Data FR FN1 DCH-2 .. FN7 DCH-2 -> 0..12.
+// 10). index counts DT units from 0 (DT1): V/D-1 FN3..7 -> 0..4, DN FN6 ->
+// 0, Data FR FN1 DCH-2 .. FN7 DCH-2 -> 0..12.
 typedef void (*ysf_tx_data_fn)(void *ctx, unsigned index, uint8_t out[20]);
 // Voice blocks: fills one 20 ms block's voice bytes (vch_len: 9 V/D-1,
 // 13 DN, 18 VW). frame_no is the sequence frame number (1..8*cycles,
@@ -94,8 +96,8 @@ typedef struct {
 void ysf_tx_source_field(char out[YSF_CALLSIGN_LEN], const char *call, unsigned ssid);
 
 // Total frames: header + cycles of the mode's CSD/data sequence + terminator.
-// Voice-only V/D-1 cycles have 3 CC frames; DN has 6; cycles with data and the
-// FR modes have 8.
+// Voice-only V/D-1 cycles have 3 CC frames; DN has 7 (FN0..6); cycles with
+// data and the FR modes have 8.
 unsigned ysf_tx_total_frames(const ysf_tx_config *cfg);
 
 // Build one frame of the sequence: frame_no 0 = header, followed by the
