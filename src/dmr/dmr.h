@@ -53,6 +53,7 @@ bool dmr_is_transmitting(void); // asked or still ending
 bool dmr_has_sync(void);        // a DMR signal's timeslots found (scan; kept after the signal)
 bool dmr_channel_busy(void);    // a DMR call on the channel now (its timeslots followed)
 bool dmr_repeater_failed(void); // the repeater didn't wake up
+bool dmr_repeater_waking(void); // still waiting for it: no voice path to consume TX frames
 
 // APRS over DMR: one LRRP position report to a gateway, reusing the current DMR channel. Coordinates are 1e-7 degrees.
 // A data transmission (dmr_data.h: APRS, text messages): queued for the radio's next chance (repeater mode: woken
