@@ -1015,6 +1015,13 @@ static void draw(void)
         panel.line_right = cc_text;
         bottom.mode = "M17";
         bottom.item2 = "12.5K";
+    } else if (channel.mode == CODEPLUG_MODE_YSF) {
+        // YSF Fusion: the DG-ID on the line, as NXDN's RAN
+        snprintf(cc_text, sizeof(cc_text), "DG-ID %u", (unsigned)codeplug_ysf_dgid(&channel));
+        panel.line_icon = ICONS_TALKGROUP;
+        panel.line_right = cc_text;
+        bottom.mode = "YSF";
+        bottom.item2 = "12.5K";
     } else {
         uint16_t tone = (channel.rx_tone != CODEPLUG_CSS_NONE) ? channel.rx_tone : channel.tx_tone;
 

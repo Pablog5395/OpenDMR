@@ -1072,6 +1072,13 @@ static void draw(void)
         snprintf(buffer, sizeof(buffer), "CAN %u", (unsigned)codeplug_m17_can(v));
         draw_text(FB_WIDTH - WIDGET_MARGIN, TONE_Y + 2, buffer, &font_roboto17, FONT_ALIGN_RIGHT,
                   THEME_COLOUR_TEXT_LABEL);
+    } else if (v->mode == CODEPLUG_MODE_YSF) {
+        // YSF Fusion: to ALL, the DG-ID on its line
+        icons_draw(WIDGET_MARGIN, TONE_Y + 3, ICONS_TALKGROUP, THEME_COLOUR_TEXT_LABEL);
+        draw_text(VALUE_X, TONE_Y, text(TEXT_ALL), &font_roboto20, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
+        snprintf(buffer, sizeof(buffer), "DG-ID %u", (unsigned)codeplug_ysf_dgid(v));
+        draw_text(FB_WIDTH - WIDGET_MARGIN, TONE_Y + 2, buffer, &font_roboto17, FONT_ALIGN_RIGHT,
+                  THEME_COLOUR_TEXT_LABEL);
     } else {
         uint16_t tone = ((v->rx_tone != CODEPLUG_CSS_NONE) ? v->rx_tone : v->tx_tone);
 
