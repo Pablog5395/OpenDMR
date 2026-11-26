@@ -114,6 +114,11 @@ The radio starts in channel mode (in the VFO when it was left there).
 | Go to the VFO | Back key |
 | Menu of the channel | Menu key |
 | Channel details | SK2 + menu key, or the first row of the menu |
+| Set a temporary target (incl. All Call) | `#` cycles TG → PC → All Call → contact; menu key takes it |
+
+**All Call**: on the channel screen press `#` until `All Call`, then the menu key: the channel transmits to all for
+now (until you change channel, go to the VFO or power off). On a YSF channel All Call sends `ALL` as the destination
+and keeps the channel's DG-ID; with no contact picked the target is `ALL` too. See [9](#9-contacts-and-who-you-call).
 
 ### Channel quick menu (menu key)
 
