@@ -55,7 +55,7 @@ All of these can be changed in Options → Key settings (see [12](#12-lock-quick
 | # long | Reverse repeater (channel mode only) | Same |
 | * | Timeslot | Bandwidth 12.5 / 25 kHz |
 | * long | Back to the channel's (VFO's) own timeslot | — |
-| SK1 + * | Mode: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 | Same |
+| SK1 + * | Mode: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 → YSF | Same |
 | ▶ / ◀ | Talk group + / − (through the RX group list) | Squelch + / − |
 | SK2 + ▶ / ◀ | Power + / − | Same |
 | SK2 + ▶ long | User power | Same |
@@ -140,7 +140,7 @@ opened and closes it. The VFO quick menu works the same.
 
 <img src="manual/en/channel-details.png" alt="Channel details 1"> <img src="manual/en/channel-details-2.png" alt="Channel details 2"> <img src="manual/en/channel-details-3.png" alt="Channel details 3"> <img src="manual/en/channel-details-4.png" alt="Channel details 4">
 
-Name, receive and transmit frequencies, mode, DMR ID, colour code (the NAC on a P25 channel, the RAN on an NXDN channel, the CAN on an M17 channel), timeslot, TG list, contact, receive and transmit
+Name, receive and transmit frequencies, mode, DMR ID, colour code (the NAC on a P25 channel, the RAN on an NXDN channel, the CAN on an M17 channel, the DG-ID on a YSF channel), timeslot, TG list, contact, receive and transmit
 CTCSS/DCS, bandwidth, step, transmit timeout, Rx only, zone skip, all skip, VOX, channel power, squelch, beep, eco,
 talker alias transmit on TS1 / TS2, APRS configuration.
 
@@ -166,7 +166,7 @@ and B): **hold the back key** to switch, or choose in the VFO menu.
 | Choose the receive / the transmit frequency | SK2 + ▲ / SK2 + ▼ |
 | Type a frequency | Digits (e.g. `43500000`: it is set after the 8th digit, or with the menu key; the back key deletes one) |
 | Swap Rx and Tx while held | SK1 + SK2 |
-| Mode: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 | SK1 + * |
+| Mode: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 → YSF | SK1 + * |
 | Squelch (FM, AM, SSB) / talk group (DMR, P25, NXDN) | ▶ ◀ |
 
 Both frequencies are shown large: the receive one with `RX` (green) on its right, the transmit one with `TX` (red).
@@ -221,6 +221,21 @@ comes the target, `ALL`, with the CAN on the right of its line (e.g. `CAN 0`).
 - **The voice quality is not yet what we want**: Codec 2 3200 itself sounds duller than the AMBE+2 of DMR and NXDN,
   with less treble.
 - CPS 0.10.0 and later support M17 channels (mode, CAN).
+
+**YSF** (Yaesu Fusion / C4FM, 12.5 kHz, conventional simplex voice, clear): the bottom bar shows `YSF` and
+`12.5K`; below the frequency comes the target transmitted to, `ALL` by default, with the DG-ID on the right of the
+status bar.
+
+- The **DG-ID** (0 - 99, 0 by default) works like DMR's colour code: only calls with the same DG-ID are received;
+  0 receives them all (and transmits 0). It is set in the channel details (on a YSF channel the colour code row
+  becomes the DG-ID). It is carried in the FICH of every frame.
+- The **target** is the contact's name, or `ALL` for a group call; your callsign (General options in the CPS) is
+  sent as the source. A received call shows the caller's callsign in large letters, the destination over the S
+  meter, and the DG-ID in the status bar; it also goes into Last heard.
+- Receive: the discriminator is recorded and demodulated in software, as NXDN; transmit: our own AMBE+2 encoder
+  and YSF V/D-1 frames, at ±1350 Hz deviation on narrow channels and ±2700 Hz on wide ones.
+- V/D-1 and DN (V/D-2) voice are supported; VW (IMBE) is not, since this firmware has no IMBE vocoder. Wire
+  mode order: FM, AM, USB, LSB, DMR, P25, NXDN, M17, YSF. See [docs/ysf.md](ysf.md) for the frame details.
 
 ### VFO quick menu (menu key)
 
@@ -314,7 +329,7 @@ While transmitting:
   The menu key on a row unlocks it, the last row unlocks them all.
 - Radio options: Scan delay (how long it stays), Scan dwell (the time on each channel / frequency), Scan mode (Hold /
   Pause / Stop), Scan On Boot.
-- DMR, P25 and NXDN channels take at least 50 ms each; where the signal strength rises over the noise, the scan waits up to
+- DMR, P25, NXDN and YSF channels take at least 50 ms each; where the signal strength rises over the noise, the scan waits up to
   0.4 s for the DMR sync (P25: a data unit), then up to 3 s for the audio, so it also stops in the middle of a call.
 
 ---
@@ -766,4 +781,6 @@ firmware: see the README.
   ID to callsign database yet.
 - M17: simplex voice and text messages only (no other packet data, no encryption), always to ALL; the voice is duller than DMR / NXDN (Codec 2
   3200).
-- Not fully tested on the air yet: the hotspot's CW ID, satellite passes, talkaround, distance sort.
+- YSF: simplex V/D-1 and DN voice in the clear only (no VW/IMBE, encryption, trunking or data); no callsign database
+  yet. The MMDVM hotspot mode remains DMR-only.
+- Not fully tested on the air yet: YSF, the hotspot's CW ID, satellite passes, talkaround, distance sort.

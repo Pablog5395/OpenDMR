@@ -1,0 +1,59 @@
+# YSF (Fusion / C4FM) en OpenDMR
+
+Esta página resume la implementación de YSF6148 (Yaesu Fusion, C4FM) en la rama `feature/ysf-mode`. El código del
+protocolo viene del fork [DM32-nxdn-p25](https://github.com/) (lyra XE1POC, GPL-3.0-or-later); la capa física y la
+integración con la radio son las de OpenDMR.
+
+## Modo y canal
+
+- `CODEPLUG_MODE_YSF = 8`, etiqueta de canal opendmr `0xA7`. El editor de canal muestra la fila de **DG-ID** donde
+  otros modos muestran el colour code / NAC / RAN / CAN: el byte se comparte en la estructura del codeplug.
+- Ciclo de la tecla de modo: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 → **YSF**.
+- DG-ID 0 – 99 (0 = «recibir todo», transmitir 0). Se envía en el FICH (`SC`) de cada trama; en recepción actúa como
+  un squelch digital.
+- El destino de TX es el nombre del contacto (o `ALL`); la fuente es el indicativo (callsign) de «General» en el CPS.
+- El panel QSO muestra el callsign en grande, el destino sobre el S-meter y el DG-ID en la barra de estado. El
+  escaneo usa `SCAN_YSF` (mismo `heard_within()` que NXDN).
+
+## Capa física y trama
+
+| Parámetro | Valor |
+|---|---|
+| Modulación | 4FSK (C4FM), 4800 símbolos/s, RRC α = 0.2 |
+| Ancho de canal | 12.5 kHz; desviación ±1350 Hz (narrow) o ±2700 Hz (wide) |
+| Trama | 100 ms = 480 dibits = 120 bytes = 5 bloques de 20 ms |
+| Sync | `D471C9634D`, 20 símbolos, al inicio de cada trama (20 dibits con hasta 4 errores) |
+| FICH | 20 bytes con FEC, protegidos por interleave; DT, FI, FN, CM, SC (DG-ID), etc. |
+| DCH1 / DCH2 | 20 + 20 bytes por trama; CSD (10 bytes destino + 10 bytes fuente) y datos de voz |
+
+La voz es AMBE+2 de 9 bytes por bloque, el mismo formato que DMR en este firmware:
+
+- **V/D-1 (V/D Mode 1)**: el campo VCH son 9 bytes de AMBE directos, cinco por trama.
+- **DN (V/D-2)**: el campo de 13 bytes se convierte a 9 bytes de AMBE con `ysf_voice_dn_to_frame()` y viceversa.
+- **VW** no se soporta: necesita IMBE de 55 bits y este firmware sólo tiene el vocoder AMBE+2 de 9 bytes.
+
+La secuencia de TX construye cabecera, tramas de comunicación y terminador, con CSD en la cabecera y `ysf_tx_frame_build()`;
+las tramas terminan en la FIFO 4FSK de `p25_phy.c`.
+
+## Recepción y transmisión en el firmware
+
+- RX: `afrx.c` graba el discriminador a 8 kHz y `ysf_demod.c` (derivado de `p25_demod.c`) busca la sync de 20
+  símbolos, con fit de ganancia/DC y ecualizador de 3 taps. Emite dibits alineados al primer símbolo de la sync.
+  `ysf_radio.c` los coloca en un anillo de 480, comprueba la sync con `ysf_sync_errors()` y descodifica FICH/DCH.
+- TX: el micrófono se codifica en AMBE+2 (5 bloques por trama) y se envía por la FIFO 4FSK compartida con P25, con
+  el escalado de desviación propio de YSF.
+- El estado del receptor (`ysf_demod`, buffers, PCM) vive en `.ysf_bss`, mapeado por `ckcpu.ld` a `.ysf_rx` en
+  `__vocoder_ram_end`, compartiendo dirección con NXDN y el receptor DMR en software bajo `OVERLAY_AMBE`.
+
+## Verificación
+
+- `python3 tools/ysf/run.py`: pruebas host de frame, secuencia TX, voz y demodulador C4FM (modulación RRC → samples →
+  dibits → tramas).
+- `GCC=gcc python3 tools/radio_fsm/run.py`: regresión de la máquina de estados de radio.
+- `make -C src CROSS=<toolchain>`: firmware compilado y enlazado; el _target_ final `.elf.asm` falla en este entorno
+  porque el `objdump` del toolchain no encuentra `libdebuginfod.so.1` (ajeno al cambio).
+
+## Límites
+
+No hay soporte para VW/IMBE, cifrado, trunking, datos YSF ni base de datos de callsigns. El modo hotspot MMDVM sigue
+siendo sólo DMR. La recepción/transmisión YSF no ha sido probada en el aire todavía.

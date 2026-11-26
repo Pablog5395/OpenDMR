@@ -456,7 +456,8 @@ static void scan_range(uint32_t *low, uint32_t *high)
 static scan_kind_t scan_kind(void)
 {
     return (vfo()->mode == CODEPLUG_MODE_DMR) ? SCAN_DMR : (vfo()->mode == CODEPLUG_MODE_P25) ? SCAN_P25
-         : (vfo()->mode == CODEPLUG_MODE_NXDN) ? SCAN_NXDN : SCAN_ANALOG;
+         : (vfo()->mode == CODEPLUG_MODE_NXDN) ? SCAN_NXDN
+         : (vfo()->mode == CODEPLUG_MODE_YSF) ? SCAN_YSF : SCAN_ANALOG;
 }
 
 static uint32_t scan_dwell(void)
@@ -985,6 +986,7 @@ static void draw(void)
     dmr_call_t call;
     p25_call_t p25;
     nxdn_call_t nxdn;
+    ysf_call_t ysf;
     m17_call_t m17;
 
     if ((v->mode == CODEPLUG_MODE_DMR) && !digit_entry_active(&entry) && dmr_call(&call)) {
@@ -1005,6 +1007,11 @@ static void draw(void)
     if ((v->mode == CODEPLUG_MODE_M17) && !digit_entry_active(&entry) && m17_radio_call(&m17) && m17.src[0]) {
         snprintf(buffer, sizeof(buffer), "VFO %c", (vfo_screen_current() == 0) ? 'A' : 'B');
         qso_panel_draw_m17(&m17, buffer, power_text(v));
+        return;
+    }
+    if ((v->mode == CODEPLUG_MODE_YSF) && !digit_entry_active(&entry) && ysf_radio_call(&ysf)) {
+        snprintf(buffer, sizeof(buffer), "VFO %c", (vfo_screen_current() == 0) ? 'A' : 'B');
+        qso_panel_draw_ysf(&ysf, buffer, power_text(v));
         return;
     }
     draw_status_bar(v);

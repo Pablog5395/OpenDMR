@@ -361,7 +361,8 @@ codeplug_channel_t *channel_screen_edit(void)
 static scan_kind_t scan_kind(void)
 {
     return (channel.mode == CODEPLUG_MODE_DMR) ? SCAN_DMR : (channel.mode == CODEPLUG_MODE_P25) ? SCAN_P25
-         : (channel.mode == CODEPLUG_MODE_NXDN) ? SCAN_NXDN : SCAN_ANALOG;
+         : (channel.mode == CODEPLUG_MODE_NXDN) ? SCAN_NXDN
+         : (channel.mode == CODEPLUG_MODE_YSF) ? SCAN_YSF : SCAN_ANALOG;
 }
 
 static uint32_t scan_dwell(void)
@@ -905,6 +906,7 @@ static void draw(void)
     dmr_call_t call;
     p25_call_t p25;
     nxdn_call_t nxdn;
+    ysf_call_t ysf;
     m17_call_t m17;
 
     if ((channel.mode == CODEPLUG_MODE_DMR) && dmr_call(&call)) {
@@ -925,6 +927,11 @@ static void draw(void)
     if ((channel.mode == CODEPLUG_MODE_M17) && m17_radio_call(&m17) && m17.src[0]) {
         format_names(zone_text, sizeof(zone_text), name, sizeof(name));
         qso_panel_draw_m17(&m17, name, power_text());
+        return;
+    }
+    if ((channel.mode == CODEPLUG_MODE_YSF) && ysf_radio_call(&ysf)) {
+        format_names(zone_text, sizeof(zone_text), name, sizeof(name));
+        qso_panel_draw_ysf(&ysf, name, power_text());
         return;
     }
     meter.active = true;
