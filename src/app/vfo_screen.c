@@ -1080,9 +1080,10 @@ static void draw(void)
         draw_text(FB_WIDTH - WIDGET_MARGIN, TONE_Y + 2, buffer, &font_roboto17, FONT_ALIGN_RIGHT,
                   THEME_COLOUR_TEXT_LABEL);
     } else if (v->mode == CODEPLUG_MODE_YSF) {
-        // YSF Fusion: to ALL, the DG-ID on its line
+        // YSF Fusion: the destination (a contact's callsign, or ALL), the DG-ID on its line, right
         icons_draw(WIDGET_MARGIN, TONE_Y + 3, ICONS_TALKGROUP, THEME_COLOUR_TEXT_LABEL);
-        draw_text(VALUE_X, TONE_Y, text(TEXT_ALL), &font_roboto20, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
+        draw_text(VALUE_X, TONE_Y, target.name[0] ? target.name : "ALL", &font_roboto20, FONT_ALIGN_LEFT,
+                  THEME_COLOUR_TEXT);
         snprintf(buffer, sizeof(buffer), "DG-ID %u", (unsigned)codeplug_ysf_dgid(v));
         draw_text(FB_WIDTH - WIDGET_MARGIN, TONE_Y + 2, buffer, &font_roboto17, FONT_ALIGN_RIGHT,
                   THEME_COLOUR_TEXT_LABEL);

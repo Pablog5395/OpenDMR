@@ -1023,9 +1023,10 @@ static void draw(void)
         bottom.mode = "M17";
         bottom.item2 = "12.5K";
     } else if (channel.mode == CODEPLUG_MODE_YSF) {
-        // YSF Fusion: the DG-ID on the line, as NXDN's RAN
+        // YSF Fusion: the destination (a contact's callsign, or ALL) on the line, the DG-ID on the right
         snprintf(cc_text, sizeof(cc_text), "DG-ID %u", (unsigned)codeplug_ysf_dgid(&channel));
         panel.line_icon = ICONS_TALKGROUP;
+        panel.line_text = target.name[0] ? target.name : "ALL";
         panel.line_right = cc_text;
         bottom.mode = "YSF";
         bottom.item2 = "12.5K";

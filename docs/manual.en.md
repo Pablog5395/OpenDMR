@@ -226,12 +226,17 @@ comes the target, `ALL`, with the CAN on the right of its line (e.g. `CAN 0`).
 `12.5K`; below the frequency comes the target transmitted to, `ALL` by default, with the DG-ID on the right of the
 status bar.
 
-- The **DG-ID** (0 - 99, 0 by default) works like DMR's colour code: only calls with the same DG-ID are received;
-  0 receives them all (and transmits 0). It is set in the channel details (on a YSF channel the colour code row
-  becomes the DG-ID). It is carried in the FICH of every frame.
+- The **DG-ID** (0 - 127 in the editor; a Yaesu uses 0 - 99, 0 by default) works like DMR's colour code: only calls
+  with the same DG-ID are received; 0 receives them all (and transmits 0). In the channel details, ▲ ▼ select the
+  DG-ID row (the colour code row on other modes), ◀ ▶ or the knob change it by 1, the menu key saves. It is carried
+  in the FICH of every frame.
 - The **target** is the contact's name, or `ALL` for a group call; your callsign (General options in the CPS) is
-  sent as the source. A received call shows the caller's callsign in large letters, the destination over the S
-  meter, and the DG-ID in the status bar; it also goes into Last heard.
+  sent as the source. The line under the frequency shows the destination and `DG-ID n`. A received call shows the
+  caller's callsign in large letters, the destination over the S meter, and the DG-ID in the status bar; it also
+  goes into Last heard.
+- **Keys**: `SK1 + *` steps to YSF; `SK2 + #` picks a contact (its name is sent as the destination); `▶ ◀` steps
+  through the channel's RX group; `#` → All Call → menu key sends `ALL`. With no contact picked, the target is `ALL`.
+  Use contacts with callsign names: a numeric TG/PC goes on the air as `TG n` / `PC n`.
 - Receive: the discriminator is recorded and demodulated in software, as NXDN; transmit: our own AMBE+2 encoder
   and YSF V/D-1 frames, at ±1350 Hz deviation on narrow channels and ±2700 Hz on wide ones.
 - V/D-1 and DN (V/D-2) voice are supported; VW (IMBE) is not, since this firmware has no IMBE vocoder. Wire
