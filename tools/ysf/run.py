@@ -1,4 +1,4 @@
-"""Builds and runs the host test for the YSF frame, TX sequence and voice layers.
+"""Builds and runs the host tests for the YSF frame, TX, voice and C4FM demodulator layers.
 
   python tools/ysf/run.py          GCC=... to use another gcc
 """
@@ -13,8 +13,7 @@ SERVICES = os.path.join(ROOT, 'src', 'services')
 AMBE = os.path.join(ROOT, 'vocoder', 'c', 'ambe')
 GCC = os.environ.get('GCC', 'gcc')
 
-SOURCES = [
-    os.path.join(HERE, 'test_ysf.c'),
+CORE = [
     os.path.join(SERVICES, 'ysf', 'ysf_frame.c'),
     os.path.join(SERVICES, 'ysf', 'ysf_tx.c'),
     os.path.join(SERVICES, 'ysf', 'ysf_voice.c'),
@@ -22,12 +21,24 @@ SOURCES = [
     os.path.join(AMBE, 'ambe_tables.c'),
 ]
 
+TESTS = [
+    ('test_ysf', [os.path.join(HERE, 'test_ysf.c')] + CORE),
+    ('test_ysf_demod', [os.path.join(HERE, 'test_ysf_demod.c'),
+                        os.path.join(SERVICES, 'ysf_demod.c'),
+                        os.path.join(SERVICES, 'fsk4.c')] + CORE),
+]
+
 
 def main():
-    exe = os.path.join(tempfile.gettempdir(), 'test_ysf')
-    subprocess.run([GCC, '-O2', '-Wall', '-Wextra', '-Werror', '-I', SERVICES, '-I', AMBE,
-                    '-o', exe] + SOURCES, check=True)
-    sys.exit(subprocess.run([exe]).returncode)
+    for name, sources in TESTS:
+        exe = os.path.join(tempfile.gettempdir(), name)
+        subprocess.run([GCC, '-O2', '-Wall', '-Wextra', '-Werror', '-I', SERVICES,
+                        '-I', os.path.join(SERVICES, 'ysf'), '-I', AMBE,
+                        '-o', exe] + sources, check=True)
+        result = subprocess.run([exe])
+        if result.returncode:
+            sys.exit(result.returncode)
+    sys.exit(0)
 
 
 if __name__ == '__main__':
