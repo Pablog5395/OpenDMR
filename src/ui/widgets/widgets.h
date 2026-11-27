@@ -63,6 +63,8 @@ typedef struct {
 
 // On the right, from the services: the battery, and the time (the battery percentage when there is no clock)
 void status_bar_draw(const status_bar_data_t *data);
+// The keypad locked (lock_screen.c): a padlock on every status bar, amber (left of the GPS pin) while it is
+void status_bar_set_locked(bool locked);
 
 // ---- Channel panel: zone, channel name, frequency, and a line with an icon (talk group, tone) ----
 #define CHANNEL_PANEL_RECENT 2 // the last heard callers shown under the line
@@ -76,6 +78,7 @@ typedef struct {
     const char *line_text;
     const char *line_detail; // after line_text, in the label colour; NULL: none
     const char *line_right;  // right aligned on the line, in the label colour (P25: the NAC); NULL: none
+    bool line_right_squelch; // line_right is the squelch: ICONS_SQUELCH before it
     const char *recent[CHANNEL_PANEL_RECENT];        // the last heard callers ("EA1ABC John"); NULL: no row
     const char *recent_detail[CHANNEL_PANEL_RECENT]; // after the caller: the talk group or "PC"; NULL: none
     const char *recent_when[CHANNEL_PANEL_RECENT];   // right aligned on the row, e.g. "3 min"

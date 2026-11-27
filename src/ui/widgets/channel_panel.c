@@ -110,6 +110,12 @@ void channel_panel_draw(const channel_panel_data_t *data)
             draw_text(lx, LINE_Y + 2, data->line_detail, &font_roboto17, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);
         }
 
+        if (data->line_right && data->line_right_squelch) {
+            int32_t text_x = FB_WIDTH - WIDGET_MARGIN - font_text_width(&font_roboto17, data->line_right);
+
+            icons_draw(text_x - 4 - ICONS_SQUELCH_WIDTH, LINE_Y + ((font->line_height - ICONS_SIZE) / 2) + 2,
+                       ICONS_SQUELCH, THEME_COLOUR_TEXT_LABEL);
+        }
         if (data->line_right) {
             draw_text(FB_WIDTH - WIDGET_MARGIN, LINE_Y + 2, data->line_right, &font_roboto17, FONT_ALIGN_RIGHT,
                       THEME_COLOUR_TEXT_LABEL);

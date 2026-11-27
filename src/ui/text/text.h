@@ -487,7 +487,7 @@ typedef enum {
     TEXT_UI_CLOSE,
     TEXT_RF_NO_LOCK,
     TEXT_UI_RF_NO_LOCK_HINT,
-    TEXT_UI_SQL,
+    TEXT_KEY_UNLOCK,
     TEXT_COUNT
 } text_id_t;
 

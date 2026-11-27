@@ -573,8 +573,7 @@ static void draw_panel(int i, int tx)
         }
     }
 
-    // CH n or VFO (a call: the path's name), then the squelch (analog modes, #175); on the right "PTT" (the transmit
-    // path), the mode and the power
+    // CH n or VFO (a call: the path's name); on the right "PTT" (the transmit path), the mode and the power
     if (caller) {
         snprintf(buffer, sizeof(buffer), "%s", p->name);
     } else if (p->vfo) {
@@ -583,20 +582,13 @@ static void draw_panel(int i, int tx)
         snprintf(buffer, sizeof(buffer), "CH %d", path_ref(i));
     }
     draw_text(lx, top + 8, buffer, &font_roboto17, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);
-    if (codeplug_mode_is_analog(ch->mode)) {
-        int sql = (ch->sql != 0) ? ch->sql : settings.squelch_defaults[radio_band_of(ch->rx_freq)];
-
-        lx += font_text_width(&font_roboto17, buffer) + 12;
-        snprintf(buffer, sizeof(buffer), "SQ %d%%", (sql - SQUELCH_MIN) * SQUELCH_PERCENT_STEP);
-        draw_text(lx, top + 8, buffer, &font_roboto17, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);
-    }
-    // "PTT" in a place of its own, kept free on the other path too: the mode and the power stay where they are
-    int32_t ptt_w = font_text_width(&font_roboto14, "PTT") + 10;
+    // The transmit path: the transmit icon, white on the transmit colour (as the TX labels), in a place of its own kept
+    // free on the other path too: the mode and the power stay where they are
+    int32_t ptt_w = 22;
 
     if (ptt) {
-        draw_fill_rect(right - ptt_w, top + 9, ptt_w, 18, THEME_COLOUR_ACCENT);
-        draw_text(right - 5, top + 9 + ((18 - font_roboto14.line_height) / 2), "PTT", &font_roboto14, FONT_ALIGN_RIGHT,
-                  THEME_COLOUR_ON_ACCENT);
+        draw_fill_rect(right - ptt_w, top + 8, ptt_w, 20, THEME_COLOUR_TX);
+        icons_draw(right - ptt_w + 2, top + 9, ICONS_TX, THEME_COLOUR_WHITE); // its art: 16 px of 20 from the left
     }
     right -= ptt_w + 6;
     if (known) {
@@ -607,6 +599,23 @@ static void draw_panel(int i, int tx)
     }
     draw_text(right, top + 8, buffer, &font_roboto17, FONT_ALIGN_RIGHT, THEME_COLOUR_TEXT_LABEL);
 
+    // The squelch of the analog modes (#175) on the name's line, right: its icon and the value, at the name's baseline
+    int32_t name_w = (FB_WIDTH - WIDGET_MARGIN) - x;
+
+    if (codeplug_mode_is_analog(ch->mode)) {
+        int sql = (ch->sql != 0) ? ch->sql : settings.squelch_defaults[radio_band_of(ch->rx_freq)];
+        int32_t baseline = top + 32 + font_roboto32_bold.ascent;
+        int32_t sq_x;
+
+        snprintf(buffer, sizeof(buffer), "%d%%", (sql - SQUELCH_MIN) * SQUELCH_PERCENT_STEP);
+        sq_x = FB_WIDTH - WIDGET_MARGIN - font_text_width(&font_roboto17, buffer);
+        draw_text(FB_WIDTH - WIDGET_MARGIN, baseline - font_roboto17.ascent, buffer, &font_roboto17, FONT_ALIGN_RIGHT,
+                  THEME_COLOUR_TEXT_LABEL);
+        sq_x -= 4 + ICONS_SQUELCH_WIDTH;
+        icons_draw(sq_x, baseline - 15, ICONS_SQUELCH, THEME_COLOUR_TEXT_LABEL); // its bars end on row 14
+        name_w = sq_x - 8 - x;
+    }
+
     // The name, large; a call: the caller's callsign (its ID when not known); typed on the selected path: the channel
     // number or the frequency
     if ((i == selected()) && vfo_screen_is_home() && vfo_screen_draw_entry(x, top + 32, &font_roboto32_bold)) {
@@ -615,7 +624,7 @@ static void draw_panel(int i, int tx)
         snprintf(buffer, sizeof(buffer), "-> %d", channel_screen_typed());
         draw_text(x, top + 32, buffer, &font_roboto32_bold, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
     } else {
-        draw_text(x, top + 32, (caller ? who : p->name), &font_roboto32_bold, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
+        draw_text_fitted(x, top + 32, (caller ? who : p->name), &font_roboto32_bold, name_w, THEME_COLOUR_TEXT);
     }
 
     // "RX" and "TX" small, each before its frequency; the selected VFO: in the one the knob and the digits change, the

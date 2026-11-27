@@ -338,7 +338,8 @@ static uint32_t channel_address(int number)
 // The 56 stored bytes to numbers (frequencies in 10 Hz, tones as numbers)
 // The order of the mode key, and the analog modes as stored in opendmr_mode (codeplug.h)
 static const uint8_t mode_order[] = {CODEPLUG_MODE_FM, CODEPLUG_MODE_AM, CODEPLUG_MODE_USB, CODEPLUG_MODE_LSB,
-                                     CODEPLUG_MODE_DMR, CODEPLUG_MODE_P25, CODEPLUG_MODE_NXDN, CODEPLUG_MODE_M17};
+                                     CODEPLUG_MODE_DMR, CODEPLUG_MODE_P25, CODEPLUG_MODE_NXDN, CODEPLUG_MODE_M17,
+                                     CODEPLUG_MODE_YSF};
 // opendmr_mode: OPENDMR_MODE_TAG | 1 AM, 2 USB, 3 LSB; anything else FM (the byte was the GD-77's Tx signalling, 0 ..
 // 3 in an old codeplug: the tag keeps such a value from being taken for a mode)
 static const uint8_t analog_modes[] = {CODEPLUG_MODE_FM, CODEPLUG_MODE_AM, CODEPLUG_MODE_USB, CODEPLUG_MODE_LSB};
@@ -347,6 +348,7 @@ static const uint8_t analog_modes[] = {CODEPLUG_MODE_FM, CODEPLUG_MODE_AM, CODEP
 #define OPENDMR_MODE_P25 (OPENDMR_MODE_TAG | 4) // with mode 1 (digital)
 #define OPENDMR_MODE_NXDN (OPENDMR_MODE_TAG | 5) // with mode 1 (digital)
 #define OPENDMR_MODE_M17 (OPENDMR_MODE_TAG | 6)  // with mode 1 (digital)
+#define OPENDMR_MODE_YSF (OPENDMR_MODE_TAG | 7)  // with mode 1 (digital)
 #define MODE_ORDER   ((int)(sizeof(mode_order) / sizeof(mode_order[0])))
 
 const char *codeplug_mode_name(uint8_t mode)
@@ -354,7 +356,7 @@ const char *codeplug_mode_name(uint8_t mode)
     static const char *const names[CODEPLUG_MODES] = {
         [CODEPLUG_MODE_FM] = "FM", [CODEPLUG_MODE_DMR] = "DMR", [CODEPLUG_MODE_AM] = "AM",
         [CODEPLUG_MODE_USB] = "USB", [CODEPLUG_MODE_LSB] = "LSB", [CODEPLUG_MODE_P25] = "P25",
-        [CODEPLUG_MODE_NXDN] = "NXDN", [CODEPLUG_MODE_M17] = "M17",
+        [CODEPLUG_MODE_NXDN] = "NXDN", [CODEPLUG_MODE_M17] = "M17", [CODEPLUG_MODE_YSF] = "YSF",
     };
 
     return (mode < CODEPLUG_MODES) ? names[mode] : "FM";
@@ -377,6 +379,7 @@ static void channel_from_codeplug(codeplug_channel_t *channel)
         channel->mode = (channel->opendmr_mode == OPENDMR_MODE_P25)    ? CODEPLUG_MODE_P25
                         : (channel->opendmr_mode == OPENDMR_MODE_NXDN) ? CODEPLUG_MODE_NXDN
                         : (channel->opendmr_mode == OPENDMR_MODE_M17)  ? CODEPLUG_MODE_M17
+                        : (channel->opendmr_mode == OPENDMR_MODE_YSF)  ? CODEPLUG_MODE_YSF
                                                                        : CODEPLUG_MODE_DMR;
     } else {
         uint8_t index = (uint8_t)(channel->opendmr_mode ^ OPENDMR_MODE_TAG);
@@ -401,6 +404,7 @@ static void channel_to_codeplug(const codeplug_channel_t *channel, codeplug_chan
     stored->opendmr_mode = (channel->mode == CODEPLUG_MODE_P25)    ? OPENDMR_MODE_P25
                            : (channel->mode == CODEPLUG_MODE_NXDN) ? OPENDMR_MODE_NXDN
                            : (channel->mode == CODEPLUG_MODE_M17)  ? OPENDMR_MODE_M17
+                           : (channel->mode == CODEPLUG_MODE_YSF)  ? OPENDMR_MODE_YSF
                                                                    : 0; // FM, DMR: as the CPS writes it
     for (uint8_t i = 1; i < ANALOG_MODES; i++) {
         if (analog_modes[i] == channel->mode) {
@@ -812,13 +816,14 @@ bool codeplug_get_dtmf_contact(int position, codeplug_dtmf_contact_t *contact)
 }
 
 // The signalling DTMF settings (0x1400 in the EEPROM part), the durations at 0x72. The default codeplugs had 128 as the
-// tail: above 1 s it is 500 ms; a rate out of 1 .. 10 is 2, as an unread one. The CPS doesn't edit them: a codeplug
-// from elsewhere can have anything there (0xFF: 25.5 s before the first digit, * 2.55 s longer; #177), so the delay
-// and the extra times are kept to 1 s too
+// tail: above 1 s it is 500 ms. A codeplug from elsewhere can have anything there (0xFF: 25.5 s before the first
+// digit, * 2.55 s longer; #177), so the delay and the extra times are kept to 1 s too; a rate out of 1 .. 10 (0xFF,
+// or an unread one) is 5 digits a second, as our CPS writes it (2 made a node number take 4 s: #177). Our CPS edits
+// them too (Radio settings, DTMF)
 #define ADDR_DTMF_DURATIONS (0x1400 + 0x72)
 #define DTMF_TAIL_MAX       10
 #define DTMF_TAIL_DEFAULT   5
-#define DTMF_RATE_DEFAULT   2
+#define DTMF_RATE_DEFAULT   5
 #define DTMF_RATE_MAX       10
 #define DTMF_DELAY_MAX      10  // x 100 ms
 #define DTMF_DELAY_DEFAULT  5

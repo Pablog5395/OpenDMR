@@ -659,11 +659,22 @@ static void reply_to_call(void)
     ui_key_beep(SOUND_ACK);
 }
 
+// YSF, # (number_entry_open_dgid()): the VFO's DG-ID, kept as its other changes
+static void set_dgid(uint8_t dgid)
+{
+    codeplug_set_ysf_dgid(vfo(), dgid);
+    changed();
+}
+
 static bool do_action(keymap_action_t action)
 {
     switch (action) {
         case KEYMAP_NUMBER_ENTRY:
-            ui_push(&number_entry_screen, (!v_is_fm()) ? NUMBER_ENTRY_TX_TARGET : NUMBER_ENTRY_DTMF);
+            if (vfo()->mode == CODEPLUG_MODE_YSF) {
+                number_entry_open_dgid(codeplug_ysf_dgid(vfo()), set_dgid); // YSF has no TG: its DG-ID
+            } else {
+                ui_push(&number_entry_screen, (!v_is_fm()) ? NUMBER_ENTRY_TX_TARGET : NUMBER_ENTRY_DTMF);
+            }
             return false;
         case KEYMAP_CONTACT_LIST:
             contacts_open_quick_list(v_is_fm());
@@ -986,6 +997,7 @@ static void draw(void)
     p25_call_t p25;
     nxdn_call_t nxdn;
     m17_call_t m17;
+    ysf_call_t ysf;
 
     if ((v->mode == CODEPLUG_MODE_DMR) && !digit_entry_active(&entry) && dmr_call(&call)) {
         snprintf(buffer, sizeof(buffer), "VFO %c", (vfo_screen_current() == 0) ? 'A' : 'B');
@@ -1005,6 +1017,11 @@ static void draw(void)
     if ((v->mode == CODEPLUG_MODE_M17) && !digit_entry_active(&entry) && m17_radio_call(&m17) && m17.src[0]) {
         snprintf(buffer, sizeof(buffer), "VFO %c", (vfo_screen_current() == 0) ? 'A' : 'B');
         qso_panel_draw_m17(&m17, buffer, power_text(v));
+        return;
+    }
+    if ((v->mode == CODEPLUG_MODE_YSF) && !digit_entry_active(&entry) && ysf_radio_call(&ysf)) {
+        snprintf(buffer, sizeof(buffer), "VFO %c", (vfo_screen_current() == 0) ? 'A' : 'B');
+        qso_panel_draw_ysf(&ysf, buffer, power_text(v));
         return;
     }
     draw_status_bar(v);
@@ -1072,6 +1089,13 @@ static void draw(void)
         snprintf(buffer, sizeof(buffer), "CAN %u", (unsigned)codeplug_m17_can(v));
         draw_text(FB_WIDTH - WIDGET_MARGIN, TONE_Y + 2, buffer, &font_roboto17, FONT_ALIGN_RIGHT,
                   THEME_COLOUR_TEXT_LABEL);
+    } else if (v->mode == CODEPLUG_MODE_YSF) {
+        // YSF: to ALL (ysf_radio.h), the DG-ID on its line, right
+        icons_draw(WIDGET_MARGIN, TONE_Y + 3, ICONS_TALKGROUP, THEME_COLOUR_TEXT_LABEL);
+        draw_text(VALUE_X, TONE_Y, text(TEXT_ALL), &font_roboto20, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
+        snprintf(buffer, sizeof(buffer), "DG-ID %u", (unsigned)codeplug_ysf_dgid(v));
+        draw_text(FB_WIDTH - WIDGET_MARGIN, TONE_Y + 2, buffer, &font_roboto17, FONT_ALIGN_RIGHT,
+                  THEME_COLOUR_TEXT_LABEL);
     } else {
         uint16_t tone = ((v->rx_tone != CODEPLUG_CSS_NONE) ? v->rx_tone : v->tx_tone);
 
@@ -1084,9 +1108,11 @@ static void draw(void)
 
             draw_text(x, TONE_Y, buffer, &font_roboto20, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
         }
-        snprintf(buffer, sizeof(buffer), "%s %d%%", text(TEXT_UI_SQL), (sql - SQUELCH_MIN) * SQUELCH_PERCENT_STEP);
+        snprintf(buffer, sizeof(buffer), "%d%%", (sql - SQUELCH_MIN) * SQUELCH_PERCENT_STEP);
         draw_text(FB_WIDTH - WIDGET_MARGIN, TONE_Y + 2, buffer, &font_roboto17, FONT_ALIGN_RIGHT,
                   THEME_COLOUR_TEXT_LABEL);
+        icons_draw(FB_WIDTH - WIDGET_MARGIN - font_text_width(&font_roboto17, buffer) - 4 - ICONS_SQUELCH_WIDTH,
+                   TONE_Y + ((font_roboto20.line_height - ICONS_SIZE) / 2) + 2, ICONS_SQUELCH, THEME_COLOUR_TEXT_LABEL);
     }
 
     if (digit_entry_active(&entry)) {

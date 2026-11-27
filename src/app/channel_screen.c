@@ -109,13 +109,14 @@ static char recent_name[CHANNEL_PANEL_RECENT][LAST_HEARD_TEXT_SIZE];
 static char recent_detail[CHANNEL_PANEL_RECENT][16];
 static char recent_when[CHANNEL_PANEL_RECENT][16];
 
-// The squelch, power, mode and bandwidth changed with the keys on this screen: the channel's for now, never written
-// (only the channel details write a channel). Gone with another channel, the VFO, the channel details or power off,
-// as the TG and timeslot picked here (tx_target_channel_forget()).
+// The squelch, power, mode, bandwidth and DG-ID changed with the keys on this screen: the channel's for now, never
+// written (only the channel details write a channel). Gone with another channel, the VFO, the channel details or power
+// off, as the TG and timeslot picked here (tx_target_channel_forget()).
 #define TEMP_SQL   0x01
 #define TEMP_POWER 0x02
 #define TEMP_MODE  0x04
 #define TEMP_WIDE  0x08
+#define TEMP_DGID  0x10
 static struct {
     int number; // the channel they belong to; 0: none
     uint8_t what; // TEMP_x
@@ -123,6 +124,7 @@ static struct {
     uint8_t power;
     uint8_t mode;
     bool wide;
+    uint8_t dgid;
 } temp;
 
 /* The scan (scan.c; uiChannelMode.c scanSearchForNextChannel()): the zone's channels in turn, skipping the ones
@@ -310,6 +312,7 @@ static void keep(uint8_t what)
     temp.power = channel.libre_dmr_power;
     temp.mode = channel.mode;
     temp.wide = ((channel.flag4 & FLAG4_BANDWIDTH_25K) != 0);
+    temp.dgid = codeplug_ysf_dgid(&channel);
 }
 
 // The channel at the position read again (it may have been edited), with the changes made here for it (temp); another
@@ -344,6 +347,9 @@ static void load(void)
     }
     if (temp.what & TEMP_WIDE) {
         channel.flag4 = (uint8_t)(temp.wide ? (channel.flag4 | FLAG4_BANDWIDTH_25K) : (channel.flag4 & ~FLAG4_BANDWIDTH_25K));
+    }
+    if (temp.what & TEMP_DGID) {
+        codeplug_set_ysf_dgid(&channel, temp.dgid);
     }
 }
 
@@ -619,6 +625,15 @@ static void reply_to_call(void)
     ui_key_beep(SOUND_ACK);
 }
 
+// YSF, # (number_entry_open_dgid()): the DG-ID for now, as the other key changes
+static void set_dgid(uint8_t dgid)
+{
+    if (has_channel) {
+        codeplug_set_ysf_dgid(&channel, dgid);
+        keep(TEMP_DGID);
+    }
+}
+
 static bool do_action(keymap_action_t action)
 {
     bool dmr = (channel.mode == CODEPLUG_MODE_DMR);
@@ -626,7 +641,11 @@ static bool do_action(keymap_action_t action)
 
     switch (action) {
         case KEYMAP_NUMBER_ENTRY:
-            ui_push(&number_entry_screen, analog ? NUMBER_ENTRY_DTMF : NUMBER_ENTRY_TX_TARGET);
+            if (channel.mode == CODEPLUG_MODE_YSF) {
+                number_entry_open_dgid(codeplug_ysf_dgid(&channel), set_dgid); // YSF has no TG: its DG-ID
+            } else {
+                ui_push(&number_entry_screen, analog ? NUMBER_ENTRY_DTMF : NUMBER_ENTRY_TX_TARGET);
+            }
             return false;
         case KEYMAP_CONTACT_LIST:
             contacts_open_quick_list(analog);
@@ -906,6 +925,7 @@ static void draw(void)
     p25_call_t p25;
     nxdn_call_t nxdn;
     m17_call_t m17;
+    ysf_call_t ysf;
 
     if ((channel.mode == CODEPLUG_MODE_DMR) && dmr_call(&call)) {
         format_names(zone_text, sizeof(zone_text), name, sizeof(name));
@@ -925,6 +945,11 @@ static void draw(void)
     if ((channel.mode == CODEPLUG_MODE_M17) && m17_radio_call(&m17) && m17.src[0]) {
         format_names(zone_text, sizeof(zone_text), name, sizeof(name));
         qso_panel_draw_m17(&m17, name, power_text());
+        return;
+    }
+    if ((channel.mode == CODEPLUG_MODE_YSF) && ysf_radio_call(&ysf)) {
+        format_names(zone_text, sizeof(zone_text), name, sizeof(name));
+        qso_panel_draw_ysf(&ysf, name, power_text());
         return;
     }
     meter.active = true;
@@ -1015,6 +1040,14 @@ static void draw(void)
         panel.line_right = cc_text;
         bottom.mode = "M17";
         bottom.item2 = "12.5K";
+    } else if (channel.mode == CODEPLUG_MODE_YSF) {
+        // YSF: to ALL (ysf_radio.h), the DG-ID on its line
+        snprintf(cc_text, sizeof(cc_text), "DG-ID %u", (unsigned)codeplug_ysf_dgid(&channel));
+        panel.line_icon = ICONS_TALKGROUP;
+        panel.line_text = text(TEXT_ALL);
+        panel.line_right = cc_text;
+        bottom.mode = "YSF";
+        bottom.item2 = "12.5K";
     } else {
         uint16_t tone = (channel.rx_tone != CODEPLUG_CSS_NONE) ? channel.rx_tone : channel.tx_tone;
 
@@ -1028,11 +1061,12 @@ static void draw(void)
         if (codeplug_mode_is_ssb(channel.mode)) {
             bottom.item2 = "3K";
         }
-        // the squelch always on the line, right, as the VFO screen shows it ("SQL": "SQ" read as the S meter's "S0")
+        // the squelch always on the line, right, after its icon, as the VFO screen shows it
         int sql = (channel.sql != 0) ? channel.sql : settings.squelch_defaults[radio_band_of(channel.rx_freq)];
 
-        snprintf(squelch, sizeof(squelch), "%s %d%%", text(TEXT_UI_SQL), (sql - SQUELCH_MIN) * SQUELCH_PERCENT_STEP);
+        snprintf(squelch, sizeof(squelch), "%d%%", (sql - SQUELCH_MIN) * SQUELCH_PERCENT_STEP);
         panel.line_right = squelch;
+        panel.line_right_squelch = true;
     }
     if (reversed) { // on the right; DMR's timeslot and colour code there: in the middle
         if (bottom.right == NULL) {

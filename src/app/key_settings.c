@@ -29,10 +29,10 @@
 /*
  * OpenDMR, screen: the key settings (options, "按键设置"): the shortcuts of keymap.c, one row an action with its
  * keys. The left key on a row waits for the new keys: the side keys held with a key, a short or long press (the key's
- * release or its long press time); SK1 or SK2 alone too (short). The right key there keeps the old ones. The menu, back and
- * PTT keys can't be taken, nor UP / DOWN and the digits without a side key (they move and enter on the screens).
- * Keys another action had are taken from it (shown). The last row puts the defaults (OpenGD77) back. Saved when the
- * screen is left.
+ * release or its long press time); SK1 or SK2 alone too, short only (held long: refused). The right key there keeps
+ * the old ones. The menu, back and PTT keys can't be taken, nor UP / DOWN and the digits without a side key (they
+ * move and enter on the screens). Keys another action had are taken from it (shown). The last row puts the defaults
+ * (OpenGD77) back. Saved when the screen is left.
  */
 
 #include <stdio.h>
@@ -40,6 +40,7 @@
 #include "list_screen.h"
 #include "sound.h"
 #include "keymap.h"
+#include "power.h"
 #include "key_settings.h"
 
 #define ROWS        (KEYMAP_ACTIONS + 1) // the actions (from 1), then the defaults
@@ -54,8 +55,18 @@ static struct {
     keymap_action_t lost;
 } state;
 
+// Switched off on this page with a change made (#194): saved, as leaving the page does
+static void power_off_save(void)
+{
+    if (state.changed) {
+        state.changed = false;
+        keymap_save();
+    }
+}
+
 static void enter(void *arg)
 {
+    power_off_save_register(power_off_save);
     if (arg != NULL) {
         state.capturing = false;
         state.changed = false;
@@ -116,7 +127,8 @@ static bool capture(const ui_event_t *ev, int32_t selected)
             }
             if (ev->long_press) {
                 if (is_side(ev->key)) {
-                    take(selected, true); // a side key held alone: its long press (acts on the release, keymap.c)
+                    state.capturing = false; // a side key held alone: no long press (keymap.c), the old keys kept
+                    ui_key_beep(SOUND_ERROR);
                     return true;
                 }
                 return false;
