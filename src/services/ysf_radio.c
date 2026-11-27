@@ -65,10 +65,10 @@
 #include "afrx.h"
 
 #define PCM_FRAMES    16  // 320 ms of decoded voice
-#define PLAY_START    1   // frames queued before the playback starts, and the time from the first: the voice segments
-#define PLAY_START_MS 40  // come 15 ms apart within a frame, 40 ms between frames, read in halves of 32 ms (decoded as
-                          // they come, ysf_core.c); simulated: 40 ms leave ~12 ms (a frame's 5 at once and 10 ms ran
-                          // out every ~0.8 s)
+#define PLAY_START    3   // frames queued before the playback starts, and the time from the first: the voice segments
+#define PLAY_START_MS 60  // come 15 ms apart within a frame, 40 ms between frames, read in halves of 32 ms (decoded as
+                          // they come, ysf_core.c); simulated: 40 ms left ~12 ms and ran 10 ms dry every ~0.8 s (cuts
+                          // in the reply through a cross-mode gateway); 60 ms with 3 frames leaves margin for that jitter
 #define CALL_TIMEOUT  350 // ms without a frame: the call ended (a frame is 100 ms)
 #define VOICE_BAD     9   // V/D mode 2: a voice frame with more triplets split than this (of 27) played as silence
 #define TX_LEAD_MAX   960 // dibits of preamble at most: 200 ms of 0x77, as MMDVM/Yaesu key up
