@@ -78,40 +78,6 @@ void sound_event_play(uint8_t event);             // play that melody
 void sound_style_set(uint8_t style);              // change it; sound_settings_save() writes it
 void sound_settings_save(void);                   // write the changed settings (menu leave / power off)
 
-// DMR over-the-air chirps: native AMBE tone frames (TIA-102.BABA-1), so any DMR radio hears a clean tone instead of a
-// sine pushed through the speech encoder. The pattern has its own menu row, separate from the speaker's sound style.
-// Off by default.
-enum {
-    SOUND_DMR_AIR_OFF,
-    SOUND_DMR_AIR_START,
-    SOUND_DMR_AIR_STOP,
-    SOUND_DMR_AIR_BOTH,
-    SOUND_DMR_AIR_MODES
-};
-extern uint8_t sound_dmr_air; // SOUND_DMR_AIR_x, loaded from the codeplug at boot
-
-// The air melody, used at both the start and the end of a transmission. The patterns are (Hz, ms) pairs chosen for
-// this feature: a rising three-note alert, a single high beep, three single tones and a double 1 kHz beep.
-enum {
-    SOUND_AIR_RISING,
-    SOUND_AIR_HIGH,
-    SOUND_AIR_850,
-    SOUND_AIR_1150,
-    SOUND_AIR_1850,
-    SOUND_AIR_DOUBLE,
-    SOUND_AIR_PATTERNS
-};
-extern uint8_t dmr_air_pattern; // SOUND_AIR_x, loaded from the codeplug at boot
-
-void sound_dmr_air_set(uint8_t mode);        // change the Off / Start / Stop / Both setting
-void sound_dmr_air_pattern_set(uint8_t pat); // change the melody; sound_settings_save() writes it
-void sound_dmr_air_preview(void);            // hear the current air melody on the speaker, without saving it
-void sound_dmr_air_request(uint8_t event);    // from the timeslot ISR: only marks the event; armed by the consumer
-bool sound_dmr_air_begin(uint8_t event);     // arm the melody for that TX event; false: not enabled
-bool sound_dmr_air_active(void);             // frames still to send
-bool sound_dmr_air_tone(uint8_t out9[9]);    // next 9-byte AMBE tone frame; false: the beep is over
-void sound_dmr_air_cancel(void);             // aborted transmission: drop whatever was left
-
 // settings.audio_prompt_mode (the main firmware's AUDIO_PROMPT_MODE_x)
 enum {
     SOUND_PROMPT_SILENT,

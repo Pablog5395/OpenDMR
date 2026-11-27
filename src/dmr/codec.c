@@ -37,7 +37,7 @@
 #include "dmr_compat.h"
 #include "codec.h"
 #include "vocoder.h"
-#include "sound.h"
+#include "roger.h"
 
 void codecInit(bool fromVoicePrompts)
 {
@@ -88,7 +88,7 @@ void codecEncodeBlock(uint8_t *outdata_ptr)
 	// The engine's DMR air chirp (sound options): a few native AMBE tone frames replace the encoded mic, then the
 	// ordinary speech is back. Native tones decode as clean sines on any DMR radio; the speaker beeps stay in
 	// voice_play.c.
-	if (!sound_dmr_air_tone(outdata_ptr)) {
+	if (!roger_tone(outdata_ptr)) {
 		vocoderEncodeFrame(pcm, outdata_ptr);
 	}
 }

@@ -30,7 +30,7 @@ CORE = [
 TESTS = [
     ('test_ysf', [os.path.join(HERE, 'test_ysf.c')] + CORE),
     ('test_ysf_demod', [os.path.join(HERE, 'test_ysf_demod.c'),
-                        os.path.join(SERVICES, 'ysf_demod.c'),
+                        os.path.join(SERVICES, 'ysf', 'ysf_demod.c'),
                         os.path.join(SERVICES, 'fsk4.c')] + CORE),
 ]
 

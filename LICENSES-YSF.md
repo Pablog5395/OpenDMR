@@ -37,7 +37,7 @@ Los avisos de autoría y procedencia de las cabeceras se mantienen intactos.
 
 ## 2. Resto de OpenDMR — licencia de OpenDMR
 
-Los archivos que no son de la parte YSF (por ejemplo `src/services/ysf_demod.c/.h`, derivado de
+Los archivos que no son de la parte YSF (por ejemplo `src/services/ysf/ysf_demod.c/.h`, derivado de
 `p25_demod.c`, y el cambio de mapa de símbolos en `src/services/p25_phy.c/.h`) mantienen la
 licencia de OpenDMR, con su cláusula 4 de uso no comercial. Ver [`LICENSE`](LICENSE) y
 [`NOTICE`](NOTICE).

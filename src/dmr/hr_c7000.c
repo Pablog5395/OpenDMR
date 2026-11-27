@@ -36,7 +36,7 @@
 #include "systime.h"
 #include "p25_phy.h"
 #include "trx.h"
-#include "sound.h"
+#include "roger.h"
 
 #define QSODATA_TIMER_TIMEOUT            2400
 #define QSODATA_RX_BEEP_TIMER_TIMEOUT   (QSODATA_TIMER_TIMEOUT - 1000)
@@ -1309,7 +1309,7 @@ static void hrc7000TransitionToTx(void)
 	disableAudioAmp(AUDIO_AMP_MODE_RF);
 	LedWrite(LED_GREEN_R, 0);
 	voice_air_beep_started = false;
-	sound_dmr_air_cancel();
+	roger_cancel();
 
 	// Data bursts (APRS over DMR) don't use the microphone or the codec: no capture to start, nothing to reset later.
 	if (!hrc.dataTxActive && (settingsUsbMode != USB_MODE_HOTSPOT))
@@ -1705,7 +1705,7 @@ void RAM_CODE hrc7000TimeslotInterruptHandler(void)
 			if (!voice_air_beep_started && !hrc.dataTxActive && (settingsUsbMode != USB_MODE_HOTSPOT))
 			{
 				voice_air_beep_started = true;
-				sound_dmr_air_request(SOUND_EVENT_TX_START); // no critical section from the ISR; armed by the encoder
+				roger_request(ROGER_EVENT_TX_START); // no critical section from the ISR; armed by the encoder
 			}
 			if (hrc.dataTxActive)
 			{

@@ -80,7 +80,7 @@
 #include "afrx.h"
 #include "radio_hooks.h"
 #include "voice_play.h"
-#include "sound.h"
+#include "roger.h"
 #include "dmr_demod.h"
 #include "dmr_l2.h"
 #include "dmr_soft.h"
@@ -689,12 +689,12 @@ static void soft_transmit(bool rmo, uint32_t reset_at)
         if (!afrx_ptt_held()) {
             ending = true; // the radio task armed the roger beep before it released the PTT
         }
-        if (ending && (nf == 0) && (pos == 0) && !sound_dmr_air_active()) {
+        if (ending && (nf == 0) && (pos == 0) && !roger_active()) {
             break; // the superframe finished and the air chirp (if any) was encoded
         }
         if (ending) {
             // A native AMBE tone frame decodes as a clean sine; no speech encoder, no flushing frame needed.
-            if (!sound_dmr_air_tone(ambe[nf])) {
+            if (!roger_tone(ambe[nf])) {
                 memcpy(ambe[nf], silence, DMR_AMBE_BYTES);
             }
         } else if (sound_mic_take(&pcm[80 * halves])) {
@@ -702,7 +702,7 @@ static void soft_transmit(bool rmo, uint32_t reset_at)
                 continue;
             }
             halves = 0;
-            if (!sound_dmr_air_tone(ambe[nf])) {
+            if (!roger_tone(ambe[nf])) {
                 uint32_t enc_t0 = systime_get_us();
                 vocoderEncodeFrame(pcm, ambe[nf]);
                 if (dmr_soft_tx_stats[2] < 4) {
@@ -719,7 +719,7 @@ static void soft_transmit(bool rmo, uint32_t reset_at)
                 if (dmr_soft_tx_gate) {
                     radio_phy_tx_gate(true); // the PA on for our timeslot only
                 }
-                sound_dmr_air_begin(SOUND_EVENT_TX_START); // the selected chirp, now that the PA is on
+                roger_begin(ROGER_EVENT_TX_START); // the selected chirp, now that the PA is on
             }
         } else {
             vTaskDelay(pdMS_TO_TICKS(2));

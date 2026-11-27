@@ -39,6 +39,7 @@
 #include "text.h"
 #include "options.h"
 #include "sound.h"
+#include "roger.h"
 
 #define TIMEOUT_BEEP_MAX     4 // 5 s units
 #define TIMEOUT_BEEP_UNIT_S  5
@@ -234,21 +235,21 @@ static const ui_custom_t sound_style_item = {
 
 static void dmr_air_format(char *buffer, size_t size)
 {
-    static const text_id_t modes[SOUND_DMR_AIR_MODES] = {TEXT_OFF, TEXT_START, TEXT_STOP, TEXT_BOTH};
+    static const text_id_t modes[ROGER_AIR_MODES] = {TEXT_OFF, TEXT_START, TEXT_STOP, TEXT_BOTH};
 
-    format_text((sound_dmr_air < SOUND_DMR_AIR_MODES) ? modes[sound_dmr_air] : TEXT_OFF, buffer, size);
+    format_text((roger_air < ROGER_AIR_MODES) ? modes[roger_air] : TEXT_OFF, buffer, size);
 }
 
 static void dmr_air_change(int direction, uint8_t modifiers)
 {
-    uint8_t value = (uint8_t)CLAMP(sound_dmr_air + direction, 0, SOUND_DMR_AIR_MODES - 1);
+    uint8_t value = (uint8_t)CLAMP(roger_air + direction, 0, ROGER_AIR_MODES - 1);
 
     (void)modifiers;
-    if (value != sound_dmr_air) {
-        sound_dmr_air_set(value);
-        if ((value != SOUND_DMR_AIR_OFF) && !silent()) {
+    if (value != roger_air) {
+        roger_air_set(value);
+        if ((value != ROGER_AIR_OFF) && !silent()) {
             ui_key_beep(NULL);
-            sound_dmr_air_preview();
+            roger_preview();
         }
     }
 }
@@ -262,24 +263,24 @@ static const ui_custom_t dmr_air_item = {
 
 static void roger_pattern_format(char *buffer, size_t size)
 {
-    static const text_id_t patterns[SOUND_AIR_PATTERNS] = {
+    static const text_id_t patterns[ROGER_PATTERNS] = {
         TEXT_ROGER_RISING, TEXT_ROGER_HIGH, TEXT_ROGER_850,
         TEXT_ROGER_1150,   TEXT_ROGER_1850, TEXT_ROGER_DOUBLE,
     };
 
-    format_text((dmr_air_pattern < SOUND_AIR_PATTERNS) ? patterns[dmr_air_pattern] : TEXT_ROGER_HIGH, buffer, size);
+    format_text((roger_pattern < ROGER_PATTERNS) ? patterns[roger_pattern] : TEXT_ROGER_HIGH, buffer, size);
 }
 
 static void roger_pattern_change(int direction, uint8_t modifiers)
 {
-    uint8_t value = (uint8_t)CLAMP(dmr_air_pattern + direction, 0, SOUND_AIR_PATTERNS - 1);
+    uint8_t value = (uint8_t)CLAMP(roger_pattern + direction, 0, ROGER_PATTERNS - 1);
 
     (void)modifiers;
-    if (value != dmr_air_pattern) {
-        sound_dmr_air_pattern_set(value);
+    if (value != roger_pattern) {
+        roger_pattern_set(value);
         if (!silent()) {
             ui_key_beep(NULL);
-            sound_dmr_air_preview();
+            roger_preview();
         }
     }
 }

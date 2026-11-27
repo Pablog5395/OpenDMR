@@ -24,7 +24,7 @@ VOCODER := ../vocoder/c/ambe
 P25CORE := ../p25/c
 P25_SRCS := $(P25CORE)/p25/p25_fec.c $(P25CORE)/p25/p25_frame.c $(P25CORE)/imbe/imbe_frame.c \
             $(P25CORE)/imbe/imbe_parms.c $(P25CORE)/imbe/imbe_dec.c $(P25CORE)/imbe/imbe_tables.c             $(P25CORE)/imbe/imbe_enc.c $(P25CORE)/imbe/imbe_ana.c $(P25CORE)/imbe/imbe_ana_tables.c
-INCDIRS := $(VOCODER) $(P25CORE)/p25 $(P25CORE)/imbe config hal drivers dmr graphics graphics/fonts ui ui/text ui/widgets services app freertos/include freertos/portable/CK803
+INCDIRS := $(VOCODER) $(P25CORE)/p25 $(P25CORE)/imbe config hal drivers dmr graphics graphics/fonts ui ui/text ui/widgets services services/ysf services/roger app freertos/include freertos/portable/CK803
 CFLAGS  := $(CPU) $(addprefix -I,$(INCDIRS)) -O2 -Wall -ffunction-sections -fdata-sections -MMD -MP
 # Debug: every received AMBE frame to the data flash (services/rx_capture.h, read with tools/debug/rx_capture.py):
 # make clean && make RX_CAPTURE=1. Off by default (9 KB of RAM, writes below the window)
@@ -45,7 +45,7 @@ LDFLAGS := $(CPU) -nostartfiles -Wl,--gc-sections -Wl,--undefined=serial_update_
 LIBS    := -lm -lc -lgcc
 
 # Layers, see docs/architecture.md
-SRCDIRS := startup freertos freertos/portable/CK803 hal drivers dmr graphics graphics/fonts graphics/themes ui ui/text ui/widgets services services/ysf app
+SRCDIRS := startup freertos freertos/portable/CK803 hal drivers dmr graphics graphics/fonts graphics/themes ui ui/text ui/widgets services services/ysf services/roger app
 C_SRCS  := $(foreach d,$(SRCDIRS),$(wildcard $(d)/*.c))
 S_SRCS  := $(foreach d,$(SRCDIRS),$(wildcard $(d)/*.S))
 OBJS    := $(addprefix $(BUILD)/,$(C_SRCS:.c=.o) $(S_SRCS:.S=.o))            $(patsubst $(VOCODER)/%.c,$(BUILD)/vocoder/%.o,$(wildcard $(VOCODER)/*.c)) \

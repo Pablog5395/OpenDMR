@@ -44,6 +44,7 @@
 #include "settings.h"
 #include "factory_cal.h"
 #include "sound.h"
+#include "roger.h"
 #include "tones.h"
 #include "mdc1200.h"
 #include "codeplug.h"
@@ -280,7 +281,7 @@ static void tx_dmr_start(void)
     rf_set_drive(pa_drive(rs.channel.tx_freq));
     rs.is_transmitting = true;
     leds_red(true);
-    sound_dmr_air_cancel(); // nothing from the previous transmission may leak into this one
+    roger_cancel(); // nothing from the previous transmission may leak into this one
     dmr_transmit(true);
     post_signal();
 }
@@ -292,16 +293,16 @@ static void tx_dmr_stop(void)
     // terminator is sent. A failed or still pending repeater wake has no voice path, and a hotspot takes AMBE from
     // USB: none of them gets an air chirp, so don't hold the PTT waiting for a consumer that isn't there.
     if (!hotspot_active() && !dmr_repeater_failed() && !dmr_repeater_waking() &&
-        sound_dmr_air_begin(SOUND_EVENT_TX_STOP)) {
+        roger_begin(ROGER_EVENT_TX_STOP)) {
         TickType_t t0 = xTaskGetTickCount();
 
-        while (sound_dmr_air_active() && ((xTaskGetTickCount() - t0) < pdMS_TO_TICKS(1000))) {
+        while (roger_active() && ((xTaskGetTickCount() - t0) < pdMS_TO_TICKS(1000))) {
             vTaskDelay(pdMS_TO_TICKS(5));
         }
         // The engine queues four 20 ms AMBE frames (NUM_AMBE_BUFFERS) and sends one while encoding the next: 120 ms
         // is a full queue plus the frame in flight, rounded up, before the terminator goes out.
         vTaskDelay(pdMS_TO_TICKS(120));
-        sound_dmr_air_cancel();
+        roger_cancel();
     }
     dmr_transmit(false);
 }
