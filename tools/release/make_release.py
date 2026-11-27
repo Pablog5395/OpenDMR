@@ -55,6 +55,12 @@ FILES = {
     'licences/OFL-RobotoCondensed.txt': 'tools/fonts/ttf/OFL-RobotoCondensed.txt',  # the fonts are OFL: their
     'licences/OFL-NotoSansSC.txt': 'tools/fonts/ttf/OFL-NotoSansSC.txt',            # licence goes with them
     'LICENSE': 'LICENSE',
+    # This fork's YSF additions: the page, the readme, the per-part licence note and the GPL text.
+    'NOTICE': 'NOTICE',
+    'LICENSES-YSF.md': 'LICENSES-YSF.md',
+    'LEEME-FORK-YSF.txt': 'LEEME-FORK-YSF.txt',
+    'docs/ysf.md': 'docs/ysf.md',
+    'licences/GPL-3.0-or-later.txt': 'licences/GPL-3.0-or-later.txt',
     'README.md': 'README.md',
     'README.en.md': 'README.en.md',
     'docs/installation.md': 'docs/installation.md',
