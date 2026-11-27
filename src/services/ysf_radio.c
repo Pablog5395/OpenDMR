@@ -41,8 +41,8 @@
  * Transmit (transmit(), the PTT): the recording stopped, the mic's 20 ms frames through our AMBE+2 encoder, five a
  * frame: the preamble (+3 -3), a header, V/D mode 2 frames (FN 0 .. 6, FT 6: the destination ALL as ten '*', our
  * callsign, ...), the last finished with silence, a terminator; the dibits through the P25 physical layer's transmit
- * FIFO (4800 symbols/s), the modem's 4FSK level scaled to YSF's +-1.35 kHz narrow (ysf_tx_dev), as in the fork's DN
- * mode and as Yaesu/MMDVM reflectors expect.
+ * FIFO (4800 symbols/s), the modem's 4FSK level scaled to YSF's +-2.7 kHz wide (ysf_tx_dev), as in v0.10.0. A Pi-Star
+ * configured for YSF wide needs this; narrow only works there with LoDev=1 in MMDVMHost.
  *
  * The receiver's state lives in the AMBE overlay's RAM after the vocoder's (ckcpu.ld .ysf_rx, as NXDN's).
  */
@@ -76,9 +76,9 @@
 #define OVERLAY_BSS __attribute__((section(".ysf_bss"))) // after the vocoder's RAM (ckcpu.ld), not zeroed
 
 volatile ysf_radio_stats_t ysf_radio_stats;
-// the 4FSK level (MODEM_MOD_SCALE_ONE 1024: P25's +-1.8 kHz) for YSF's +-1.35 kHz (narrow, FICH Dev=1). The fork's DN
-// mode and the Yaesu/MMDVM reflectors use this; wide (1536, Dev=0) came back over-deviated and saturated on air.
-volatile uint32_t ysf_tx_dev = 768;
+// the 4FSK level (MODEM_MOD_SCALE_ONE 1024: P25's +-1.8 kHz) for YSF's +-2.7 kHz wide (FICH Dev=0), as in v0.10.0.
+// MMDVM/Pi-Star hotspots configured for YSF wide only decode this; narrow (768, Dev=1) needs LoDev=1 in MMDVMHost.
+volatile uint32_t ysf_tx_dev = 1536;
 // 200 ms of +3 -3 (0x77) before the first sync, as MMDVM/Yaesu key up: receivers need it to find sync before the
 // header, which is the frame carrying CSD1 (our callsign). With only 40 ms some reflected calls were heard without
 // the callsign on the original radios.
@@ -322,7 +322,7 @@ static void transmit(void)
     codeplug_get_radio_name(src);
     src[YSF_CALL_LEN] = 0;
     const char *dst = "**********"; // ALL (group / CQ)
-    ysf_fich_t f = {.fi = YSF_FI_HC, .cs = 2, .cm = 0, .ft = 6, .dev = 1, .dt = YSF_DT_VD2,
+    ysf_fich_t f = {.fi = YSF_FI_HC, .cs = 2, .cm = 0, .ft = 6, .dev = 0, .dt = YSF_DT_VD2,
                     .sc = (uint8_t)(tx_dgid & 0x7F)};
 
     uint32_t lead = (ysf_tx_lead > TX_LEAD_MAX) ? TX_LEAD_MAX : ysf_tx_lead;
