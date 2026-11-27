@@ -1,0 +1,51 @@
+OpenDMR — fork YSF (Fusion / C4FM) — rama ysf-gpl-0.9.3
+========================================================
+
+Este paquete es un fork personal y experimental de OpenDMR publicado desde
+Pablog5395/OpenDMR. NO es una versión oficial de va3bpf/OpenDMR y no se
+presenta para fusionar en el proyecto original.
+
+Qué agrega
+----------
+- Modo YSF (Yaesu Fusion / C4FM, 12.5 kHz) en el ciclo de la tecla de modo:
+  FM -> AM -> USB -> LSB -> DMR -> P25 -> NXDN -> M17 -> YSF.
+- Canal YSF con DG-ID (0-127), SSID opcional (-1..-15) y modo de voz
+  V/D-1, DN o VW (IMBE).
+- Panel QSO con callsign, destino y DG-ID; escaneo YSF.
+- TX con preámbulo 0x77, cabecera/ciclos/terminador y mapa de símbolos C4FM
+  corregido; RX con demodulador C4FM propio.
+
+Qué NO incluye
+--------------
+- Cifrado, trunking, datos YSF (DT 1 se ignora) ni base de callsigns.
+- Modo hotspot MMDVM dentro del handy para YSF (sigue siendo DMR).
+- Confirmación con radios Yaesu reales: VW/IMBE y la selección cruzada de
+  codec dentro del handy siguen sin probarse con un Yaesu.
+
+Licencias (importante)
+----------------------
+- La parte YSF (src/services/ysf/* y tools/ysf/*) es GPL-3.0-or-later,
+  portada de DM32-nxdn-p25 (lyra XE1POC). Texto completo en
+  licences/GPL-3.0-or-later.txt.
+- El resto del firmware mantiene la licencia de OpenDMR (LICENSE), con su
+  cláusula 4 de uso no comercial.
+- La GPL y la licencia de OpenDMR no son compatibles para una distribución
+  combinada; por eso esta rama se publica aparte. Si redistribuyes, conserva
+  los avisos y no agregues restricciones a los archivos GPL.
+- Desglose por archivo y submódulos: LICENSES-YSF.md y NOTICE.
+
+Instalación
+-----------
+Igual que OpenDMR: ver docs/installation.md (o installation.en.md) y las
+herramientas de flasheo del paquete. Para radios que ya tienen OpenDMR,
+3-ACTUALIZAR.bat conserva canales y ajustes.
+
+Verificación
+------------
+- `python3 tools/ysf/run.py` -> 5582 comprobaciones, 0 fallos.
+- `GCC=gcc python3 tools/radio_fsm/run.py` -> 163 comprobaciones, 0 fallos.
+- Firmware compilado con el toolchain C-SKY (text 783292, bss 345668).
+- En aire (26/11/2026): PTT real LU8HPA vía hotspot Pi-Star URFARG y
+  retransmisión en reflector URF/XLXARG; ver docs/ysf.md.
+
+Firmas SHA256 de todos los archivos: SHA256SUMS.txt (en esta carpeta).
