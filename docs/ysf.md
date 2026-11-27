@@ -5,6 +5,11 @@ portó desde el fork [DM32-nxdn-p25](https://github.com/donttellmeimcute/DM32-nx
 GPL-3.0-or-later); la capa física y la integración con la radio son las de OpenDMR. La procedencia detallada, los
 créditos y las licencias están al final de esta página.
 
+> Esta rama (`ysf-gpl-0.9.3`) es un **fork personal y experimental**, publicado desde
+> [`Pablog5395/OpenDMR`](https://github.com/Pablog5395/OpenDMR) y no desde el repositorio original. La parte YSF es
+> GPL-3.0-or-later y el resto mantiene la licencia de OpenDMR; el desglose está en
+> [`LICENSES-YSF.md`](../LICENSES-YSF.md). No es una contribución para fusionar en `va3bpf/OpenDMR`.
+
 ## Modo y canal
 
 - `CODEPLUG_MODE_YSF = 8`, etiqueta de canal opendmr `0xA7`. El editor de canal muestra la fila de **DG-ID** donde
@@ -96,15 +101,35 @@ las tramas terminan en la FIFO 4FSK de `p25_phy.c`.
   bucles con sync inválida y `strlen()` sin límite en CSD, DG-ID 0/127 y SC desde el primer frame, mapa de bits b3/b4
   del AMBE, mantenimiento de las mitades del micrófono entre ciclos, SSID por canal y selección de modo + codec
   cruzado en RX.
-- El firmware compila y enlaza con el toolchain C-SKY. Los arneses de prueba de host no se incluyen en este envío: sus
-  tablas y tramas de referencia pertenecen a proyectos de terceros y no deben redistribuirse aquí.
+- El firmware compila y enlaza con el toolchain C-SKY. En este fork se incluye también el arnés de pruebas de host
+  `tools/ysf/` (frame, TX, voz, demodulador y un vector DN capturado en el aire), con la misma licencia GPL de la
+  parte YSF. `python3 tools/ysf/run.py` da 5582 comprobaciones y `GCC=gcc python3 tools/radio_fsm/run.py` 163, sin
+  fallos.
+
+## Verificación en aire (fork)
+
+Pruebas hechas con el handy y el hotspot propios, no por el proyecto original:
+
+- **PTT real:** el 26/11/2026 a las 14:07:51 UTC `LU8HPA` (SSID 0) entró al reflector a través del hotspot
+  `LU8HPA B / URFARG`; el dashboard lo mostró con el camino completo de voz. El DT1 del FN6 no hizo falta: nuestro
+  TX manda ceros ahí y MMDVMHost no interpreta ese campo (sólo lo descarta en `YSFPayload.cpp`).
+- **Retransmisión en reflector:** 16 tramas DN generadas por `ysf_tx.c` (voz AMBE de silencio) enviadas como
+  `OPENDMR` a `bellville-link.tplinkdns.com:42000` (URF/XLXARG) se reenviaron a un segundo socket y se recibieron en
+  otro handy. El reflector reescribe tag/FICH/CSD antes de reenviar, así que las tramas recibidas no son
+  byte-idénticas a las generadas.
+- **Cruce YSF→DMR del Pi-Star (`ysf2dmr`):** la misma transmisión entró por YSF al reflector y salió por DMR en el
+  otro equipo.
+- **SSID y hotspot:** con `[System Fusion] SelfOnly=1` o un callsign con sufijo en el Pi-Star, las fuentes con `-N`
+  se rechazan (`invalid access attempt`) aunque el SSID del radio sea válido. Con SSID 0 entra; para usar
+  `-1`…`-15` hay que dejar el callsign del hotspot sin sufijo y `SelfOnly=0`.
 
 ## Límites
 
 No hay soporte para cifrado, trunking, datos YSF (DT 1 sólo se ignora) ni base de datos de callsigns. La semántica de
 los 49 parámetros AMBE+2 en DN no está confirmada contra un vector público; la correspondencia de bits se sigue de la
-referencia indicada abajo. La selección cruzada de codec dentro del propio handy, VW contra una radio Yaesu y la
-interoperabilidad con hotspots o reflectores concretos quedan para quien pruebe el firmware en su equipo.
+referencia indicada abajo. La selección cruzada de codec dentro del propio handy y VW contra una radio Yaesu siguen
+sin confirmar en el aire. La interoperabilidad con un hotspot Pi-Star y con el reflector URF sí quedó verificada en
+las pruebas de esta rama (ver arriba), pero no por el proyecto original ni con otras radios.
 
 Para un hotspot MMDVM/Pi-Star externo en YSF: el TX ya emite el preámbulo `0x77` de 200 ms y la trama sigue el formato
 de MMDVM (sync, whitening, FICH y DCH). Hay que igualar la desviación: un canal **narrow** de 12.5 kHz (±1350 Hz)
@@ -122,8 +147,7 @@ original; el contenido del commit es el mismo en ambos.
 
 ## Procedencia, créditos y licencias
 
-Código fuente del que salió esta implementación, y referencias de lectura (no se incluyen archivos ni datos de esos
-proyectos en este cambio):
+Código fuente del que salió esta implementación, y referencias de lectura:
 
 - **[DM32-nxdn-p25](https://github.com/donttellmeimcute/DM32-nxdn-p25)** — lyra XE1POC, GPL-3.0-or-later. Prototipo
   de host del que se portaron la capa de trama, el secuenciador de TX y la conversión de voz YSF (archivos
@@ -133,7 +157,8 @@ proyectos en este cambio):
   cabeceras de sus fuentes. Referencia de lectura para la sync, el formato del FICH, las cadenas FEC del DCH, la
   codificación convolucional, el CRC y las tablas de interleave (`YSFFICH.cpp`, `YSFPayload.cpp`,
   `YSFConvolution.cpp`, `CRC.cpp`, `Golay24128.cpp`, `AMBEFEC.cpp`). Los algoritmos se reimplementaron en C para el
-  firmware; no se copiaron archivos de ese repositorio.
+  firmware; no se copiaron archivos de ese repositorio. El arnés `tools/ysf/` genera sus propios vectores con su
+  codificador, salvo el vector DN que se capturó en el aire.
 - **Yaesu, *Amateur Radio Digital Standards*, Rev. 1.02** — referencia de lectura del protocolo YSF (figuras 4-1,
   4-3, 4-4 y 4-32), en especial para la secuencia de tramas y el mapa de bits de voz DN.
 - **[dmr-vocoder](https://github.com/Pablog5395/dmr-vocoder/tree/fix/ambe-b3b4-tails)** — fork del submódulo original
@@ -143,4 +168,5 @@ proyectos en este cambio):
   OpenDMR (Junqiang Shi, VA3BPF / BG8AM) y de [p25-core](https://github.com/va3bpf/p25-core).
 
 Los archivos portados conservan `SPDX-License-Identifier: GPL-3.0-or-later` y el copyright de lyra XE1POC; el resto
-mantiene la licencia de cada archivo en el árbol de OpenDMR.
+mantiene la licencia de cada archivo en el árbol de OpenDMR. El desglose por archivo, los textos completos y la nota
+de compatibilidad están en [`LICENSES-YSF.md`](../LICENSES-YSF.md).
