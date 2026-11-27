@@ -84,7 +84,8 @@ static inline bool codeplug_mode_can_transmit(uint8_t mode)
 }
 
 const char *codeplug_mode_name(uint8_t mode);  // "FM", "DMR", "AM", "USB", "LSB", "P25", "NXDN", "M17", "YSF"
-uint8_t codeplug_mode_step(uint8_t mode, int direction); // the mode key's order: FM, AM, USB, LSB, DMR, P25, NXDN, M17, YSF
+// the mode key's order: FM, AM, USB, LSB, DMR, P25, NXDN, M17, YSF
+uint8_t codeplug_mode_step(uint8_t mode, int direction);
 
 // A channel as stored (56 bytes), then two values worked out when it is read
 typedef struct {
@@ -134,6 +135,16 @@ static inline uint16_t codeplug_p25_nac(const codeplug_channel_t *channel)
         return CODEPLUG_P25_NAC_DEFAULT;
     }
     return (uint16_t)(((channel->unused2 & 0x0F) << 8) | channel->tx_colour);
+}
+// A channel's own DMR ID (OpenGD77's optional DMR ID: libre_dmr_flag1 0x80, the ID in rx_signaling, arts_interval,
+// encrypt), 0 if it has none: transmitted instead of the radio's (dmr_compat_set_channel(), #194)
+#define CODEPLUG_FLAG1_OPTIONAL_DMR_ID 0x80
+static inline uint32_t codeplug_channel_dmr_id(const codeplug_channel_t *channel)
+{
+    if (!(channel->libre_dmr_flag1 & CODEPLUG_FLAG1_OPTIONAL_DMR_ID)) {
+        return 0;
+    }
+    return ((uint32_t)channel->rx_signaling << 16) | ((uint32_t)channel->arts_interval << 8) | channel->encrypt;
 }
 // DMR's colour code: the low 4 bits of tx_colour, as the radio uses it (dmr_compat.c). The byte is P25's NAC (above)
 // or NXDN's RAN as well: a VFO used in P25 keeps 0x93 there (NAC 0x293), colour code 3; shown whole it was "CC147",

@@ -50,7 +50,7 @@ All of these can be changed in Options → Key settings (see [12](#12-lock-quick
 
 | Keys | DMR | FM |
 |---|---|---|
-| # | Enter a talk group / private call number | Enter DTMF |
+| # | Enter a talk group / private call number (YSF: the DG-ID) | Enter DTMF |
 | SK2 + # | Contact list | DTMF contact list |
 | # long | Reverse repeater (channel mode only) | Same |
 | * | Timeslot | Bandwidth 12.5 / 25 kHz |
@@ -62,7 +62,7 @@ All of these can be changed in Options → Key settings (see [12](#12-lock-quick
 | SK2 + ▲ / ▼ | Zone + / − (channel mode); which frequency ▲ ▼ and the knob change, RX or TX (VFO) | Same |
 | SK2 alone | Call back the talk group just heard | — |
 | SK1 alone | FM broadcast radio | Same |
-| SK1 held alone | Lock the keypad (SK1 + * unlocks) | Same |
+| SK1 + # | Lock the keypad; again while locked: unlock | Same |
 | SK1 + ▲ / ▼ | Scan up / down | Same |
 | SK1 + 1 | APRS on / off | Same |
 | SK1 + 3 | Send an APRS beacon now | Same |
@@ -227,27 +227,29 @@ comes the target, `ALL`, with the CAN on the right of its line (e.g. `CAN 0`).
   with less treble.
 - CPS 0.10.0 and later support M17 channels (mode, CAN).
 
-**YSF** (Yaesu Fusion / C4FM, 12.5 kHz, conventional simplex voice, clear): the bottom bar shows `YSF` and
-`12.5K`; below the frequency comes the target transmitted to, `ALL` by default, with the DG-ID on the right of the
-status bar.
+**YSF** (Yaesu System Fusion / C4FM, 12.5 kHz, conventional simplex voice, clear): the bottom bar shows `YSF` and
+`12.5K`; below the frequency comes the destination transmitted to (a contact's callsign, `ALL` by default), with the
+DG-ID on the right of that line and in the status bar.
 
-- The **DG-ID** (0 - 127 in the editor; a Yaesu uses 0 - 99, 0 by default) works like DMR's colour code: only calls
-  with the same DG-ID are received; 0 receives them all (and transmits 0). In the channel details, ▲ ▼ select the
-  DG-ID row (the colour code row on other modes), ◀ ▶ or the knob change it by 1, the menu key saves. It is carried
-  in the FICH of every frame.
-- The **target** is the contact's name, or `ALL` for a group call; your callsign (General options in the CPS) is
-  sent as the source. The line under the frequency shows the destination and `DG-ID n`. A received call shows the
-  caller's callsign in large letters, the destination over the S meter, and the DG-ID in the status bar; it also
-  goes into Last heard.
+- The **DG-ID** (0 - 127 in the editor; a Yaesu uses 0 - 99, 0 by default) is carried in every frame's FICH. In the
+  channel details, ▲ ▼ select its row (the colour code row on other modes), ◀ ▶ or the knob change it by 1 (10 when
+  held), the menu key saves. **#** on a main screen opens the DG-ID entry: type the digits (the first one replaces the
+  current value) or ▲ ▼ +/- 1, the menu key sets it. On a channel it is for now (another channel or power off: the
+  channel's own again), on a VFO it is kept. Reception is not filtered by DG-ID: all calls are played.
+- Voice mode: **V/D-1, DN (V/D-2) and VW** are selectable in the channel details ("YSF Mode" row). The mode on the air
+  is the one used for each call: DN and V/D-1 AMBE+2 go through our vocoder, VW (IMBE) borrows the P25 overlay's IMBE
+  codec; data frames are shown but not played. See [docs/ysf.md](ysf.md) for the frame details.
+- The **target** is the contact's name, or `ALL` for a group call; your callsign (General options in the CPS, with an
+  optional SSID in the channel details) is sent as the source. A received call shows the caller's callsign in large
+  letters, the destination over the S meter, and the DG-ID in the status bar; it also goes into Last heard.
 - **Keys**: `SK1 + *` steps to YSF; `SK2 + #` picks a contact (its name is sent as the destination); `▶ ◀` steps
-  through the channel's RX group; `#` → All Call → menu key sends `ALL`. With no contact picked, the target is `ALL`.
-  Use contacts with callsign names: a numeric TG/PC goes on the air as `TG n` / `PC n`.
-- Receive: the discriminator is recorded and demodulated in software, as NXDN; transmit: our own AMBE+2 encoder
-  and YSF V/D-1 frames, at ±1350 Hz deviation on narrow channels and ±2700 Hz on wide ones, with the 200 ms `0x77`
-  preamble MMDVM expects. With an external MMDVM/Pi-Star hotspot in YSF mode, use `LoDev=1` for a narrow 12.5 kHz
-  channel and keep the hotspot's frequency offset calibrated.
-- V/D-1 and DN (V/D-2) voice are supported; VW (IMBE) is not, since this firmware has no IMBE vocoder. Wire
-  mode order: FM, AM, USB, LSB, DMR, P25, NXDN, M17, YSF. See [docs/ysf.md](ysf.md) for the frame details.
+  through the channel's RX group. With no contact picked, the target is `ALL`. Use contacts with callsign names: a
+  numeric TG/PC goes on the air as `TG n` / `PC n`.
+- Receive: the discriminator is recorded and demodulated in software, as NXDN; transmit: our own AMBE+2 (or IMBE for
+  VW) encoder, at ±1350 Hz deviation on narrow channels and ±2700 Hz on wide ones, with the 200 ms `0x77` preamble
+  MMDVM expects. With an external MMDVM/Pi-Star hotspot in YSF mode, use `LoDev=1` for a narrow 12.5 kHz channel and
+  keep the hotspot's frequency offset calibrated.
+- Wire mode order: FM, AM, USB, LSB, DMR, P25, NXDN, M17, YSF.
 
 ### VFO quick menu (menu key)
 
@@ -388,7 +390,9 @@ screen with one more path watched: the **selected path** is the home screen's ch
 - **#** on a main screen. **#** cycles TG → PC → All Call → contact; ▲ ▼ add / subtract 1.
 - The menu key takes it: a TG, PC or the All Call (16777215, nothing to type) replaces the channel's contact for
   now (on a channel: until another channel, the VFO or power off); a contact also brings its timeslot. Your own DMR ID is set in Settings (User DMR ID), not here.
-- In FM # is the DTMF entry: digits, * and # type the code, ◀ deletes, the menu key sends it.
+- In FM # is the DTMF entry: digits, * and # type the code, ◀ deletes, the menu key sends it. Its timing (digits
+  a second, the delay before the first one...) is set in the CPS: Radio settings, DTMF; 5 digits a second when the
+  codeplug has none.
 
 ### Contact list (SK2 + #)
 
@@ -694,11 +698,11 @@ Once the stock sector is back (a backup written back, for example), it is used a
 ### Keypad lock
 
 - In the main menu, **\*** locks the keypad, **#** locks the PTT (again: unlocks the PTT); the radio goes home.
-- On a main screen, **SK1 held alone** (about half a second, then released) locks the keypad too; Key settings →
-  Lock moves it to other keys. Held with another key (SK1 + ▲ ...) it doesn't lock. SK2 held is a modifier (Delete
-  in the messages, Close in the dual watch) and doesn't lock.
-- While locked, a key shows the lock page for a moment; **SK1 + \*** unlocks (SK2 + \* can't be pressed on the
-  DM-32: a held SK2 hides the keys 1, 4, 7, \*). With only the keypad locked the PTT still transmits.
+- On a main screen, **SK1 + #** locks the keypad too; **SK1 + #** again while locked unlocks. Key settings has Lock
+  and Unlock as two rows, each can be set to other keys (both SK1 + # by default).
+- Locking and unlocking show a bubble (a closed / open padlock); while locked an amber padlock stays on the status
+  bar. A key pressed while locked shows "Locked SK1 + # to unlock" again (the main firmware's SK2 + \* can't
+  be pressed on the DM-32: a held SK2 hides the keys 1, 4, 7, \*). With only the keypad locked the PTT still transmits.
 - General options → Auto lock: locks the keypad and the PTT after a time without use.
 - While the cable is in use (CPS, firmware update) the radio doesn't lock, and the auto lock time starts again after
   it.
@@ -736,7 +740,8 @@ One row an action with its keys (the defaults: [1](#shortcuts-on-the-main-screen
 `long` after the keys (`SK2+Right long`).
 
 - The menu key on a row, then the new keys: SK1 / SK2 held with another key, a short or a long press, or SK1 or SK2
-  alone. The back key keeps the old keys.
+  alone (short only: held long alone it beeps an error and keeps the old keys). A long press acts at the Key long
+  time, still held. The back key keeps the old keys.
 - The menu key, the back key and the PTT can't be used; ▲ ▼ and the digits only with a side key.
 - Keys that belonged to another action are taken from it (shown).
 - The last row puts the defaults back. Saved when the screen is left.
@@ -795,6 +800,7 @@ firmware: see the README.
 - NXDN: NXDN48 simplex in clear only (no NXDN96, trunking or encryption); a caller shows as its ID, there is no NXDN
   ID to callsign database yet.
 - M17: simplex voice and text messages only (no other packet data, no encryption), always to ALL; the voice is duller than DMR / NXDN (Codec 2
+- YSF: DN (V/D mode 2) simplex voice only, always to ALL; VW (full rate) is shown, not played; no Wires-X, GPS, pictures or other data.
   3200).
 - YSF: simplex V/D-1 and DN voice in the clear only (no VW/IMBE, encryption, trunking or data); no callsign database
   yet. The MMDVM hotspot mode remains DMR-only.

@@ -93,7 +93,7 @@ enum {
 };
 
 // Bits of the channel (codeplug.h of the main firmware)
-#define FLAG1_OPTIONAL_DMR_ID 0x80 // libre_dmr_flag1
+#define FLAG1_OPTIONAL_DMR_ID CODEPLUG_FLAG1_OPTIONAL_DMR_ID // libre_dmr_flag1
 #define FLAG1_NO_BEEP         0x40
 #define FLAG1_NO_ECO          0x20
 #define FLAG1_FORCE_DMO       0x04
@@ -217,10 +217,7 @@ static void format_css(const char *direction, uint16_t tone, char *label, size_t
 
 static uint32_t dmr_id(void)
 {
-    if (!(edit->libre_dmr_flag1 & FLAG1_OPTIONAL_DMR_ID)) {
-        return 0;
-    }
-    return ((uint32_t)edit->rx_signaling << 16) | ((uint32_t)edit->arts_interval << 8) | edit->encrypt;
+    return codeplug_channel_dmr_id(edit);
 }
 
 static void set_dmr_id(uint32_t id)
@@ -357,7 +354,7 @@ static void change(int item, int direction, bool fast, uint8_t modifiers)
                 codeplug_set_m17_can(edit, can);
             } else if (is_ysf()) {
                 uint8_t dgid = codeplug_ysf_dgid(edit);
-                step_value(&dgid, direction, 0, CODEPLUG_YSF_DGID_MAX);
+                step_value(&dgid, direction * (fast ? 10 : 1), 0, CODEPLUG_YSF_DGID_MAX);
                 codeplug_set_ysf_dgid(edit, dgid);
             } else if (!fm) {
                 uint8_t cc = codeplug_colour_code(edit); // from the colour code in use (the byte may hold a NAC)
@@ -579,7 +576,7 @@ static void format_item(int item, char *label, size_t label_size, char *out, siz
                 snprintf(out, size, "%u", codeplug_m17_can(edit));
             } else if (is_ysf()) {
                 snprintf(label, label_size, "DG-ID");
-                snprintf(out, size, "%u", codeplug_ysf_dgid(edit));
+                snprintf(out, size, "%u", codeplug_ysf_dgid(edit)); // transmitted; any received
             } else if (fm) {
                 snprintf(out, size, "%s", na);
             } else {

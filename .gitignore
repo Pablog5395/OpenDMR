@@ -4,3 +4,5 @@ __pycache__/
 dist/
 nxdn/data/
 tmp/
+ysf/data/
+ysf/c/*.exe

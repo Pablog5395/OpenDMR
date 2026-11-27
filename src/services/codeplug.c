@@ -816,13 +816,14 @@ bool codeplug_get_dtmf_contact(int position, codeplug_dtmf_contact_t *contact)
 }
 
 // The signalling DTMF settings (0x1400 in the EEPROM part), the durations at 0x72. The default codeplugs had 128 as the
-// tail: above 1 s it is 500 ms; a rate out of 1 .. 10 is 2, as an unread one. The CPS doesn't edit them: a codeplug
-// from elsewhere can have anything there (0xFF: 25.5 s before the first digit, * 2.55 s longer; #177), so the delay
-// and the extra times are kept to 1 s too
+// tail: above 1 s it is 500 ms. A codeplug from elsewhere can have anything there (0xFF: 25.5 s before the first
+// digit, * 2.55 s longer; #177), so the delay and the extra times are kept to 1 s too; a rate out of 1 .. 10 (0xFF,
+// or an unread one) is 5 digits a second, as our CPS writes it (2 made a node number take 4 s: #177). Our CPS edits
+// them too (Radio settings, DTMF)
 #define ADDR_DTMF_DURATIONS (0x1400 + 0x72)
 #define DTMF_TAIL_MAX       10
 #define DTMF_TAIL_DEFAULT   5
-#define DTMF_RATE_DEFAULT   2
+#define DTMF_RATE_DEFAULT   5
 #define DTMF_RATE_MAX       10
 #define DTMF_DELAY_MAX      10  // x 100 ms
 #define DTMF_DELAY_DEFAULT  5

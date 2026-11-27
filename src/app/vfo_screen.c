@@ -660,11 +660,22 @@ static void reply_to_call(void)
     ui_key_beep(SOUND_ACK);
 }
 
+// YSF, # (number_entry_open_dgid()): the VFO's DG-ID, kept as its other changes
+static void set_dgid(uint8_t dgid)
+{
+    codeplug_set_ysf_dgid(vfo(), dgid);
+    changed();
+}
+
 static bool do_action(keymap_action_t action)
 {
     switch (action) {
         case KEYMAP_NUMBER_ENTRY:
-            ui_push(&number_entry_screen, (!v_is_fm()) ? NUMBER_ENTRY_TX_TARGET : NUMBER_ENTRY_DTMF);
+            if (vfo()->mode == CODEPLUG_MODE_YSF) {
+                number_entry_open_dgid(codeplug_ysf_dgid(vfo()), set_dgid); // YSF has no TG: its DG-ID
+            } else {
+                ui_push(&number_entry_screen, (!v_is_fm()) ? NUMBER_ENTRY_TX_TARGET : NUMBER_ENTRY_DTMF);
+            }
             return false;
         case KEYMAP_CONTACT_LIST:
             contacts_open_quick_list(v_is_fm());
@@ -1082,7 +1093,7 @@ static void draw(void)
     } else if (v->mode == CODEPLUG_MODE_YSF) {
         // YSF Fusion: the destination (a contact's callsign, or ALL), the DG-ID on its line, right
         icons_draw(WIDGET_MARGIN, TONE_Y + 3, ICONS_TALKGROUP, THEME_COLOUR_TEXT_LABEL);
-        draw_text(VALUE_X, TONE_Y, target.name[0] ? target.name : "ALL", &font_roboto20, FONT_ALIGN_LEFT,
+        draw_text(VALUE_X, TONE_Y, target.name[0] ? target.name : text(TEXT_ALL), &font_roboto20, FONT_ALIGN_LEFT,
                   THEME_COLOUR_TEXT);
         snprintf(buffer, sizeof(buffer), "DG-ID %u", (unsigned)codeplug_ysf_dgid(v));
         draw_text(FB_WIDTH - WIDGET_MARGIN, TONE_Y + 2, buffer, &font_roboto17, FONT_ALIGN_RIGHT,

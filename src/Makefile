@@ -32,6 +32,11 @@ ifeq ($(RX_CAPTURE),1)
 CFLAGS  += -DRX_CAPTURE
 endif
 ASFLAGS := $(CPU) $(addprefix -I,$(INCDIRS)) -MMD -MP
+# make clean && make DELAY_LOG=1: only the delay log (p25_radio.c p25_ev, 64 events; tools/debug/voice_delay.py), for
+# when the whole DEBUG build doesn't fit the RAM
+ifeq ($(DELAY_LOG),1)
+CFLAGS  += -DOPENDMR_DELAY_LOG
+endif
 # make clean && make DEBUG=1: the logs and the test functions of tools/debug kept (the mic levels, the P25 tap,
 # capture, transmit log and transmit test, the NXDN AF capture, the DMR transmit trace, the vocoder benches). Off by
 # default: their rings are 1 entry long and the functions only called over the cable are left out (some 26 KB of RAM)
@@ -46,7 +51,8 @@ LIBS    := -lm -lc -lgcc
 
 # Layers, see docs/architecture.md
 SRCDIRS := startup freertos freertos/portable/CK803 hal drivers dmr graphics graphics/fonts graphics/themes ui ui/text ui/widgets services services/ysf services/roger app
-C_SRCS  := $(foreach d,$(SRCDIRS),$(wildcard $(d)/*.c))
+# v0.10.0's ysf_core.c / ysf_radio.c are kept for reference; our services/ysf/ engine (DN, V/D-1 and VW with IMBE) is built
+C_SRCS  := $(filter-out services/ysf_core.c services/ysf_radio.c,$(foreach d,$(SRCDIRS),$(wildcard $(d)/*.c)))
 S_SRCS  := $(foreach d,$(SRCDIRS),$(wildcard $(d)/*.S))
 OBJS    := $(addprefix $(BUILD)/,$(C_SRCS:.c=.o) $(S_SRCS:.S=.o))            $(patsubst $(VOCODER)/%.c,$(BUILD)/vocoder/%.o,$(wildcard $(VOCODER)/*.c)) \
            $(patsubst $(P25CORE)/%.c,$(BUILD)/p25/%.o,$(P25_SRCS))

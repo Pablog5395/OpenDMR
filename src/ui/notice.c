@@ -98,6 +98,7 @@ static void wave(int32_t cx, int32_t cy, int32_t r, uint16_t c)
 static void icon(ui_notice_kind_t kind, int32_t cx, int32_t cy, theme_colour_t colour)
 {
     switch (kind) {
+        case UI_NOTICE_UNLOCK: // a tick, as UI_NOTICE_OK (the padlock is on the status bar; locked: the i below)
         case UI_NOTICE_OK: // a tick
             wide_line(cx - 12, cy + 1, cx - 4, cy + 9, colour);
             wide_line(cx - 4, cy + 9, cx + 12, cy - 9, colour);
@@ -126,7 +127,7 @@ static void icon(ui_notice_kind_t kind, int32_t cx, int32_t cy, theme_colour_t c
             wide_line(cx, cy + 3, cx + 14, cy - 9, colour);
             break;
         }
-        default: // an i in a ring
+        default: // an i in a ring (UI_NOTICE_INFO, UI_NOTICE_LOCK)
             draw_ring(cx, cy, 4 * 13, 4 * 3, colour);
             draw_fill_circle(cx, cy - 6, 4 * 2, colour);
             fb_fill(cx - 2, cy - 2, cx + 2, cy + 8, theme_colour(colour));

@@ -319,7 +319,7 @@ static void tx_dmr_finished(void)
     post_signal();
 }
 
-// P25 (p25_radio.c), NXDN (nxdn_radio.c) and M17 (m17_radio.c): transmitting until the last data unit / frame is sent
+// P25 (p25_radio.c), NXDN (nxdn_radio.c), M17 (m17_radio.c) and YSF (ysf_radio.c): transmitting until the last data unit / frame is sent
 static void tx_p25_start(void)
 {
     rs.is_transmitting = true;

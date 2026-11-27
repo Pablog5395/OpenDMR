@@ -32,12 +32,13 @@
  *
  * The lock only exists on the home screens: locking goes home, as the original pops to the root menu. While the
  * keypad is locked every key, the side buttons and the rotary are taken; a key press shows the lock page a moment,
- * SK1 + * unlocks both (not SK2 + * of the main firmware: on the DM-32 a held SK2 hides the column of *, keys.c). The PTT still works unless the PTT is locked too. The page takes the keys itself, so the
- * unlock works while it shows. The auto lock: idle.c asks the home screens (UI_DATA_AUTOLOCK). TODO: the voice
- * prompts. With the lock PIN (security.h) the lock takes the PTT too, SK2 + * asks for the PIN (pin_screen.c), and
- * the radio starts locked (unless the power-on PIN was asked); the reception goes on. Then any key (not the PTT,
- * not a side key) asks for the PIN, a digit as its first one. Then the lock page stays
- * as the lock screen (the time, no channel) until the PIN unlocks, and the VOX is off (radio.c).
+ * the unlock keys (key settings, SK1 + # by default; not SK2 + * of the main firmware: on the DM-32 a held SK2 hides
+ * the column of *, keys.c) unlock both. The PTT still works unless the PTT is locked too. The page takes the keys
+ * itself, so the unlock works while it shows. The auto lock: idle.c asks the home screens (UI_DATA_AUTOLOCK). TODO:
+ * the voice prompts. With the lock PIN (security.h) the lock takes the PTT too, the unlock keys ask for the PIN
+ * (pin_screen.c), and the radio starts locked (unless the power-on PIN was asked); the reception goes on. Then any key
+ * (not the PTT, not a side key) asks for the PIN, a digit as its first one. Then the lock page stays as the lock
+ * screen (the time, no channel) until the PIN unlocks, and the VOX is off (radio.c).
  */
 
 #include <stddef.h>
@@ -51,8 +52,11 @@
 #include "lock_screen.h"
 #include "cable_link.h"
 #include "sound.h"
+#include "keymap.h"
+#include "ui.h"
 
 #define SHOW_MS  1000
+#define NOTICE_MS 1500 // the lock / unlock bubbles (ui_notify())
 #define CLOCK_MS 5000 // the lock screen's clock
 #define TIME_Y   70
 #define TEXT_Y   150
@@ -68,8 +72,22 @@ static bool lock_screen_stays(void)
     return keypad_locked && security_lock_pin_on();
 }
 
+// The state as a bubble over the home screen (#193: the page showed a second, then nothing told it was locked; the
+// status bar's padlock now does): locked and how to unlock, the PTT locked, or unlocked
 static void show(void)
 {
+    status_bar_set_locked(keypad_locked);
+    if (!lock_screen_stays()) {
+        if (keypad_locked) {
+            ui_notify(TEXT_LOCKED, TEXT_UI_UNLOCK_HINT, UI_NOTICE_LOCK, NOTICE_MS);
+        } else if (ptt_locked) {
+            ui_notify(TEXT_LOCKED, TEXT_PTT, UI_NOTICE_LOCK, NOTICE_MS);
+        } else {
+            ui_notify(TEXT_UNLOCKED, TEXT_COUNT, UI_NOTICE_UNLOCK, NOTICE_MS);
+        }
+        ui_redraw(); // the status bar's padlock
+        return;
+    }
     if (ui_top_screen() == &lock_page) {
         if (!lock_screen_stays()) {
             ui_timer_start(SHOW_MS); // shows already: again from now
@@ -107,6 +125,7 @@ const ui_screen_t *lock_screen_start(void)
         keypad_locked = true;
         ptt_locked = true;
         security_set_locked(true);
+        status_bar_set_locked(true);
         return &lock_page;
     }
     return NULL;
@@ -145,19 +164,23 @@ bool lock_screen_filter(const ui_event_t *ev)
     if (!keypad_locked) {
         return false;
     }
-    if (ev->type != UI_EVENT_KEY_PRESS) {
-        return true;
-    }
-    if ((ev->key == UI_KEY_STAR) && (ev->modifiers & UI_MODIFIER_SK1)) {
+    // The unlock keys (key settings; SK1 + # by default). keymap.c sees every key while locked, so a side key held
+    // with them doesn't count as pressed alone when released (it would run its own action, as the lock again)
+    if (keymap_action(ev, KEYMAP_SCREEN_LOCKED) == KEYMAP_UNLOCK) {
         if (security_lock_pin_on()) {
             pin_screen_unlock(-1); // right: lock_screen_unlock()
         } else {
             lock_screen_unlock();
         }
-    } else if (lock_screen_stays() && (ev->key != UI_KEY_SK1) && (ev->key != UI_KEY_SK2)) {
+        return true;
+    }
+    if (ev->type != UI_EVENT_KEY_PRESS) {
+        return true;
+    }
+    if (lock_screen_stays() && (ev->key != UI_KEY_SK1) && (ev->key != UI_KEY_SK2)) {
         pin_screen_unlock(ui_key_digit(ev->key)); // the lock PIN: any key asks for it
-    } else if (ev->key != UI_KEY_SK1) {
-        show(); // SK1 alone is the first half of the unlock
+    } else if ((ev->key != UI_KEY_SK1) && (ev->key != UI_KEY_SK2)) {
+        show(); // a side key alone may be the first half of the unlock
     }
     return true;
 }
