@@ -19,8 +19,8 @@ Qué NO incluye
 --------------
 - Cifrado, trunking, datos YSF (DT 1 se ignora) ni base de callsigns.
 - Modo hotspot MMDVM dentro del handy para YSF (sigue siendo DMR).
-- Confirmación con radios Yaesu reales: VW/IMBE y la selección cruzada de
-  codec dentro del handy siguen sin probarse con un Yaesu.
+- Otras radios Yaesu y otras redes aparte de las probadas: FT-70D y FT-5D en
+  simplex directo, y el hotspot Pi-Star / reflector URF.
 
 Licencias (importante)
 ----------------------
@@ -46,6 +46,8 @@ Verificación
 - `GCC=gcc python3 tools/radio_fsm/run.py` -> 163 comprobaciones, 0 fallos.
 - Firmware compilado con el toolchain C-SKY (text 783292, bss 345668).
 - En aire (26/11/2026): PTT real LU8HPA vía hotspot Pi-Star URFARG y
-  retransmisión en reflector URF/XLXARG; ver docs/ysf.md.
+  retransmisión en reflector URF/XLXARG. Además, conversación verificada en
+  simplex directo contra Yaesu FT-70D y FT-5D en los tres modos de voz
+  (V/D-1, DN y VW); DN fue el que mejor anduvo. Ver docs/ysf.md.
 
 Firmas SHA256 de todos los archivos: SHA256SUMS.txt (en esta carpeta).

@@ -108,8 +108,12 @@ las tramas terminan en la FIFO 4FSK de `p25_phy.c`.
 
 ## Verificación en aire (fork)
 
-Pruebas hechas con el handy y el hotspot propios, no por el proyecto original:
+Pruebas hechas con el handy propio, no por el proyecto original:
 
+- **Yaesu reales en simplex directo:** conversación verificada contra un **FT-70D** y un **FT-5D** sin hotspot ni
+  reflector, en los **tres modos de voz**: V/D-1, DN y VW (IMBE). Los tres abren y suenan en ambos sentidos; **DN es
+  el que mejor anduvo** (voz más estable y sin cortes). También se probó la selección cruzada de codec dentro del
+  handy.
 - **PTT real:** el 26/11/2026 a las 14:07:51 UTC `LU8HPA` (SSID 0) entró al reflector a través del hotspot
   `LU8HPA B / URFARG`; el dashboard lo mostró con el camino completo de voz. El DT1 del FN6 no hizo falta: nuestro
   TX manda ceros ahí y MMDVMHost no interpreta ese campo (sólo lo descarta en `YSFPayload.cpp`).
@@ -127,9 +131,9 @@ Pruebas hechas con el handy y el hotspot propios, no por el proyecto original:
 
 No hay soporte para cifrado, trunking, datos YSF (DT 1 sólo se ignora) ni base de datos de callsigns. La semántica de
 los 49 parámetros AMBE+2 en DN no está confirmada contra un vector público; la correspondencia de bits se sigue de la
-referencia indicada abajo. La selección cruzada de codec dentro del propio handy y VW contra una radio Yaesu siguen
-sin confirmar en el aire. La interoperabilidad con un hotspot Pi-Star y con el reflector URF sí quedó verificada en
-las pruebas de esta rama (ver arriba), pero no por el proyecto original ni con otras radios.
+referencia indicada abajo. La interoperabilidad con radios Yaesu reales (FT-70D y FT-5D, simplex directo, los tres
+modos de voz) sí quedó verificada en esta rama, con DN como el modo más estable; también se probaron el hotspot
+Pi-Star y el reflector URF. No lo verificó el proyecto original, y quedan por probar otras radios y redes.
 
 Para un hotspot MMDVM/Pi-Star externo en YSF: el TX ya emite el preámbulo `0x77` de 200 ms y la trama sigue el formato
 de MMDVM (sync, whitening, FICH y DCH). Hay que igualar la desviación: un canal **narrow** de 12.5 kHz (±1350 Hz)
