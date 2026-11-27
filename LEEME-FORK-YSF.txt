@@ -14,6 +14,9 @@ Qué agrega
 - Panel QSO con callsign, destino y DG-ID; escaneo YSF.
 - TX con preámbulo 0x77, cabecera/ciclos/terminador y mapa de símbolos C4FM
   corregido; RX con demodulador C4FM propio.
+- Roger beep **por el aire** como tramas AMBE nativas (inicio/fin/ambos, con
+  melodías), para que lo escuche el otro equipo, y **estilos de sonido
+  locales** (Classic/Chirp) para los beeps del altavoz.
 
 Qué NO incluye
 --------------

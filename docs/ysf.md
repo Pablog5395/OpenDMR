@@ -105,6 +105,9 @@ las tramas terminan en la FIFO 4FSK de `p25_phy.c`.
   `tools/ysf/` (frame, TX, voz, demodulador y un vector DN capturado en el aire), con la misma licencia GPL de la
   parte YSF. `python3 tools/ysf/run.py` da 5582 comprobaciones y `GCC=gcc python3 tools/radio_fsm/run.py` 163, sin
   fallos.
+- **Sonidos** (commits de sonido y roger incorporados en este fork): roger beep **por el aire** como tramas AMBE
+  nativas, con las filas **DMR air beep** (Off/Start/Stop/Both) y **Roger style** (seis melodías); y **Sound style**
+  local (Classic/Chirp) para los beeps del altavoz. Se configuran en Menú → Sound options.
 
 ## Verificación en aire (fork)
 
