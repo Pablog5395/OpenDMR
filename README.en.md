@@ -147,10 +147,15 @@ Each file's header decides; the full text is in [LICENSE](LICENSE):
 | `vocoder/` | Our own; the decoder is ported from mbelib (ISC). AMBE+2 is DVSI's patented technology: search the patents before any commercial use |
 | `p25/` | Our own; the IMBE parameter decoding and tables ported from mbelib, the positions in the frames from DSD (ISC). IMBE is DVSI's technology too: the same |
 | `nxdn/`, `src/services/nxdn_*` | Our own, from the public NXDN TS 1-A specification only, no one else's code. NXDN voice is AMBE+2: as `vocoder/` |
+| YSF (this fork: `src/services/ysf/*`, `tools/ysf/*`) | Ported from DM32-nxdn-p25 (lyra XE1POC), **GPL-3.0-or-later**; see `LICENSES-YSF.md` |
 | Fonts `tools/fonts/ttf/` | Roboto Condensed and Noto Sans SC, both SIL Open Font License 1.1 (licence texts in the same folder) |
 
 So the firmware as a whole **can't be used commercially** for now: that would at least need a new DMR engine and
 hotspot, and the AMBE+2 patents checked.
+
+> This branch (`ysf-gpl-0.9.3`) is a personal fork published from `Pablog5395/OpenDMR`, not part of the original
+> project. The YSF part is GPL-3.0-or-later and the rest keeps the OpenDMR licence; the two **cannot be combined and
+> redistributed together**, see `LICENSES-YSF.md`.
 
 ## Support OpenDMR
 

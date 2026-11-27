@@ -26,3 +26,24 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+--------------------------------------------------------------------------------------------------------------------
+
+YSF (Yaesu Fusion / C4FM) — this fork (branch ysf-gpl-0.9.3, published from Pablog5395/OpenDMR)
+
+The YSF frame layer, TX sequencer and voice conversion in src/services/ysf/ (ysf_frame.*, ysf_tx.*,
+ysf_voice.*, ysf_radio.*) and the host harness in tools/ysf/ are ported from DM32-nxdn-p25:
+
+    https://github.com/donttellmeimcute/DM32-nxdn-p25
+    Copyright (c) 2026 lyra XE1POC
+    SPDX-License-Identifier: GPL-3.0-or-later
+
+The full GPL v3 text is in licences/GPL-3.0-or-later.txt. The notices in each file header are kept.
+
+MMDVM-Host (Jonathan Naylor G4KLX, GPL-2.0-or-later according to its headers) and the Yaesu
+"Amateur Radio Digital Standards" Rev. 1.02 were reading references for the sync, FICH, FEC, CRC,
+interleave and AMBEFEC details; no files from those projects are distributed here.
+
+The rest of the firmware keeps the OpenDMR licence (LICENSE). See LICENSES-YSF.md for the full
+breakdown, the submodule licences and the compatibility note: this branch is published separately
+from the original repository and is not an upstream contribution.

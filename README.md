@@ -134,9 +134,13 @@ py tools\release\make_release.py --publish    # 再建 GitHub Release（tag v<�
 | `vocoder/` | 自己写的；解码器从 mbelib（ISC）移植。AMBE+2 是 DVSI 的专利技术，商用前要做专利检索 |
 | `p25/` | 自己写的；IMBE 参数解码和表从 mbelib、帧内位置从 DSD 移植（ISC）。IMBE 也是 DVSI 的技术，同上 |
 | `nxdn/`、`src/services/nxdn_*` | 自己写的，只依据公开的 NXDN TS 1-A 规范，没有用别人的代码。NXDN 的语音用 AMBE+2，同 `vocoder/` |
+| YSF（本 fork：`src/services/ysf/*`、`tools/ysf/*`） | 从 DM32-nxdn-p25（lyra XE1POC）移植，**GPL-3.0-or-later**；见 `LICENSES-YSF.md` |
 | 字体 `tools/fonts/ttf/` | Roboto Condensed、Noto Sans SC，都是 SIL Open Font License 1.1（许可文本在同一目录） |
 
 所以整个固件目前**不能商用**：要商用，至少要重写 DMR 引擎和热点，并确认 AMBE+2 的专利。
+
+> 本分支（`ysf-gpl-0.9.3`）是个人 fork，从 `Pablog5395/OpenDMR` 发布，不是原项目的一部分。YSF 部分为
+> GPL-3.0-or-later，其余部分沿用 OpenDMR 的许可；两者**不能合在一起再分发**，详见 `LICENSES-YSF.md`。
 
 ## 支持这个项目
 
