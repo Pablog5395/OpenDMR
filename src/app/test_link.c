@@ -66,12 +66,13 @@
 #include "sms.h"
 #include "dmr.h"
 #include "test_link.h"
+#include "key_settings.h"
 #include "systime.h"
 
 // The screens with a name in the state (the others: "other")
 extern const ui_screen_t channel_screen, vfo_screen, dual_watch_screen, channel_details_screen, fm_radio_screen,
     gps_screen, rssi_screen, satellite_screen, last_heard_screen, number_entry_screen, pin_screen, cps_screen,
-    hotspot_screen, key_settings_screen, message_box_screen, calibration_screen;
+    hotspot_screen, message_box_screen, calibration_screen;
 
 static const struct {
     const ui_screen_t *screen;
@@ -169,7 +170,7 @@ static uint32_t state(char *text, uint32_t size)
     }
     if (quick_menu_describe(buffer, sizeof(buffer))) {
         screen = "quick_menu";
-    } else if (!ui_list_describe(buffer, sizeof(buffer))) {
+    } else if (!ui_list_describe(buffer, sizeof(buffer)) && !key_settings_describe(buffer, sizeof(buffer))) {
         buffer[0] = '\0';
     }
     put(&o, "screen", "%s", screen);
