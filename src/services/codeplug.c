@@ -528,7 +528,7 @@ bool codeplug_write_channel(int number, const codeplug_channel_t *channel)
     return flash_write(channel_address(number), (const uint8_t *)&stored, CHANNEL_SIZE);
 }
 
-// The bit of the channel in the table before its bank, then the tables read again
+// The bit of the channel in the table before its bank, and in the copy of that table here
 int codeplug_write_new_channel(const codeplug_channel_t *channel)
 {
     int number = CODEPLUG_CHANNELS_MIN;
@@ -551,7 +551,10 @@ int codeplug_write_new_channel(const codeplug_channel_t *channel)
     if (!flash_write(address, &byte, 1)) {
         return 0;
     }
-    codeplug_init();
+    // Not codeplug_init(): it would also read back the last used table, which the flash has only as of the last
+    // power off (last_used_save())
+    channels_in_use[index / 8] |= (uint8_t)(1 << (index % 8));
+    channel_total++;
     return number;
 }
 
