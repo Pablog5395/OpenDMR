@@ -460,6 +460,8 @@ static void format_names(char *zone_text, size_t zone_size_bytes, char *name, si
 }
 
 // At the start, and back from the menus: the zone of the settings (the zone list may have changed it)
+static int position_of(int number);
+
 static void enter(void *arg)
 {
     static bool started = false;
@@ -476,6 +478,14 @@ static void enter(void *arg)
         started = true;
         sorted = sort; // the distance sort turned on or off in the quick menu: the zone read again
         select_zone(current);
+    } else if (zone.index < 0) {
+        // "All channels": a channel written since (VFO --> New channel takes the lowest free number) moves the
+        // channels above it one place on, so the position carried over here would name a different channel
+        int at = position_of(channel_screen_channel);
+
+        if (at >= 0) {
+            position = at;
+        }
     }
     load(); // the channel may have been written (channel details, VFO --> channel) or the zone changed (zone list)
     (void)dual_watch_show(); // dual watch on: shown over this screen, its selected path this channel
@@ -889,6 +899,9 @@ static bool handle(const ui_event_t *ev)
             if ((ev->what & UI_DATA_AUTOLOCK) && !lock_screen_is_keypad_locked()) {
                 lock_screen_lock(true, true); // the auto lock (keypad and PTT, as the main firmware)
                 return false;
+            }
+            if ((ev->what & UI_DATA_DUAL_WATCH) && dual_watch_show()) {
+                return false; // the dual watch back after a scan (dual_watch_scan_ended())
             }
             return true; // the status bar shows the battery and the time, the S meter the signal
         default:

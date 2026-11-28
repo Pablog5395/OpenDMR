@@ -32,5 +32,8 @@
 #include "ui.h"
 
 extern const ui_screen_t key_settings_screen; // arg: non NULL when opened (key_settings.c)
+// The page on top, as the lists describe themselves (ui_list_describe(): title, sel, count, row, value lines) for the
+// test interface (test_link.c); false: not on top
+bool key_settings_describe(char *out, size_t size);
 
 #endif
