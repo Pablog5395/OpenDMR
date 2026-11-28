@@ -231,6 +231,31 @@ static void draw(void)
     }
 }
 
+bool key_settings_describe(char *out, size_t size)
+{
+    int32_t selected = (*ui_state() == 0) ? 1 : *ui_state();
+    const char *name = text(TEXT_KEY_DEFAULTS);
+    char value[32];
+
+    if (ui_top_screen() != &key_settings_screen) {
+        return false;
+    }
+    value[0] = '\0';
+    if (selected < (ROWS - 1)) {
+        keymap_action_t action = (keymap_action_t)selected;
+
+        name = text(keymap_action_name(action));
+        if (state.capturing) {
+            snprintf(value, sizeof(value), "%s", text(TEXT_KEY_PRESS_NEW));
+        } else {
+            keymap_format(keymap_binding(action), value, sizeof(value));
+        }
+    }
+    snprintf(out, size, "title=%s\nsel=%d\ncount=%d\nrow=%s\nvalue=%s\n", text(TEXT_KEY_SETTINGS), (int)(selected - 1),
+             ROWS - 1, name, value);
+    return true;
+}
+
 const ui_screen_t key_settings_screen = {
     .enter = enter,
     .leave = leave,
