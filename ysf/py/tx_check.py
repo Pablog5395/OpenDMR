@@ -2,7 +2,12 @@
 receiver's counters before and after and its last frames (ysf_frame_log) read once at the end. Both radios in YSF
 on the same simplex frequency (ysf/py/rig.py). The transmitter is not polled while it transmits.
 
-  python ysf/py/tx_check.py --tx COM23 --rx COM22 [--seconds 3] [--power low|high] [--dev 1536] [--log]
+  python ysf/py/tx_check.py --tx COM23 --rx COM22 [--seconds 3] [--power low|high] [--dev 1536]
+                            [--set ysf_tx_lead=1920 ...] [--log]
+
+--set writes variables of the transmitter first (e.g. ysf_tx_lead=1920: 400 ms of preamble instead of 300 ms, to
+test whether the mid-call cross-mode micro-cut is the FIFO running dry); they are restored at the end. The
+transmitter's underruns (the last field of ysf_tx_stats) are printed after every call.
 """
 import argparse
 import struct
@@ -53,14 +58,21 @@ def main():
     ap.add_argument('--seconds', type=float, default=3.0)
     ap.add_argument('--power', choices=('low', 'high'), default='low')
     ap.add_argument('--dev', type=int)
+    ap.add_argument('--set', nargs='*', default=[], help='name=value written to the transmitter, restored at the end')
     ap.add_argument('--log', action='store_true', help='print the receiver frame log')
     a = ap.parse_args()
 
-    tx = Mem(a.tx, ('ysf_tx_low_power', 'ysf_tx_dev', 'ysf_tx_stats'))
-    saved = {k: tx.u32(k)[0] for k in ('ysf_tx_low_power', 'ysf_tx_dev')}
+    overrides = dict(kv.split('=') for kv in a.set)
+    names = tuple(dict.fromkeys(('ysf_tx_low_power', 'ysf_tx_dev', 'ysf_tx_stats', *overrides)))
+    tx = Mem(a.tx, names)
+    saved = {k: tx.u32(k)[0] for k in names if k != 'ysf_tx_stats'}
     tx.set('ysf_tx_low_power', 1 if a.power == 'low' else 0)
     if a.dev:
         tx.set('ysf_tx_dev', a.dev)
+    for k, v in overrides.items():
+        tx.set(k, int(v, 0))
+    for k in ('ysf_tx_dev', *overrides):
+        print('%s = %d' % (k, tx.u32(k)[0]))
     dev = tx.u32('ysf_tx_dev')[0]
     tx.close()
     before = rx_stats(a.rx)

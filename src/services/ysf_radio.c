@@ -71,7 +71,8 @@
                           // in the field; 80 ms with 4 frames adds ~20 ms more headroom for the remaining jitter
 #define CALL_TIMEOUT  350 // ms without a frame: the call ended (a frame is 100 ms)
 #define VOICE_BAD     9   // V/D mode 2: a voice frame with more triplets split than this (of 27) played as silence
-#define TX_LEAD_MAX   960 // dibits of preamble at most: 200 ms of 0x77, as MMDVM/Yaesu key up
+#define TX_LEAD_MAX   2400 // dibits of preamble at most (500 ms): 1440 (300 ms) is the default; the rest is for A/B
+                           // tests of the transmit FIFO's headroom over the cable (ysf/py/tx_check.py --set)
 
 #define OVERLAY_BSS __attribute__((section(".ysf_bss"))) // after the vocoder's RAM (ckcpu.ld), not zeroed
 
@@ -79,10 +80,12 @@ volatile ysf_radio_stats_t ysf_radio_stats;
 // the 4FSK level (MODEM_MOD_SCALE_ONE 1024: P25's +-1.8 kHz) for YSF's +-2.7 kHz wide (FICH Dev=0), as in v0.10.0.
 // MMDVM/Pi-Star hotspots configured for YSF wide only decode this; narrow (768, Dev=1) needs LoDev=1 in MMDVMHost.
 volatile uint32_t ysf_tx_dev = 1536;
-// 200 ms of +3 -3 (0x77) before the first sync, as MMDVM/Yaesu key up: receivers need it to find sync before the
+// 300 ms of +3 -3 (0x77) before the first sync, as MMDVM/Yaesu key up: receivers need it to find sync before the
 // header, which is the frame carrying CSD1 (our callsign). With only 40 ms some reflected calls were heard without
-// the callsign on the original radios.
-volatile uint32_t ysf_tx_lead = 960;
+// the callsign on the original radios. The lead also stays ahead of the voice for the whole call (the producer and
+// the modem both run at one frame per 100 ms): 200 ms left the FIFO dry mid-call on a Pi-Star, whose MMDVM declares
+// a loss after 5 frames (~500 ms) without sync and comes back as a late entry (no callsign on the DMR side).
+volatile uint32_t ysf_tx_lead = 1440;
 volatile uint32_t ysf_tx_low_power;    // not 0: 50 mW (tests with the radios side by side)
 volatile uint32_t ysf_tx_stats[4];     // calls, frames, the longest AMBE encoding (us), underruns (the last call's)
 
@@ -306,6 +309,16 @@ static void rx_init(void)
     vocoderReset();
 }
 
+// p25_phy_tx_put() has no room check: a frame put into a full FIFO would wrap and corrupt the stream the modem
+// sends. One frame plus a block of margin leaves the interrupt room to take the last block of the previous frame.
+static void tx_put_frame(const uint8_t *d)
+{
+    while (p25_phy_tx_room() < YSF_FRAME_DIBITS + 144) {
+        vTaskDelay(pdMS_TO_TICKS(2));
+    }
+    p25_phy_tx_put(d, YSF_FRAME_DIBITS);
+}
+
 /* A transmission while the PTT stays held (afrx.c: the call ended, the playback and the recording off): the preamble
    and the header into the FIFO and the transmitter keyed (the first V/D frame comes 5 mic frames and their encoding
    later, ~110 ms: the preamble and the header cover that); then a frame for every 5 mic frames. The PTT released:
@@ -336,7 +349,7 @@ static void transmit(void)
         lead -= k;
     }
     ysf_tx_hc_tc(&f, YSF_FI_HC, dst, src, tx_dibits);
-    p25_phy_tx_put(tx_dibits, YSF_FRAME_DIBITS);
+    tx_put_frame(tx_dibits);
     bool started = afrx_fifo_key(ysf_tx_low_power != 0);
     p25_ev_log(61, started); // the preamble and the header in, keyed
     int16_t mic[160];
@@ -377,7 +390,7 @@ static void transmit(void)
         f.fn = (uint8_t)fn;
         ysf_vd2_dch(fn, dst, src, NULL, dch);
         ysf_tx_vd2(&f, dch, (const uint8_t(*)[9])tx_ambe, tx_dibits);
-        p25_phy_tx_put(tx_dibits, YSF_FRAME_DIBITS);
+        tx_put_frame(tx_dibits);
         if (ysf_tx_stats[1] < 3) {
             p25_ev_log(64, (uint16_t)ysf_tx_stats[1]); // a V/D frame into the FIFO (arg: its number in the call)
         }
@@ -386,7 +399,7 @@ static void transmit(void)
     }
     if (started) {
         ysf_tx_hc_tc(&f, YSF_FI_TC, dst, src, tx_dibits);
-        p25_phy_tx_put(tx_dibits, YSF_FRAME_DIBITS);
+        tx_put_frame(tx_dibits);
     }
     uint32_t underruns = afrx_fifo_finish(started);
     if (started) {

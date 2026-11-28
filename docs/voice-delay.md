@@ -76,6 +76,15 @@ NXDN48（每 80 ms 一帧，四帧 AMBE+2）：60 ms 引导、前导、VCALL 帧
   时隙，之后把语音当成另一个时隙的丢掉，整个通话剩下的部分都没声音。现在 `put_burst()` 发现欠载块数是奇数，就补
   一块空的把时隙对回来（`dmr_soft_tx_realigned` 计数）。
 
+**YSF 发射（`ysf_radio.c`，2026-11-28）**
+
+- 前导 200 → 300 ms（`ysf_tx_lead` 960 → 1440 dibits）：生产者和调制解调器都是每 100 ms 一帧，这段余量整通都在，
+  不只是按 PTT 的开头。Pi‑Star 跨模式时 MMDVM 连着 5 帧（~500 ms）找不到 sync 就报 `transmission lost`，
+  回来时 PTT 没松、没有帧头，就按 `late entry` 处理，DMR 侧丢呼号。现场改后报告正常。
+- `p25_phy_tx_put()` 不查 room：现在每次把帧头 / V‑D / TC 放进队列前先等 `p25_phy_tx_room()`；FIFO 满了会绕回，
+  破坏调制解调器发出的数据流。
+- 代价：按 PTT 到第一个声音多约 100 ms。`ysf/py/tx_check.py --set ysf_tx_lead=1920` 可在现场再比 400 ms。
+
 **NXDN 接收（`nxdn_radio.c`、`nxdn_core.c`）**
 
 - 通话开始时没有重置超时的起点：VCALL 帧开始的通话被 `poll()` 用上一次通话的时间当场结束，第一个语音帧再开始

@@ -87,6 +87,11 @@ MMDVMHost、MMDVM、DSDcc 等开源实现只读了事实（数值、表格、帧
 - **截图会饿死接收**：`fshot.py` 读帧缓冲时接收任务漏读 186 个半缓冲、通话断了 8 次，画面在 VFO 和通话之间来回跳（看起来像
   界面 bug）。不截图时 0 漏读。看界面用眼睛，或只在通话后截。
 - 发射结束后的 60 ms 收尾等待里 FIFO 计 2 次欠载（NXDN / M17 一样），不影响帧。
+- Pi‑Star 跨模式（YSF → BM → DMR）通话中 **PTT 一直按着**也会有 ~1 s 微断：2026‑11‑28 04:43:28 的记录是
+  `transmission lost`（59.4 s，BER 0.1 %，RSSI −47 dBm）→ 0.3 s 后 `late entry`，DMR 侧就没呼号。
+  MMDVM 连着 5 帧（~500 ms）找不到 sync 才报 lost；回来时没有帧头（PTT 没松）就按 late entry 处理。
+  不是射频问题，是发射 FIFO 中途见底。把前导 200 → 300 ms（ producer 和 modem 都是每 100 ms 一帧，
+  这段余量整通都在），并在每次 `p25_phy_tx_put()` 前查 room；现场用 `ysf/py/tx_check.py --set` 再比 400 ms。
 
 ## 还没做
 
