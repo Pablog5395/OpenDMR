@@ -28,7 +28,11 @@
 
 /*
  * OpenDMR, service: the OpenGD77 custom data blocks of the codeplug (the main firmware's codeplugGetCustomData()
- * / codeplugSetCustomData()): satellite keps, themes.
+ * / codeplugSetCustomData()): satellite keps, themes, and settings of ours (keymap, skip list, ...).
+ *
+ * An area without the "OpenGD77" header (a radio from the factory, after another firmware, or whose codeplug our CPS
+ * wrote without custom data) gets one at the first write, as the CPS makes it (codeplug.js storeCustomBlock()):
+ * else the settings kept there were never saved (#210).
  */
 
 #include <string.h>
@@ -39,19 +43,49 @@
 #define FIRST_BLOCK 12           // after the magic
 #define END         0x10000      // the blocks are below this
 #define EMPTY       0xFFFFFFFFUL
+#define VERSION     1            // after the magic, as the CPS writes it
 
 typedef struct {
     uint32_t type;
     uint32_t length;
 } header_t;
 
+static bool has_header(void)
+{
+    char magic[8];
+
+    return flash_read(BASE, (uint8_t *)magic, sizeof(magic)) && (memcmp(magic, "OpenGD77", 8) == 0);
+}
+
+// The header written, the area after it cleared (whatever another firmware left there would read as blocks). From
+// the last sector to the first: a power cut before the header leaves the area without one, as before
+static bool make_header(void)
+{
+    static const uint8_t header[FIRST_BLOCK] = {'O', 'p', 'e', 'n', 'G', 'D', '7', '7', VERSION, 0, 0, 0};
+    uint8_t erased[64];
+    bool ok = true;
+
+    memset(erased, 0xFF, sizeof(erased));
+    for (uint32_t sector = END; sector > 0;) {
+        sector -= FLASH_SECTOR_SIZE;
+        flash_batch_start(); // one sector write, none when it is erased already
+        for (uint32_t at = 0; at < FLASH_SECTOR_SIZE; at += sizeof(erased)) {
+            ok = flash_write(BASE + sector + at, erased, sizeof(erased)) && ok;
+        }
+        if (sector == 0) {
+            ok = flash_write(BASE, header, sizeof(header)) && ok;
+        }
+        ok = flash_batch_end() && ok;
+    }
+    return ok;
+}
+
 // The address of the block of that type, from BASE (EMPTY: the first empty one); 0: none
 static uint32_t find_block(uint32_t type, header_t *header)
 {
-    char magic[8];
     uint32_t address = FIRST_BLOCK;
 
-    if (!flash_read(BASE, (uint8_t *)magic, sizeof(magic)) || (memcmp(magic, "OpenGD77", 8) != 0)) {
+    if (!has_header()) {
         return 0;
     }
 
@@ -99,6 +133,9 @@ bool custom_data_write(uint32_t type, const uint8_t *data, uint32_t length)
     bool ok;
 
     if (address == 0) { // a new one goes into the first empty slot
+        if (!has_header() && !make_header()) {
+            return false;
+        }
         address = find_block(EMPTY, &header);
         if ((address == 0) || (header.length != EMPTY) || ((address + sizeof(header) + length) >= END)) {
             return false;
